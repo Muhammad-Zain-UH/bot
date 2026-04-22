@@ -1,0 +1,19 @@
+# Secret credentials — NEVER commit these
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.venv/
+*.egg-info/
+
+# Logs
+*.log
+trading_bot.log*
+
+# IDE
+.vscode/
+.idea/

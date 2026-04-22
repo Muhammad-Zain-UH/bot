@@ -1,0 +1,18 @@
+# MetaTrader 5 Integration
+MetaTrader5==5.0.45
+
+# Data Processing & Analysis
+pandas>=1.5.0
+pandas-ta>=0.3.14
+
+# API Requests
+requests>=2.28.0
+
+# Claude API (Anthropic) — replaced OpenAI
+anthropic>=0.28.0
+
+# News Feeds
+feedparser>=6.0.10
+
+# Optional: for data visualization/backtesting
+numpy>=1.23.0
