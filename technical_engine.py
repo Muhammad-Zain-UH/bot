@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from confidence_calibrator import calibrate_technical_confidence
@@ -339,6 +341,151 @@ def _m1_counter(signal: str, tfi: dict[str, dict[str, Any]]) -> tuple[bool, str]
     return False, ""
 
 
+def _m1_confirmation_ready(direction: str, tfi: dict[str, dict[str, Any]]) -> tuple[bool, str]:
+    """
+    HARD CONFIRMATION: BUY/SELL only valid when M1 confirms reversal with ALL THREE conditions:
+    
+    For BUY:
+      1. M1 RSI > 40 AND ticking upward (current RSI > previous RSI)
+      2. Latest M1 close is above M1 VWAP
+      3. M1 trend_classification is NOT Strong Bearish
+    
+    For SELL:
+      1. M1 RSI < 60 AND ticking downward (current RSI < previous RSI)  
+      2. Latest M1 close is below M1 VWAP
+      3. M1 trend_classification is NOT Strong Bullish
+    
+    Returns (is_ready, reason_if_blocked)
+    """
+    if direction not in {"BUY", "SELL"}:
+        return False, ""
+    
+    # Load M1 data
+    m1 = tfi.get("M1", {})
+    m1_rsi = _f(m1.get("rsi_14"))
+    m1_pvwap = str(m1.get("price_vs_vwap", "Unknown"))
+    m1_trend = str(m1.get("trend_classification", "Neutral"))
+    
+    if m1_rsi is None:
+        return False, f"M1 RSI data unavailable"
+    
+    # Load previous M1 RSI from sniper state
+    try:
+        sniper_state_file = Path("sniper_state.json")
+        if sniper_state_file.exists():
+            state = json.loads(sniper_state_file.read_text())
+            m1_rsi_prev = _f(state.get("m1_rsi_prev"))
+        else:
+            m1_rsi_prev = None
+    except Exception as e:
+        log_debug(f"Failed to load sniper state for M1 confirmation: {e}")
+        m1_rsi_prev = None
+    
+    if direction == "BUY":
+        # Condition 1: M1 RSI > 40 AND ticking upward
+        rsi_condition = m1_rsi > 40.0
+        if m1_rsi_prev is not None:
+            rsi_ticking = m1_rsi > m1_rsi_prev
+        else:
+            rsi_ticking = True  # If no previous, assume OK (first candle)
+        
+        if not (rsi_condition and rsi_ticking):
+            reason = f"M1 RSI not ready: {m1_rsi:.1f} (need >40 and ticking up, prev={m1_rsi_prev})"
+            return False, reason
+        
+        # Condition 2: M1 close above VWAP
+        if m1_pvwap != "Above":
+            return False, f"M1 price below VWAP ({m1_pvwap}) - wait for reclaim"
+        
+        # Condition 3: M1 trend NOT Strong Bearish
+        if m1_trend == "Strong Bearish":
+            return False, f"M1 trend is {m1_trend} - wait for trend reversal"
+        
+        return True, ""
+    
+    elif direction == "SELL":
+        # Condition 1: M1 RSI < 60 AND ticking downward
+        rsi_condition = m1_rsi < 60.0
+        if m1_rsi_prev is not None:
+            rsi_ticking = m1_rsi < m1_rsi_prev
+        else:
+            rsi_ticking = True  # If no previous, assume OK (first candle)
+        
+        if not (rsi_condition and rsi_ticking):
+            reason = f"M1 RSI not ready: {m1_rsi:.1f} (need <60 and ticking down, prev={m1_rsi_prev})"
+            return False, reason
+        
+        # Condition 2: M1 close below VWAP
+        if m1_pvwap != "Below":
+            return False, f"M1 price above VWAP ({m1_pvwap}) - wait for breakdown"
+        
+        # Condition 3: M1 trend NOT Strong Bullish
+        if m1_trend == "Strong Bullish":
+            return False, f"M1 trend is {m1_trend} - wait for trend reversal"
+        
+        return True, ""
+    
+    return False, ""
+
+
+def _h4_price_vs_ema_reality(h4_ind: dict[str, Any]) -> tuple[float, str]:
+    """
+    Reality check: H4 trend label may be misleading if price is far from EMAs.
+    
+    Returns: (penalty_points, reason)
+    - If H4 close < EMA50: return (-2.0, "H4 Price Bearish — label misleading")
+    - If H4 close < EMA20 but >= EMA50: return (-1.0, "H4 Price below EMA20")
+    - Otherwise: return (0.0, "")
+    
+    Only applied to BUY signals (caller responsibility).
+    """
+    close = _f(h4_ind.get("close"))
+    ema20 = _f(h4_ind.get("ema_20"))
+    ema50 = _f(h4_ind.get("ema_50"))
+    
+    if close is None or ema20 is None or ema50 is None:
+        return 0.0, ""
+    
+    # Condition 1: Price below EMA50 (strongest bearish contradiction)
+    if close < ema50:
+        return -2.0, f"H4 Price Bearish — close {close:.2f} below EMA50 {ema50:.2f}"
+    
+    # Condition 2: Price below EMA20 but above EMA50 (weaker bearish signal)
+    if close < ema20:
+        return -1.0, f"H4 Price below EMA20 {ema20:.2f} (caution: correction risk)"
+    
+    return 0.0, ""
+
+
+def _h1_strong_bearish_block(direction: str, tfa: dict[str, dict[str, Any]]) -> tuple[str, str]:
+    """
+    H1 HARD BLOCK: If H1 is Strong Bearish and direction is BUY, block entirely.
+    
+    Rules:
+    - BUY + H1 Strong Bearish → HARD BLOCK (do not proceed)
+    - BUY + H1 Weak Bearish → Allow but penalize: subtract 1.0 from score + warning
+    - SELL + H1 trends → No hard block (SELL is lower risk)
+    
+    Returns: (block_signal, reason)
+    - block_signal: "NO TRADE" if hard block, "" if allowed
+    - reason: Explanation if blocked, "" if allowed
+    """
+    if direction not in {"BUY", "SELL"}:
+        return "", ""
+    
+    h1_trend = str(tfa.get("H1", {}).get("trend_classification", "Neutral"))
+    
+    # H1 Strong Bearish is HARD BLOCK for BUY only
+    if direction == "BUY" and h1_trend == "Strong Bearish":
+        return "NO TRADE", f"HARD BLOCK: H1 is Strong Bearish — BUY blocked entirely"
+    
+    # H1 Weak Bearish is allowed but penalized (caller handles score/confidence penalty)
+    if direction == "BUY" and h1_trend == "Weak Bearish":
+        return "", f"H1 Weak Bearish — position size reduced 50% (score -1.0 penalty)"
+    
+    return "", ""
+
+
 def _higher_tf_conflict(signal: str, tfa: dict[str, dict[str, Any]]) -> tuple[bool, str]:
     """SOFTENED: Check higher timeframe conflicts but allow override with high confidence.
     
@@ -514,6 +661,12 @@ def _build_wait_metadata(
                 "H4 and H1 still favor BUY, but M15 is pulling back against the higher timeframe trend.",
                 f"Wait for M5 to flip bullish and RSI to recover above {M5_REVERSAL_BUY_RSI:.0f}.",
             )
+        if context == "m1_confirmation":
+            m1_reason = gates.get("m1_confirmation_reason", "M1 not ready for entry")
+            return (
+                "M15/M5 are bullish, but M1 must confirm reversal first.",
+                f"{m1_reason}",
+            )
         if tfa.get("M5", {}).get("direction") == "SELL":
             return (
                 "H4 and H1 are bullish, but M5 is still correcting lower.",
@@ -530,6 +683,12 @@ def _build_wait_metadata(
             return (
                 "H4 and H1 still favor SELL, but M15 is bouncing against the higher timeframe trend.",
                 f"Wait for M5 to flip bearish and RSI to slip below {M5_REVERSAL_SELL_RSI:.0f}.",
+            )
+        if context == "m1_confirmation":
+            m1_reason = gates.get("m1_confirmation_reason", "M1 not ready for entry")
+            return (
+                "M15/M5 are bearish, but M1 must confirm reversal first.",
+                f"{m1_reason}",
             )
         if tfa.get("M5", {}).get("direction") == "BUY":
             return (
@@ -557,6 +716,21 @@ def _resolve_signal_state(
     gates["higher_tf_bias"] = higher_bias
     gates["higher_tf_bias_reason"] = bias_reason
     setup_direction = raw_candidate if raw_candidate in TRADE_SIGNALS else higher_bias
+    
+    # CRITICAL: H1 HARD BLOCK for Strong Bearish + BUY
+    h1_block_signal, h1_block_reason = _h1_strong_bearish_block(setup_direction, tfa)
+    if h1_block_signal == "NO TRADE":
+        log_debug(f"[HARD BLOCK] {h1_block_reason}")
+        gates["h1_strong_bearish_block"] = True
+        gates["h1_block_reason"] = h1_block_reason
+        return "NO TRADE", "NO TRADE", "h1_hard_block", h1_block_reason, ""
+    
+    # Flag for Weak Bearish (score penalty applied by caller)
+    if h1_block_reason:
+        gates["h1_weak_bearish_warning"] = True
+        gates["h1_weak_bearish_reason"] = h1_block_reason
+        log_debug(f"[H1 WARNING] {h1_block_reason}")
+    
     strong_bias = bias_strength == 2 and higher_bias in TRADE_SIGNALS
     countertrend_pullback = strong_bias and m15_dir not in {higher_bias, "NO TRADE"}
 
@@ -584,6 +758,14 @@ def _resolve_signal_state(
             reason, trigger = _build_wait_metadata(higher_bias, tfi, tfa, gates, "rsi_reset")
             return WAIT_SIGNAL, higher_bias, "wait_for_rsi_reset", reason, trigger
         if abs(final_score) >= SIGNAL_SCORE_THRESHOLD:
+            # CRITICAL: Check M1 confirmation before allowing entry
+            m1_ready, m1_reason = _m1_confirmation_ready(higher_bias, tfi)
+            if not m1_ready:
+                log_debug(f"M1 confirmation blocked {higher_bias}: {m1_reason}")
+                gates["m1_confirmation_blocked"] = True
+                gates["m1_confirmation_reason"] = m1_reason
+                reason, trigger = _build_wait_metadata(higher_bias, tfi, tfa, gates, "m1_confirmation")
+                return WAIT_SIGNAL, higher_bias, "wait_for_m1_confirmation", reason, trigger
             return higher_bias, higher_bias, "ready", "", ""
         if abs(final_score) >= WAIT_SCORE_FLOOR:
             reason, trigger = _build_wait_metadata(higher_bias, tfi, tfa, gates, "score_expansion")
@@ -596,9 +778,25 @@ def _resolve_signal_state(
         if gates.get("rsi_exhausted"):
             reason, trigger = _build_wait_metadata(raw_candidate, tfi, tfa, gates, "rsi_reset")
             return WAIT_SIGNAL, raw_candidate, "wait_for_rsi_reset", reason, trigger
+        # CRITICAL: Check M1 confirmation before allowing entry
+        m1_ready, m1_reason = _m1_confirmation_ready(raw_candidate, tfi)
+        if not m1_ready:
+            log_debug(f"M1 confirmation blocked {raw_candidate}: {m1_reason}")
+            gates["m1_confirmation_blocked"] = True
+            gates["m1_confirmation_reason"] = m1_reason
+            reason, trigger = _build_wait_metadata(raw_candidate, tfi, tfa, gates, "m1_confirmation")
+            return WAIT_SIGNAL, raw_candidate, "wait_for_m1_confirmation", reason, trigger
         return raw_candidate, raw_candidate, "ready", "", ""
 
     if higher_bias in TRADE_SIGNALS and abs(final_score) >= WAIT_SCORE_FLOOR:
+        # BUG FIX 2: M1 confirmation must apply to SELL direction too, not just BUY
+        m1_ready, m1_reason = _m1_confirmation_ready(higher_bias, tfi)
+        if not m1_ready:
+            log_debug(f"M1 confirmation blocked {higher_bias}: {m1_reason}")
+            gates["m1_confirmation_blocked"] = True
+            gates["m1_confirmation_reason"] = m1_reason
+            reason, trigger = _build_wait_metadata(higher_bias, tfi, tfa, gates, "m1_confirmation")
+            return WAIT_SIGNAL, higher_bias, "wait_for_m1_confirmation", reason, trigger
         reason, trigger = _build_wait_metadata(higher_bias, tfi, tfa, gates, "entry_alignment")
         return WAIT_SIGNAL, higher_bias, "wait_for_entry_alignment", reason, trigger
 
@@ -716,6 +914,24 @@ def get_technical_signal(
         final_score = base_score["final_score"] + confirmation["net_score"] + live_entry["net_score"]
         final_score, m15_vol_thin, penalty_points, penalty_reason = _apply_volume_penalty(final_score, tfi, tfa)
         
+        # Apply H1 Weak Bearish penalty (-1.0 for BUY signals)
+        h1_trend = str(tfa.get("H1", {}).get("trend_classification", "Neutral"))
+        h1_weak_penalty = 0.0
+        if final_score > 0 and h1_trend == "Weak Bearish":  # Only penalize BUY-leaning scores
+            h1_weak_penalty = -1.0
+            final_score += h1_weak_penalty
+            log_debug(f"H1 Weak Bearish penalty applied: -1.0 to score (now {final_score:.2f})")
+        
+        # Apply H4 price vs EMA reality check (CRITICAL FIX 3)
+        # Penalty only applies to BUY-leaning signals (final_score > 0)
+        h4_ind = tfi.get("H4", {})
+        h4_ema_penalty, h4_ema_reason = _h4_price_vs_ema_reality(h4_ind)
+        h4_ema_flag = ""
+        if final_score > 0 and h4_ema_penalty != 0.0:
+            final_score += h4_ema_penalty
+            h4_ema_flag = h4_ema_reason
+            log_debug(f"H4 price vs EMA penalty applied: {h4_ema_penalty:.1f} to BUY score ({h4_ema_reason})")
+        
         # Score log stays explicit so frozen/plateau behavior is easy to inspect live.
         log_debug(
             f"Score components: "
@@ -738,7 +954,19 @@ def get_technical_signal(
         session_multiplier = SESSION_SCORE_MULTIPLIERS.get(session, 1.0)
         adjusted_threshold = SIGNAL_SCORE_THRESHOLD * session_multiplier
         
-        raw_candidate = score_direction if score_direction in TRADE_SIGNALS and abs(final_score) >= adjusted_threshold else "NO TRADE"
+        # BUG FIX 1: Negative score does not mean SELL — must have genuine sell confluence
+        # Distinguish between "no setup" (<1.0), "building" (1.0 to threshold), and "ready" (>= threshold)
+        if abs(final_score) < 1.0:
+            raw_candidate = "NO TRADE"
+            log_debug(f"Score too close to zero ({final_score:.2f}): no genuine setup in either direction")
+        elif score_direction in TRADE_SIGNALS and abs(final_score) >= adjusted_threshold:
+            raw_candidate = score_direction
+        elif score_direction in TRADE_SIGNALS and 1.0 <= abs(final_score) < adjusted_threshold:
+            direction_label = "BUY" if score_direction == "BUY" else "SELL"
+            log_debug(f"{direction_label} setup building — score {abs(final_score):.2f} below threshold {adjusted_threshold:.2f}, monitoring")
+            raw_candidate = score_direction
+        else:
+            raw_candidate = "NO TRADE"
         # FIX #6: Properly detect mixed signals (conflicting entry timeframe directions)
         mixed = _detect_mixed_signals(tfa) or (final_buy > 0 and final_sell > 0)
         scorecard = {
@@ -777,6 +1005,9 @@ def get_technical_signal(
             "exhaustion_reason": "",
             "rsi_caution_reason": "",
             "m1_counter_reason": "",
+            "h1_weak_bearish_warning": False,
+            "h1_weak_bearish_reason": "",
+            "h4_price_ema_flag": h4_ema_flag,
             "wait_for_confirmation": False,
             "wait_reason": "",
             "wait_trigger": "",

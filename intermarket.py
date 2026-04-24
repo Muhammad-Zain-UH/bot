@@ -22,9 +22,65 @@ from mt5_handler import get_market_data
 from utils import log_debug
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# SESSION-LEVEL DXY AVAILABILITY FLAG
+# ─────────────────────────────────────────────────────────────────────────────
+# Tested once at system startup. If DXY is unavailable, permanently use EURUSD
+# as fallback for the entire session to avoid repeated failed attempts.
+_DXY_TESTED = False
+_DXY_AVAILABLE = None  # None = not tested, True = available, False = not available
+
+
 # ---------------------------------------------------------------------------
 # Trend classification helpers
 # ---------------------------------------------------------------------------
+
+def test_dxy_availability_at_startup() -> None:
+    """Test if DXY is available on this broker at system startup.
+    
+    Called once at true system initialization before first monitoring cycle.
+    Sets _DXY_AVAILABLE flag for the entire session.
+    """
+    global _DXY_TESTED, _DXY_AVAILABLE
+    
+    if _DXY_TESTED:
+        return
+    
+    try:
+        log_debug("[INIT] Testing DXY availability at startup...")
+        data = get_market_data(config.INTERMARKET_DXY_SYMBOL, mt5.TIMEFRAME_M15, 10)
+        if not data.empty:
+            _DXY_AVAILABLE = True
+            log_debug("[INIT] ✓ DXY is available on broker")
+            _DXY_TESTED = True
+            return
+    except Exception as exc:
+        log_debug(f"[INIT] DXY fetch failed: {exc}")
+    
+    # DXY is not available — switch to EURUSD permanent fallback
+    _DXY_AVAILABLE = False
+    log_debug(
+        "[INIT] DXY not available on broker — using EURUSD as dollar proxy (permanent for session)"
+    )
+    
+    _DXY_TESTED = True
+
+
+def _test_dxy_availability() -> bool:
+    """Test if DXY is available (uses cached result from startup test).
+    
+    Returns True if available, False otherwise.
+    Should always use the startup test result; this is for backward compatibility.
+    """
+    global _DXY_TESTED, _DXY_AVAILABLE
+    
+    if _DXY_TESTED:
+        return _DXY_AVAILABLE
+    
+    # Fallback: perform test now if not done at startup (shouldn't happen normally)
+    test_dxy_availability_at_startup()
+    return _DXY_AVAILABLE
+
 
 def _classify_trend_simple(trend_str: str) -> str:
     """Extract classification from trend string (e.g., 'Strong Bullish' -> 'Strong Bullish')."""
@@ -374,14 +430,30 @@ def get_intermarket_analysis(gold_signal_direction: str) -> dict[str, Any]:
     symbols_available = []
     symbols_missing = []
     
-    # Fetch DXY data with fallback to EURUSD
-    # EURUSD is inverse of DXY proxy (EURUSD up = DXY down = dollar weak = good for gold)
-    # But we pass the ACTUAL trend (not inverted) and mark it as is_inverse_dxy=True for scoring logic
-    dxy_data = _fetch_instrument_data(
-        config.INTERMARKET_DXY_SYMBOL,
-        fallback_symbols=["EURUSD", "GBPUSD"],
-        is_inverse_dxy=True,
-    )
+    # ─────────────────────────────────────────────────────────────────────
+    # TEST DXY AVAILABILITY ONCE AT STARTUP
+    # ─────────────────────────────────────────────────────────────────────
+    if not _DXY_TESTED:
+        _test_dxy_availability()
+    
+    # Fetch DXY data with fallback strategy based on availability test
+    # If DXY is not available, skip it entirely and go straight to EURUSD
+    if _DXY_AVAILABLE:
+        # DXY is available — try it as primary
+        dxy_data = _fetch_instrument_data(
+            config.INTERMARKET_DXY_SYMBOL,
+            fallback_symbols=["EURUSD", "GBPUSD"],
+            is_inverse_dxy=True,
+        )
+    else:
+        # DXY is not available — skip directly to EURUSD fallback
+        log_debug("[INTERMARKET] DXY disabled for session — using EURUSD as dollar proxy")
+        dxy_data = _fetch_instrument_data(
+            "EURUSD",
+            fallback_symbols=["GBPUSD"],
+            is_inverse_dxy=True,
+        )
+    
     if dxy_data:
         used_sym = dxy_data.get("used_symbol", config.INTERMARKET_DXY_SYMBOL)
         symbols_available.append(f"{config.INTERMARKET_DXY_SYMBOL}({used_sym})")

@@ -247,6 +247,25 @@ def calculate_lot_size(
     return lot_size
 
 
+def get_calibration_micro_lot(is_calibration_mode: bool) -> float:
+    """Return micro lot size during calibration mode, normal MIN_LOT otherwise.
+    
+    During calibration (trades < 50), use smallest possible lot (0.01) to minimize
+    risk while accumulating the first 50 completed trades needed for confidence
+    calibration. This ensures each calibration trade has minimal market impact.
+    
+    Args:
+        is_calibration_mode: True if in calibration mode (trades < 50)
+    
+    Returns:
+        0.01 if calibration mode, else MIN_LOT (same value but semantic clarity)
+    """
+    if is_calibration_mode:
+        log_debug("[CAL MODE] Using micro lot size: 0.01 (smallest safe position)")
+        return 0.01
+    return MIN_LOT
+
+
 def get_account_info_mt5() -> dict[str, float]:
     """Safely get MT5 account balance and equity."""
     try:

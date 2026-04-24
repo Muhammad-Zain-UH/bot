@@ -279,6 +279,54 @@ def get_calibration_status(log_file: str = LOG_FILE) -> str:
     return status
 
 
+def is_calibration_complete(log_file: str = LOG_FILE) -> tuple[bool, int]:
+    """
+    Check if confidence calibration is complete (>= 50 completed trades).
+    
+    Returns: (is_complete, completed_trade_count)
+    - is_complete: True if >= 50 completed trades, False otherwise
+    - completed_trade_count: Number of completed BUY/SELL trades with WIN/LOSS outcomes
+    """
+    path = Path(log_file)
+    if not path.is_file():
+        return False, 0
+    
+    try:
+        with path.open("r", encoding="utf-8", errors="replace", newline="") as handle:
+            rows = list(csv.DictReader(handle))
+    except Exception:
+        return False, 0
+    
+    completed_count = 0
+    for row in rows:
+        signal = str(row.get("signal", "")).strip().upper()
+        outcome = str(row.get("outcome", "")).strip().upper()
+        if signal in {"BUY", "SELL"} and outcome in {"WIN", "LOSS"}:
+            completed_count += 1
+    
+    return completed_count >= MIN_COMPLETED_TRADES, completed_count
+
+
+def apply_uncalibrated_lockout(confidence: int, log_file: str = LOG_FILE) -> tuple[int, str]:
+    """
+    Apply FIX 6: If calibration incomplete (<50 trades), cap confidence at 50% and mark UNCALIBRATED.
+    
+    Returns: (capped_confidence, calibration_label)
+    - capped_confidence: 50% if uncalibrated, else original
+    - calibration_label: "UNCALIBRATED" if not complete, "" if complete
+    """
+    is_complete, completed_count = is_calibration_complete(log_file)
+    
+    if is_complete:
+        return confidence, ""
+    
+    # Uncalibrated: cap at 50% and mark
+    capped = min(confidence, 50)
+    label = f"UNCALIBRATED ({completed_count}/50 trades)"
+    log_debug(f"Confidence lockout applied: {confidence}% -> {capped}% {label}")
+    return capped, label
+
+
 def calibrate_technical_confidence(
     *,
     fallback_confidence: int,
@@ -326,3 +374,89 @@ def calibrate_technical_confidence(
         f"calibrated={calibrated}% using {model['samples']} completed trades"
     )
     return calibrated, "logistic"
+
+
+def get_calibration_progress(log_file: str = LOG_FILE) -> tuple[int, str, bool]:
+    """Get calibration progress with milestone message.
+    
+    Returns: (completed_count, milestone_message, has_milestone)
+    - completed_count: Number of completed trades
+    - milestone_message: Descriptive message (e.g., "10/50 trades", "CALIBRATION COMPLETE!")
+    - has_milestone: True if this is a milestone boundary (0, 10, 20, 30, 40, or 50)
+    """
+    path = Path(log_file)
+    if not path.is_file():
+        return 0, "Waiting for first trade", False
+    
+    try:
+        with path.open("r", encoding="utf-8", errors="replace", newline="") as handle:
+            rows = list(csv.DictReader(handle))
+    except Exception:
+        return 0, "Error reading trade log", False
+    
+    completed_count = 0
+    for row in rows:
+        signal = str(row.get("signal", "")).strip().upper()
+        outcome = str(row.get("outcome", "")).strip().upper()
+        if signal in {"BUY", "SELL"} and outcome in {"WIN", "LOSS"}:
+            completed_count += 1
+    
+    # Check if we're at a milestone boundary
+    milestones = [10, 20, 30, 40, 50]
+    is_milestone = completed_count in milestones
+    
+    if completed_count >= MIN_COMPLETED_TRADES:
+        milestone_msg = "[OK] CALIBRATION COMPLETE - Exiting calibration mode, using trained model"
+    elif completed_count == 0:
+        milestone_msg = "Waiting for first completed trade (WIN/LOSS)"
+    elif is_milestone:
+        milestone_msg = f"[MILESTONE] {completed_count}/50 trades accumulated"
+    else:
+        milestone_msg = f"{completed_count}/50 trades accumulated"
+    
+    return completed_count, milestone_msg, is_milestone
+
+
+def check_calibration_mode_exit(log_file: str = LOG_FILE) -> tuple[bool, str]:
+    """Check if we just exited calibration mode (transitioned from <50 to >=50 trades).
+    
+    Returns: (exited_calibration_mode, notification_message)
+    - exited_calibration_mode: True only if count just crossed 50 (first time)
+    - notification_message: Clear message about mode exit and confidence model activation
+    
+    NOTE: This should be called once per cycle to detect the transition.
+    """
+    completed_count, _, _ = get_calibration_progress(log_file)
+    
+    # We can't easily detect "just crossed" without persistent state, so we check if at threshold
+    # The calling code should track the previous count to detect transition
+    if completed_count >= MIN_COMPLETED_TRADES:
+        msg = (
+            f"[CALIBRATION EXIT] System now has {completed_count} completed trades. "
+            f"Confidence model activated. Using trained logistic regression instead of formula."
+        )
+        return True, msg
+    
+    return False, ""
+
+
+def format_calibration_status(log_file: str = LOG_FILE) -> str:
+    """Format calibration status for console logging during main loop.
+    
+    Returns a human-readable status line showing:
+    - Trade accumulation progress
+    - Current mode (CALIBRATION or PRODUCTION)
+    - Next milestone or completion status
+    """
+    completed_count, milestone_msg, is_milestone = get_calibration_progress(log_file)
+    
+    if completed_count >= MIN_COMPLETED_TRADES:
+        return f"[PRODUCTION] Confidence model active ({completed_count} trades)"
+    
+    # Show progress bar style with ASCII characters
+    progress_pct = int((completed_count / MIN_COMPLETED_TRADES) * 100)
+    bar_len = 10
+    filled = int((progress_pct / 100) * bar_len)
+    bar = "#" * filled + "-" * (bar_len - filled)
+    
+    return f"[CALIBRATION] [{bar}] {completed_count}/50 trades"
