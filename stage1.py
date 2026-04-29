@@ -99,9 +99,36 @@ def run_stage1(symbol: str, n_candles: int, high_impact_news: bool = False) -> d
         score = tech["weighted_score"]
         max_score = tech["max_score"]
         
+        # FIX 4: Calculate signal quality metrics for relaxed confidence cap
+        setup_direction = tech.get("setup_direction", "NO TRADE")
+        tfa = tech.get("timeframe_analysis", {})
+        
+        # Check for 5/5 TF alignment
+        tf_alignment_count = 0
+        for tf_label in ["H4", "H1", "M15", "M5", "M1"]:
+            tf_dir = tfa.get(tf_label, {}).get("direction", "NO TRADE")
+            if tf_dir == setup_direction and setup_direction in {"BUY", "SELL"}:
+                tf_alignment_count += 1
+        
+        perfect_tf_alignment = (tf_alignment_count == 5)
+        
+        # Check for timeframe conflicts
+        has_tf_conflicts = any(
+            tfa.get(label, {}).get("direction") != setup_direction
+            for label in ["H4", "H1", "M15", "M5", "M1"]
+            if setup_direction in {"BUY", "SELL"}
+            and tfa.get(label, {}).get("direction") in {"BUY", "SELL"}
+        )
+        
         # FIX 6: Apply uncalibrated lockout
         # If < 50 completed trades, cap confidence at 50% and mark UNCALIBRATED
-        uncal_confidence, uncal_label = apply_uncalibrated_lockout(confidence)
+        # FIX 4: Allow 60% cap for exceptional setups (score > 8.0 + 5/5 alignment + no conflicts)
+        uncal_confidence, uncal_label = apply_uncalibrated_lockout(
+            confidence,
+            score=abs(score),
+            perfect_tf_alignment=perfect_tf_alignment,
+            has_tf_conflicts=has_tf_conflicts,
+        )
         gates = tech.get("gates", {})
         if uncal_label:
             gates["calibration_status"] = uncal_label
@@ -111,13 +138,7 @@ def run_stage1(symbol: str, n_candles: int, high_impact_news: bool = False) -> d
         
         # Log confidence breakdown
         try:
-            tfa = tech.get("timeframe_analysis", {})
-            tf_conflict = any(
-                tfa.get(label, {}).get("direction") != tech.get("setup_direction")
-                for label in ["H4", "H1", "M15", "M5", "M1"]
-                if tech.get("setup_direction") in {"BUY", "SELL"}
-                and tfa.get(label, {}).get("direction") in {"BUY", "SELL"}
-            )
+            tf_conflict = has_tf_conflicts
             
             # FIX 2: Log detailed numeric penalties instead of boolean flags
             try:

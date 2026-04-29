@@ -190,17 +190,22 @@ def _score_intermarket_alignment(
     dxy_data: dict[str, Any] | None,
     silver_data: dict[str, Any] | None,
     us10y_data: dict[str, Any] | None,
+    oil_data: dict[str, Any] | None,
     sp500_data: dict[str, Any] | None,
 ) -> tuple[int, str]:
     """Score how well macro conditions align with the gold signal.
     
     Uses exact rules table per the specification:
     - EURUSD/XAGUSD: Direct correlation with gold
+    - US10Y: Treasury yields — rising yields pressure gold lower
+    - Oil: Risk sentiment indicator — oil spike = risk-off = gold bid
     - US500: Complex relationship (mostly NEUTRAL except extremes)
+    
+    FIX 5: Added US10Y (Treasury yields) and Oil (energy/risk indicator)
     
     Returns: (score, alignment_label)
     
-    Score range: -7 to +7
+    Score range: -8 to +9
     Positive = confirms the signal
     Negative = opposes the signal
     """
@@ -295,6 +300,88 @@ def _score_intermarket_alignment(
                 score -= 2
                 log_debug(f"  XAGUSD Strong Bearish (-2): silver strongly opposes BUY")
     
+    # --------------- US10Y (Treasury yields — FIX 5) ---------------
+    # Rising yields = stronger dollar = gold pressure
+    # Falling yields = weaker dollar + safe-haven demand = gold bid
+    if us10y_data:
+        trend = us10y_data.get("trend_classification", "Neutral")
+        
+        if gold_signal == "SELL":
+            # For SELL (gold down), rising yields support this
+            if "Strong Bullish" in trend:
+                score += 2
+                log_debug(f"  US10Y Strong Bullish (+2): rising yields pressure gold down")
+            elif "Weak Bullish" in trend:
+                score += 1
+                log_debug(f"  US10Y Weak Bullish (+1): yields rising supports SELL")
+            elif "Neutral" in trend:
+                score += 0
+                log_debug(f"  US10Y Neutral (0): no yield impact")
+            elif "Weak Bearish" in trend:
+                score -= 1
+                log_debug(f"  US10Y Weak Bearish (-1): falling yields oppose SELL")
+            elif "Strong Bearish" in trend:
+                score -= 2
+                log_debug(f"  US10Y Strong Bearish (-2): falling yields strongly oppose SELL")
+        else:  # BUY
+            # For BUY (gold up), falling yields support this
+            if "Strong Bearish" in trend:
+                score += 2
+                log_debug(f"  US10Y Strong Bearish (+2): falling yields support BUY")
+            elif "Weak Bearish" in trend:
+                score += 1
+                log_debug(f"  US10Y Weak Bearish (+1): yields falling supports BUY")
+            elif "Neutral" in trend:
+                score += 0
+                log_debug(f"  US10Y Neutral (0): no yield impact")
+            elif "Weak Bullish" in trend:
+                score -= 1
+                log_debug(f"  US10Y Weak Bullish (-1): rising yields oppose BUY")
+            elif "Strong Bullish" in trend:
+                score -= 2
+                log_debug(f"  US10Y Strong Bullish (-2): rising yields strongly oppose BUY")
+    
+    # --------------- Oil (Energy/Risk sentiment — FIX 5) ---------------
+    # Oil spike = geopolitical risk = risk-off = gold bid
+    # Oil collapse = risk-on = gold sell
+    if oil_data:
+        trend = oil_data.get("trend_classification", "Neutral")
+        
+        if gold_signal == "SELL":
+            # For SELL (gold down), lower oil supports this (risk-on)
+            if "Strong Bearish" in trend:
+                score += 1
+                log_debug(f"  Oil Strong Bearish (+1): low oil signals risk-on opposes SELL")
+            elif "Weak Bearish" in trend:
+                score += 0
+                log_debug(f"  Oil Weak Bearish (0): mild oil weakness neutral for SELL")
+            elif "Neutral" in trend:
+                score += 0
+                log_debug(f"  Oil Neutral (0): no oil impact")
+            elif "Weak Bullish" in trend:
+                score -= 1
+                log_debug(f"  Oil Weak Bullish (-1): oil rising supports SELL")
+            elif "Strong Bullish" in trend:
+                score -= 2
+                log_debug(f"  Oil Strong Bullish (-2): oil spike signals risk-off opposes SELL")
+        else:  # BUY
+            # For BUY (gold up), higher oil supports this (risk-off/geopolitical)
+            if "Strong Bullish" in trend:
+                score += 2
+                log_debug(f"  Oil Strong Bullish (+2): oil spike signals risk-off supports BUY")
+            elif "Weak Bullish" in trend:
+                score += 1
+                log_debug(f"  Oil Weak Bullish (+1): oil rising supports BUY")
+            elif "Neutral" in trend:
+                score += 0
+                log_debug(f"  Oil Neutral (0): no oil impact")
+            elif "Weak Bearish" in trend:
+                score -= 1
+                log_debug(f"  Oil Weak Bearish (-1): low oil signals risk-on opposes BUY")
+            elif "Strong Bearish" in trend:
+                score -= 1
+                log_debug(f"  Oil Strong Bearish (-1): oil collapse signals risk-on opposes BUY")
+    
     # --------------- US500 (Equities — Complex relationship) ---------------
     # Complex: Risk-ON reduces safe-haven demand; Risk-OFF increases it but also panic-sells
     if sp500_data:
@@ -337,18 +424,20 @@ def _score_intermarket_alignment(
                 log_debug(f"  US500 Strong Bullish (-1): risk-on opposes BUY")
     
     # Cap the score
-    score = max(-7, min(7, int(score)))
+    score = max(-8, min(9, int(score)))
     
     # Generate alignment label using new labels
-    if score >= 4:
+    if score >= 5:
         label = "STRONG CONFIRMATION — macro strongly supports"
-    elif score in [2, 3]:
+    elif score in [3, 4]:
         label = "MODERATE CONFIRMATION — macro supports signal"
-    elif score in [0, 1]:
+    elif score in [1, 2]:
         label = "WEAK CONFIRMATION — macro is neutral"
-    elif score in [-1, -2]:
+    elif score in [-1, 0]:
+        label = "NEUTRAL — macro mixed"
+    elif score in [-2, -3]:
         label = "MILD HEADWIND — macro slightly opposes"
-    else:  # score <= -3
+    else:  # score <= -4
         label = "STRONG HEADWIND — macro directly contradicts"
     
     return score, label
@@ -467,9 +556,27 @@ def get_intermarket_analysis(gold_signal_direction: str) -> dict[str, Any]:
     else:
         symbols_missing.append(config.INTERMARKET_SILVER_SYMBOL)
     
-    # US10Y is typically not available on most brokers — skip with warning
-    us10y_data = None  # Skip US10Y as it's not available
-    symbols_missing.append("US10Y (not in broker data)")
+    # FIX 5: Fetch US10Y (Treasury yields)
+    # Try US10Y as primary, fall back to yield proxies if unavailable
+    us10y_data = _fetch_instrument_data(
+        config.INTERMARKET_YIELD_SYMBOL,
+        fallback_symbols=["USDX", "EURJPY"],  # Fallbacks if US10Y unavailable
+    )
+    if us10y_data:
+        symbols_available.append(f"{config.INTERMARKET_YIELD_SYMBOL}({us10y_data.get('used_symbol', config.INTERMARKET_YIELD_SYMBOL)})")
+    else:
+        symbols_missing.append(f"{config.INTERMARKET_YIELD_SYMBOL} (yield proxy)")
+    
+    # FIX 5: Fetch Oil (WTIUSD or BRENT)
+    # Oil is important: spike = risk-off = gold bid; fall = risk-on = gold sell
+    oil_data = _fetch_instrument_data(
+        config.INTERMARKET_OIL_SYMBOL,
+        fallback_symbols=["UKOUSD", "CNHUSD"],  # Fallbacks: Brent oil or alternative
+    )
+    if oil_data:
+        symbols_available.append(f"{config.INTERMARKET_OIL_SYMBOL}({oil_data.get('used_symbol', config.INTERMARKET_OIL_SYMBOL)})")
+    else:
+        symbols_missing.append(f"{config.INTERMARKET_OIL_SYMBOL} (energy)")
     
     # Fetch SP500 data
     sp500_data = _fetch_instrument_data(config.INTERMARKET_SP500_SYMBOL)
@@ -491,6 +598,7 @@ def get_intermarket_analysis(gold_signal_direction: str) -> dict[str, Any]:
         dxy_data,
         silver_data,
         us10y_data,
+        oil_data,
         sp500_data,
     )
     
@@ -500,28 +608,32 @@ def get_intermarket_analysis(gold_signal_direction: str) -> dict[str, Any]:
     silver_trend = silver_data.get("trend_classification") if silver_data else None
     silver_rsi = silver_data.get("rsi_14") if silver_data else None
     us10y_trend = us10y_data.get("trend_classification") if us10y_data else None
+    oil_trend = oil_data.get("trend_classification") if oil_data else None
+    oil_rsi = oil_data.get("rsi_14") if oil_data else None
     sp500_trend = sp500_data.get("trend_classification") if sp500_data else None
     
     # Build interpretations
     dxy_interp = _interpret_instrument(dxy_data, "DXY")
     silver_interp = _interpret_instrument(silver_data, "Silver")
     us10y_interp = _interpret_instrument(us10y_data, "US10Y")
+    oil_interp = _interpret_instrument(oil_data, "Oil")
     sp500_interp = _interpret_instrument(sp500_data, "SP500")
     
     # Build the macro interpretation — one sentence explaining what this means for gold
     macro_interp = _build_macro_interpretation(
-        gold_signal_direction, score, dxy_data, silver_data, us10y_data, sp500_data
+        gold_signal_direction, score, dxy_data, silver_data, us10y_data, oil_data, sp500_data
     )
     
-    # Build the prompt_text block exactly as specified
+    # Build the prompt_text block exactly as specified (FIX 5: added US10Y and Oil)
     prompt_text = (
         f"INTERMARKET CORRELATION:\n"
         f"  DXY:    {dxy_trend or 'N/A'} | RSI {_format_optional_number(dxy_rsi, 0)} | {dxy_interp}\n"
         f"  Silver: {silver_trend or 'N/A'} | RSI {_format_optional_number(silver_rsi, 0)} | {silver_interp}\n"
         f"  US10Y:  {us10y_trend or 'N/A'} | {us10y_interp}\n"
+        f"  Oil:    {oil_trend or 'N/A'} | RSI {_format_optional_number(oil_rsi, 0)} | {oil_interp}\n"
         f"  SP500:  {sp500_trend or 'N/A'} | {sp500_interp}\n"
         f"\n"
-        f"  Intermarket Score: {score:+d}/7 — {label}\n"
+        f"  Intermarket Score: {score:+d}/9 — {label}\n"
         f"\n"
         f"  Macro interpretation: {macro_interp}"
     )
@@ -539,6 +651,8 @@ def get_intermarket_analysis(gold_signal_direction: str) -> dict[str, Any]:
         "silver_trend": silver_trend,
         "silver_rsi": silver_rsi,
         "us10y_trend": us10y_trend,
+        "oil_trend": oil_trend,
+        "oil_rsi": oil_rsi,
         "sp500_trend": sp500_trend,
         "symbols_available": symbols_available,
         "symbols_missing": symbols_missing,
@@ -557,19 +671,22 @@ def _neutral_result(error_msg: str) -> dict[str, Any]:
         "silver_trend": None,
         "silver_rsi": None,
         "us10y_trend": None,
+        "oil_trend": None,
+        "oil_rsi": None,
         "sp500_trend": None,
         "symbols_available": [],
         "symbols_missing": [
             config.INTERMARKET_DXY_SYMBOL,
             config.INTERMARKET_SILVER_SYMBOL,
             config.INTERMARKET_YIELD_SYMBOL,
+            config.INTERMARKET_OIL_SYMBOL,
             config.INTERMARKET_SP500_SYMBOL,
         ],
         "prompt_text": (
             f"INTERMARKET CORRELATION:\n"
             f"  {error_msg}\n"
             f"\n"
-            f"  Intermarket Score: 0/7 — NEUTRAL — macro inconclusive"
+            f"  Intermarket Score: 0/9 — NEUTRAL — macro inconclusive"
         ),
         "error": error_msg,
     }
@@ -581,9 +698,13 @@ def _build_macro_interpretation(
     dxy_data: dict[str, Any] | None,
     silver_data: dict[str, Any] | None,
     us10y_data: dict[str, Any] | None,
+    oil_data: dict[str, Any] | None,
     sp500_data: dict[str, Any] | None,
 ) -> str:
-    """Build a one-sentence macro interpretation of what intermarket conditions mean for gold."""
+    """Build a one-sentence macro interpretation of what intermarket conditions mean for gold.
+    
+    FIX 5: Includes US10Y (yields) and Oil (energy/risk) in macro interpretation.
+    """
     
     if score >= 5:
         # Strong confirmation
@@ -594,6 +715,8 @@ def _build_macro_interpretation(
             conditions.append("silver leadership")
         if us10y_data and _is_bearish(us10y_data.get("trend_classification", "")):
             conditions.append("falling yields")
+        if oil_data and _is_bullish(oil_data.get("trend_classification", "")):
+            conditions.append("geopolitical risk")
         if sp500_data and _is_bearish(sp500_data.get("trend_classification", "")):
             conditions.append("risk-off demand")
         
@@ -615,6 +738,10 @@ def _build_macro_interpretation(
         conditions = []
         if dxy_data and _is_bullish(dxy_data.get("trend_classification", "")):
             conditions.append("strong dollar")
+        if us10y_data and _is_bullish(us10y_data.get("trend_classification", "")):
+            conditions.append("rising yields")
+        if oil_data and _is_bearish(oil_data.get("trend_classification", "")):
+            conditions.append("low energy prices")
         if sp500_data and _is_bullish(sp500_data.get("trend_classification", "")):
             conditions.append("risk-on sentiment")
         

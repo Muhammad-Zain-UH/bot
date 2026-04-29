@@ -308,16 +308,33 @@ def _live_entry_components(
 
 
 def _rsi_exhaustion(signal: str, tfi: dict[str, dict[str, Any]]) -> tuple[bool, bool, str]:
+    h1_rsi = _f(tfi.get("H1", {}).get("rsi_14"))
     m15_rsi = _f(tfi.get("M15", {}).get("rsi_14"))
     m5_rsi = _f(tfi.get("M5", {}).get("rsi_14"))
     m1_rsi = _f(tfi.get("M1", {}).get("rsi_14"))
+    
     if signal == "SELL":
+        # FIX 1: H1 RSI EXHAUSTION DETECTION
+        # When H1 RSI < 25 (extreme oversold), check for exhaustion risk using volume + M1 confirmation
+        if h1_rsi is not None and h1_rsi < 25.0:
+            h1_vol_ratio = _f(tfi.get("H1", {}).get("volume_ratio"))
+            m1_rsi_val = _f(tfi.get("M1", {}).get("rsi_14"))
+            
+            # OVERSOLD EXHAUSTION RISK: H1 RSI below 25 AND volume thin AND M1 RSI not confirming continuation
+            if h1_vol_ratio is not None and h1_vol_ratio < 0.6 and m1_rsi_val is not None and m1_rsi_val > 40.0:
+                return True, False, (
+                    f"OVERSOLD EXHAUSTION RISK: H1 RSI {h1_rsi:.1f} below 25 with thin volume ({h1_vol_ratio:.3f}) "
+                    f"and M1 RSI {m1_rsi_val:.1f} not confirming continuation. "
+                    f"Require confirmed M15 candle close below current low."
+                )
+        
         if m1_rsi is not None and m1_rsi < 30.0:
             return False, True, f"RSI caution: M1 RSI {m1_rsi:.1f} is oversold."
         if m15_rsi is not None and m15_rsi < RSI_EXHAUSTION_SELL:
             return True, False, f"RSI stretched: M15 RSI {m15_rsi:.1f} is deeply oversold."
         if m15_rsi is not None and m5_rsi is not None and m15_rsi < RSI_CAUTION_SELL and m5_rsi < RSI_CAUTION_SELL:
             return False, True, f"RSI caution: M15 {m15_rsi:.1f} and M5 {m5_rsi:.1f} are oversold."
+    
     if signal == "BUY":
         # CRITICAL FIX: M1 RSI > 75 is a hard exhaustion block (not just caution)
         if m1_rsi is not None and m1_rsi > 75.0:
@@ -328,6 +345,7 @@ def _rsi_exhaustion(signal: str, tfi: dict[str, dict[str, Any]]) -> tuple[bool, 
             return True, False, f"RSI stretched: M15 RSI {m15_rsi:.1f} is deeply overbought."
         if m15_rsi is not None and m5_rsi is not None and m15_rsi > RSI_CAUTION_BUY and m5_rsi > RSI_CAUTION_BUY:
             return False, True, f"RSI caution: M15 {m15_rsi:.1f} and M5 {m5_rsi:.1f} are overbought."
+    
     return False, False, ""
 
 

@@ -486,29 +486,47 @@ def main_loop() -> None:
                 m1_rsi_current = indicators.get("M1", {}).get("rsi_14")
                 
                 if m1_rsi_current is not None:
-                    # Check for bounce from oversold to recovery
-                    if _PREV_M1_RSI is not None and _PREV_M1_RSI < 35 and m1_rsi_current > 50:
-                        _RSI_BOUNCE_DETECTED = True
-                        log_debug(
-                            f"[SIGNAL SHIFT] M1 RSI recovery bounce detected: {_PREV_M1_RSI:.1f} → {m1_rsi_current:.1f} — "
-                            f"SELL setup invalidating, score may collapse"
-                        )
-                    
-                    # Check for score collapse due to bounce
-                    if _RSI_BOUNCE_DETECTED and _PREV_CYCLE_SCORE is not None:
-                        score_move = score - _PREV_CYCLE_SCORE
-                        if score_move > 2.0:  # Score moved toward zero by more than 2.0
+                    # STEP 1 — Single-cycle jump from oversold to above 50
+                    if _PREV_M1_RSI is not None:
+                        if _PREV_M1_RSI < 35 and m1_rsi_current >= 50:
+                            _RSI_BOUNCE_DETECTED = True
                             log_debug(
-                                f"[SCORE COLLAPSE] Score moved from {_PREV_CYCLE_SCORE:.2f} to {score:.2f} "
-                                f"(+{score_move:.2f}) due to M1 RSI bounce — setup no longer valid"
+                                f"[SIGNAL SHIFT] M1 RSI recovery bounce: {_PREV_M1_RSI:.1f} → {m1_rsi_current:.1f} "
+                                f"— SELL setup invalidating, score may collapse"
+                            )
+                        
+                        # STEP 2 — Gradual cross above 50
+                        if _PREV_M1_RSI < 50 and m1_rsi_current >= 50:
+                            if not _RSI_BOUNCE_DETECTED:
+                                _RSI_BOUNCE_DETECTED = True
+                                log_debug(
+                                    f"[SIGNAL SHIFT] M1 RSI crossed 50: {_PREV_M1_RSI:.1f} → {m1_rsi_current:.1f} "
+                                    f"— bullish M1 momentum building, SELL pressure weakening"
+                                )
+                    
+                    # STEP 3 — Score collapse detection (after signal engine runs)
+                    if _RSI_BOUNCE_DETECTED and _PREV_CYCLE_SCORE is not None:
+                        score_change = score - _PREV_CYCLE_SCORE
+                        if score_change > 1.5:
+                            log_debug(
+                                f"[SCORE COLLAPSE] Score {_PREV_CYCLE_SCORE:.2f} → {score:.2f} "
+                                f"— M1 RSI bounce invalidating SELL setup"
+                            )
+                        elif score_change > 0.5:
+                            log_debug(
+                                f"[SCORE WEAKENING] Score {_PREV_CYCLE_SCORE:.2f} → {score:.2f} "
+                                f"— setup losing conviction"
                             )
                     
-                    # Reset bounce flag when M1 RSI returns below 45
-                    if m1_rsi_current < 45:
-                        if _RSI_BOUNCE_DETECTED:
-                            log_debug(f"[RSI BOUNCE RESET] M1 RSI returned below 45 ({m1_rsi_current:.1f}) — bounce recovery ending")
+                    # STEP 4 — Reset when bounce fails
+                    if _RSI_BOUNCE_DETECTED and m1_rsi_current < 45:
                         _RSI_BOUNCE_DETECTED = False
+                        log_debug(
+                            f"[RSI BOUNCE RESET] M1 RSI pulled back to {m1_rsi_current:.1f} "
+                            f"— bounce watch cancelled"
+                        )
                     
+                    # STEP 5 — Update state at end of each cycle
                     _PREV_M1_RSI = m1_rsi_current
                 
                 _PREV_CYCLE_SCORE = score
@@ -516,10 +534,30 @@ def main_loop() -> None:
                 # Track calibration progress for next cycle's exit detection
                 _PREV_CALIBRATION_COUNT = completed_trades
                 
+                # FIX 2: Check for perfect 5/5 timeframe alignment
+                tfa = stage1_result.get("timeframe_analysis", {})
+                tf_alignment_count = 0
+                for tf_label in ["H4", "H1", "M15", "M5", "M1"]:
+                    tf_dir = tfa.get(tf_label, {}).get("direction", "NO TRADE")
+                    if tf_dir == direction and direction in {"BUY", "SELL"}:
+                        tf_alignment_count += 1
+                
+                perfect_tf_alignment = (tf_alignment_count == 5 and direction in {"BUY", "SELL"})
+                
                 # Determine required confidence based on calibration mode
                 if completed_trades < 50:
                     # CALIBRATION MODE: Reduced confidence requirement
-                    if session == "London":
+                    # FIX 2: Even further reduced when score > 7.0 + perfect 5/5 TF alignment
+                    if perfect_tf_alignment and abs(score) > 7.0:
+                        # Exceptional setup: perfect alignment + high score — lower to 45%
+                        required_confidence = 45
+                        if session == "London":
+                            required_confidence = 42  # London session can go lower
+                        log_debug(
+                            f"[CALIBRATION BOOST] score={abs(score):.2f} > 7.0 AND 5/5 TF alignment — "
+                            f"lowering threshold to {required_confidence}% (was 45%)"
+                        )
+                    elif session == "London":
                         required_confidence = 42  # More relaxed in best session
                     else:
                         required_confidence = 45  # Standard for other sessions

@@ -307,12 +307,23 @@ def is_calibration_complete(log_file: str = LOG_FILE) -> tuple[bool, int]:
     return completed_count >= MIN_COMPLETED_TRADES, completed_count
 
 
-def apply_uncalibrated_lockout(confidence: int, log_file: str = LOG_FILE) -> tuple[int, str]:
+def apply_uncalibrated_lockout(
+    confidence: int,
+    log_file: str = LOG_FILE,
+    score: float | None = None,
+    perfect_tf_alignment: bool = False,
+    has_tf_conflicts: bool = False,
+) -> tuple[int, str]:
     """
     Apply FIX 6: If calibration incomplete (<50 trades), cap confidence at 50% and mark UNCALIBRATED.
     
+    FIX 4: Relax cap to 60% when:
+    - score > 8.0 AND
+    - perfect_tf_alignment (5/5 TF all agree) AND
+    - has_tf_conflicts is False (no timeframe conflicts)
+    
     Returns: (capped_confidence, calibration_label)
-    - capped_confidence: 50% if uncalibrated, else original
+    - capped_confidence: varies based on conditions
     - calibration_label: "UNCALIBRATED" if not complete, "" if complete
     """
     is_complete, completed_count = is_calibration_complete(log_file)
@@ -320,10 +331,24 @@ def apply_uncalibrated_lockout(confidence: int, log_file: str = LOG_FILE) -> tup
     if is_complete:
         return confidence, ""
     
-    # Uncalibrated: cap at 50% and mark
-    capped = min(confidence, 50)
+    # Uncalibrated mode: determine cap based on signal quality
+    # FIX 4: Higher cap (60%) for exceptional setups
+    if score is not None and score > 8.0 and perfect_tf_alignment and not has_tf_conflicts:
+        cap_value = 60
+        cap_reason = "score > 8.0 + 5/5 alignment + no conflicts"
+    else:
+        cap_value = 50
+        cap_reason = "standard uncalibrated cap"
+    
+    capped = min(confidence, cap_value)
     label = f"UNCALIBRATED ({completed_count}/50 trades)"
-    log_debug(f"Confidence lockout applied: {confidence}% -> {capped}% {label}")
+    
+    if capped != confidence:
+        log_debug(
+            f"[FIX 4] Confidence lockout applied: {confidence}% -> {capped}% {label} "
+            f"({cap_reason})"
+        )
+    
     return capped, label
 
 

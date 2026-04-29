@@ -29,7 +29,14 @@ def fetch_news_sentiment(headlines: list[str]) -> dict[str, Any]:
     Fast, free alternative when Claude API is unavailable.
     Scores from -10 (very bearish) to +10 (very bullish).
     Includes has_data flag to indicate if relevant headlines were found.
+    
+    FIX 3: Age-based sentiment discounting:
+    - Articles older than 3 hours: 50% of sentiment score
+    - Articles older than 6 hours: 25% of sentiment score
+    - Newer articles: 100% of sentiment score
     """
+    import re
+    
     try:
         log_debug("[STAGE 3] Fetching news sentiment (keyword analysis)...")
         
@@ -48,25 +55,67 @@ def fetch_news_sentiment(headlines: list[str]) -> dict[str, Any]:
                 "filter_note": "No gold-relevant headlines in RSS feeds",
             }
         
-        # Use geopolitics module for keyword-based analysis
-        geo_analysis = analyze_geopolitics(headlines)
+        # FIX 3: Parse age from headline strings and apply discount
+        # Headline format: "[source | Xh ago] text"
+        age_discounted_headlines = []
+        age_discount_log = []
         
-        sentiment_score = 0
+        for headline in headlines:
+            # Extract age from headline string
+            match = re.search(r'\|\s*([\d.]+)h\s+ago\]', headline)
+            if match:
+                age_hours = float(match.group(1))
+                
+                # Determine discount multiplier
+                if age_hours > 6.0:
+                    discount = 0.25
+                elif age_hours > 3.0:
+                    discount = 0.50
+                else:
+                    discount = 1.0
+                
+                # For now, we keep the original headline for analysis
+                # The discount will be applied to the sentiment score later
+                age_discounted_headlines.append((headline, age_hours, discount))
+                
+                if discount < 1.0:
+                    age_discount_log.append(f"{age_hours:.1f}h ago → {discount*100:.0f}% weight")
+            else:
+                # No age found in headline, assume recent (100% discount)
+                age_discounted_headlines.append((headline, 0, 1.0))
+        
+        if age_discount_log:
+            log_debug(f"[STAGE 3] Age-based sentiment discount applied: {', '.join(age_discount_log)}")
+        
+        # Use geopolitics module for keyword-based analysis (on original headlines)
+        headline_texts = [h[0] for h in age_discounted_headlines]
+        geo_analysis = analyze_geopolitics(headline_texts)
+        
+        # Calculate base sentiment score
+        base_sentiment_score = 0
         if "Bullish" in geo_analysis.get("Gold Bias", ""):
-            sentiment_score = 5
+            base_sentiment_score = 5
         elif "Bearish" in geo_analysis.get("Gold Bias", ""):
-            sentiment_score = -5
+            base_sentiment_score = -5
         else:
-            sentiment_score = 0
+            base_sentiment_score = 0
+        
+        # FIX 3: Apply average age discount to sentiment score
+        avg_discount = sum(h[2] for h in age_discounted_headlines) / len(age_discounted_headlines) if age_discounted_headlines else 1.0
+        final_sentiment_score = int(base_sentiment_score * avg_discount)
+        
+        log_debug(
+            f"[STAGE 3] News sentiment: base={base_sentiment_score} × avg_discount={avg_discount:.2f} → final={final_sentiment_score}"
+        )
         
         return {
-            "sentiment_score": sentiment_score,
+            "sentiment_score": final_sentiment_score,
             "dominant_theme": geo_analysis.get("Dominant Theme", "N/A"),
             "geo_gold_bias": geo_analysis.get("Gold Bias", "Neutral"),
             "geo_risk_sentiment": geo_analysis.get("Risk Sentiment", "Neutral"),
             "analysis": geo_analysis,
             "has_data": True,
-            "filter_note": f"Scoring based on {len(headlines)} gold-relevant articles",
+            "filter_note": f"Scoring based on {len(headline_texts)} gold-relevant articles (age-discounted)",
         }
     
     except Exception as exc:

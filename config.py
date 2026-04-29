@@ -96,6 +96,7 @@ INTERMARKET_ENABLED:        bool = _env_str("INTERMARKET_ENABLED", "true").lower
 INTERMARKET_DXY_SYMBOL:     str  = _env_str("INTERMARKET_DXY_SYMBOL", "DXY")
 INTERMARKET_SILVER_SYMBOL:  str  = _env_str("INTERMARKET_SILVER_SYMBOL", "XAGUSD")
 INTERMARKET_YIELD_SYMBOL:   str  = _env_str("INTERMARKET_YIELD_SYMBOL", "US10Y")
+INTERMARKET_OIL_SYMBOL:     str  = _env_str("INTERMARKET_OIL_SYMBOL", "WTIUSD")
 INTERMARKET_SP500_SYMBOL:   str  = _env_str("INTERMARKET_SP500_SYMBOL", "US500")
 
 # ---------------------------------------------------------------------------

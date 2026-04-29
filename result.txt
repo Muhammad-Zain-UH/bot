@@ -1,6 +1,6 @@
 ==================================================================
   XAUUSD SIGNAL — READY FOR CLAUDE REVIEW
-  Generated : 2026-04-24 08:15:42
+  Generated : 2026-04-29 11:44:59
   Session   : London
   [AI status to be updated by Stage 3]
 
@@ -19,15 +19,15 @@ the bottom of this report.
 ==================================================================
 
   Direction       : SELL
-  Confidence      : 50%
-  Technical Score : -0.32 / 12.5
-  Risk Level      : Low
+  Confidence      : 60%
+  Technical Score : -10.68 / 12.5
+  Risk Level      : Medium
   Session         : London
-  Entry Price     : 4689.31
-  Stop Loss       : 4702.56  (13.0 pts from entry)
-  Take Profit     : 4663.32  (26.0 pts from entry)
+  Entry Price     : 4568.64
+  Stop Loss       : 4581.60  (12.8 pts from entry)
+  Take Profit     : 4543.23  (25.4 pts from entry)
   Risk/Reward     : 1:2.0
-  ATR (M15)       : 8.7 pts
+  ATR (M15)       : 8.5 pts
 
 ==================================================================
   TIMEFRAME ALIGNMENT
@@ -35,44 +35,44 @@ the bottom of this report.
 
   TF   | Trend           | RSI   | vs VWAP | Volume
   ────────────────────────────────────────────────────────────
-  H4  | Strong Bearish  |  40.0 | Above   | Low   
-  H1  | Strong Bearish  |  44.8 | Above   | Low   
-  M15 | Strong Bearish  |  53.1 | Above   | Normal
-  M5  | Strong Bullish  |  57.5 | Above   | Normal
-  M1  | Strong Bullish  |  44.9 | Above   | Low   
+  H4  | Strong Bearish  |  28.2 | Below   | Low   
+  H1  | Strong Bearish  |  37.3 | Below   | Low   
+  M15 | Strong Bearish  |  42.8 | Below   | Normal
+  M5  | Strong Bearish  |  47.5 | Below   | Normal
+  M1  | Weak Bearish    |  48.7 | Below   | Low   
 
-  Alignment score: 3/5 timeframes support SELL direction
+  Alignment score: 5/5 timeframes support SELL direction
 
 ==================================================================
   KEY PRICE LEVELS
 ==================================================================
 
-  Current Price    : 4689.31
-  Daily Pivot PP   : 4704.69  (15.4 pts away)
-  Daily R1         : 4745.06  (55.7 pts away)
-  Daily R2         : 4793.98  (104.7 pts away)
-  Daily S1         : 4655.77  (33.5 pts away)
-  Daily S2         : 4615.40  (73.9 pts away)
-  Weekly PP        : 4776.47  (87.2 pts away)
-  Weekly R1        : 4967.61  (278.3 pts away)
-  Weekly S1        : 4663.29  (26.0 pts away)
+  Current Price    : 4568.64
+  Daily Pivot PP   : 4617.25  (48.6 pts away)
+  Daily R1         : 4679.66  (111.0 pts away)
+  Daily R2         : 4763.66  (195.0 pts away)
+  Daily S1         : 4533.25  (35.4 pts away)
+  Daily S2         : 4470.84  (97.8 pts away)
+  Weekly PP        : 4735.81  (167.2 pts away)
+  Weekly R1        : 4813.88  (245.2 pts away)
+  Weekly S1        : 4638.38  (69.7 pts away)
   ────────────────────────────────────────────────────────────
-  Planned Entry    : 4689.31
-  Entry → Stop     : 13.0 pts
-  Entry → Target   : 26.0 pts
-  Stop location    : At Daily PP @ 4704.69 (2.1 pts — tight to structure)
+  Planned Entry    : 4568.64
+  Entry → Stop     : 12.8 pts
+  Entry → Target   : 25.4 pts
+  Stop location    : ATR-based — nearest level is Daily PP @ 4617.25 (35.6 pts away)
 
 ==================================================================
   INTERMARKET CORRELATION
 ==================================================================
 
-  Overall Score  : +4  (STRONG CONFIRMATION — macro strongly supports)
+  Overall Score  : +2  (WEAK CONFIRMATION — macro is neutral)
 
   Symbol   | Trend           | RSI   | Supports SELL?
   ───────────────────────────────────────────────────────
-  EURUSD   | Strong Bearish  |  57.5 | YES
-  XAGUSD   | Strong Bearish  |  60.2 | YES
-  US500    | Weak Bullish    |   N/A | YES
+  EURUSD   | Weak Bearish    |  51.0 | YES
+  XAGUSD   | Strong Bearish  |  38.0 | YES
+  US500    | Weak Bearish    |   N/A | NO
 
   Macro confirmation: 2/2 correlated assets support signal
 
@@ -80,18 +80,15 @@ the bottom of this report.
   NEWS AND GEOPOLITICAL CONTEXT
 ==================================================================
 
-  Sentiment Score     : 5/10
-  Gold Bias           : Bullish
-  Risk Sentiment      : Risk OFF
+  Sentiment Score     : 0/10
+  Gold Bias           : Neutral
+  Risk Sentiment      : Neutral
   War Risk            : Unknown
   Recession Risk      : Unknown
   Inflation Pressure  : Unknown
 
   Top 5 Headlines:
-  1. [Investing Gold | 5.3h ago] Nomura posts record annual profit, sees no prolonged impact from Iran war so far
-  2. [Investing Gold | 5.5h ago] European shares fall, set for weekly loss on Middle East worries
-  3. [Investing Gold | 5.9h ago] FTSE 100: Stocks lower as Middle East tensions dims surprise UK retail recovery
-  4. [FXStreet | 6.0h ago] AUD/USD Price Forecast: Upside towards multi-year high of 0.7220 looks possible. The AUD/USD pair trades subduedly around 0.7120 during the European trading session on Friday. The Aussie pair ticks lower as the US Dollar (USD) trades broadly firm amid higher oil prices due to the 
+  1. [Investing Gold | 5.2h ago] Visa shares climb as profit beat, raised forecast ease Middle East jitters
 
   Economic Events Next 4 Hours:
   No high-impact events scheduled next 4h
@@ -100,36 +97,33 @@ the bottom of this report.
   TRADE VIABILITY SCORE
 ==================================================================
 
-  Score: 57 / 100
-  Rating: CAUTION — tradeable but manage size carefully
+  Score: 83 / 100
+  Rating: STRONG — high confidence, full position size
 
   Score breakdown:
-    TF Alignment         : +  3 pts
+    TF Alignment         : + 10 pts
     Macro Confirm        : + 10 pts
-    Confidence           : +  2 pts
+    Confidence           : +  5 pts
     H4 Direction         : +  5 pts
-    News Alignment       :  -8 pts
     Event Risk           : +  3 pts
-    Conflict Penalty     :  -8 pts
     ────────────────────────────────────────
-    Total                :  57 / 100
+    Total                :  83 / 100
 
 ==================================================================
   CONFLICT WARNINGS
 ==================================================================
 
-⚠ WARNING: News/macro is Bullish on gold but signal is SELL
-             — news opposes trade direction
+  ✓ No major conflicts detected in this setup
 
 ==================================================================
   QUICK STATS SUMMARY
 ==================================================================
 
-  TF Alignment    : 3/5 support SELL direction
+  TF Alignment    : 5/5 support SELL direction
   Macro Confirm   : 2/2 intermarket assets confirm
-  Conflict Count  : 1 warnings detected
+  Conflict Count  : 0 warnings detected
 
-  Overall Setup Quality: B  GRADE
+  Overall Setup Quality: A+ GRADE
 
 ==================================================================
   FIVE QUESTIONS FOR CLAUDE
@@ -146,7 +140,7 @@ Q2. What is the single biggest risk with this specific
 Q3. Does the current news and macro environment support
     or oppose this SELL on gold right now?
 
-Q4. Is 4689.31 a good entry, or should I wait for a
+Q4. Is 4568.64 a good entry, or should I wait for a
     specific price level? If so, what level and why?
 
 Q5. Rate this setup overall: A / B / C / D and explain
@@ -161,7 +155,7 @@ Q5 GRADE      : [A/B/C/D] — [one sentence reason]
 EXTRA NOTE    : [anything critical I should know]
 
 ==================================================================
-Generated by XAUUSD Trading Bot | 2026-04-24 08:15:42
+Generated by XAUUSD Trading Bot | 2026-04-29 11:44:59
 Bot continues monitoring — file updates on 5%+ conf change
 Check live MT5 price before executing — may be up to 5 min old
 ==================================================================
