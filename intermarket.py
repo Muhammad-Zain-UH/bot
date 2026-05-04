@@ -557,10 +557,11 @@ def get_intermarket_analysis(gold_signal_direction: str) -> dict[str, Any]:
         symbols_missing.append(config.INTERMARKET_SILVER_SYMBOL)
     
     # FIX 5: Fetch US10Y (Treasury yields)
-    # Try US10Y as primary, fall back to yield proxies if unavailable
+    # Try US10Y as primary, fall back to yield-sensitive pairs if unavailable
+    # Fallback symbols: GBPJPY (yen pair), EURUSD (already fetched), or GBPUSD
     us10y_data = _fetch_instrument_data(
         config.INTERMARKET_YIELD_SYMBOL,
-        fallback_symbols=["USDX", "EURJPY"],  # Fallbacks if US10Y unavailable
+        fallback_symbols=["GBPJPY", "AUDJPY", "NZDJPY"],  # Yen pairs move with yields
     )
     if us10y_data:
         symbols_available.append(f"{config.INTERMARKET_YIELD_SYMBOL}({us10y_data.get('used_symbol', config.INTERMARKET_YIELD_SYMBOL)})")

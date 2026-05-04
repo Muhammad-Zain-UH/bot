@@ -17,12 +17,15 @@ import os
 import signal
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any
 
 import config
 import stage1
 import stage2
+
+# Pakistan timezone (UTC+5)
+PKT = timezone(timedelta(hours=5))
 import stage3
 from confidence_calibrator import is_calibration_complete, get_calibration_progress, format_calibration_status
 from indicators import calculate_indicators
@@ -197,7 +200,7 @@ def main_loop() -> None:
     try:
         while _SHOULD_CONTINUE:
             loop_count += 1
-            now = datetime.now(timezone.utc)
+            now = datetime.now(PKT)
             
             # Periodic re-checks of market status
             if loop_count % 10 == 0:  # Every 10 iterations (~1 min if 6s loops)
@@ -806,6 +809,51 @@ def main_loop() -> None:
                     # Get micro lot info for calibration mode
                     micro_lot = get_calibration_micro_lot(completed_trades < 50)
                     
+                    # ────────────────────────────────────────────────────────────
+                    # LOG SIGNAL TO CSV FOR CALIBRATION TRACKING
+                    # ────────────────────────────────────────────────────────────
+                    try:
+                        account_balance = mt5.account_info().balance if mt5.account_info() else 0
+                    except Exception:
+                        account_balance = 0
+                    
+                    # Build ai_decision dict from stage results
+                    ai_decision = {}
+                    
+                    # Prepare gates dict with gate pass/fail status
+                    gates = {
+                        "gate1_confidence": confidence >= session_threshold,
+                        "gate2_intermarket": stage2_result.get("status", "") != "HARD BLOCK",
+                        "m1_counter": indicators.get("M1", {}).get("trend_classification", "").endswith("Bearish"),
+                        "mixed_signals": stage1_result.get("mixed_signals", False),
+                        "high_impact_news": stage1_result.get("high_impact_news", False),
+                        "m1_caution": m1_rsi_current < 35 if m1_rsi_current is not None else False,
+                    }
+                    
+                    # Log the signal to CSV
+                    log_signal(
+                        symbol=config.SYMBOL,
+                        signal=direction,
+                        confidence=confidence,
+                        weighted_score=score,
+                        risk_level=risk_level,
+                        trade_levels=trade_levels,
+                        timeframe_indicators=stage1_result.get("indicators", {}),
+                        ai_decision=ai_decision,
+                        news_sentiment=news_sentiment if news_sentiment else {},
+                        high_impact_news=stage1_result.get("high_impact_news", False),
+                        high_impact_event=None,
+                        session=session,
+                        gates=gates,
+                        mixed_signals=stage1_result.get("mixed_signals", False),
+                        daily_pnl_pct=daily_pnl,
+                        account_balance=account_balance,
+                        lot_size=micro_lot,
+                        reason=f"{direction} signal | score={score:.2f} | viability={viability_score}/100",
+                        intermarket_data=intermarket_data,
+                    )
+                    log_debug(f"[LOGGING] Signal logged to signal_log.csv: {direction} @ {trade_levels.get('entry_price', 'N/A')}")
+                    
                     # Print clear console notification — only if viability gate passed
                     print("=" * 60)
                     print("[RESULT] *** SIGNAL READY — result.txt UPDATED ***")
@@ -813,9 +861,12 @@ def main_loop() -> None:
                     print(f"[RESULT] Confidence: {confidence}%")
                     print(f"[RESULT] Viability : {viability_score}/100 ({viability_interpretation})")
                     if completed_trades < 50:
-                        print(f"[RESULT] Lot Size   : {micro_lot} (MICRO — calibration mode {completed_trades}/50)")
+                        print(f"[RESULT] Status     : CALIBRATION MODE — {completed_trades}/50 trades needed")
+                        print(f"[RESULT] Lot Size   : {micro_lot} (micro lots until 50 completed trades)")
+                        print(f"[RESULT] Note       : Manual trade logging required. See signal_log.csv")
                     else:
-                        print(f"[RESULT] Lot Size   : Risk-based (production mode)")
+                        print(f"[RESULT] Status     : PRODUCTION MODE — calibration model active")
+                        print(f"[RESULT] Lot Size   : Risk-based sizing")
                     print(f"[RESULT] Entry     : {stage1_result.get('trade_levels', {}).get('entry_price', 'N/A')}")
                     print("[RESULT] Open result.txt → paste into Claude chat")
                     print("=" * 60)

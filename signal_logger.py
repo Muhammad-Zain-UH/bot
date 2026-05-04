@@ -12,10 +12,13 @@ from __future__ import annotations
 import csv
 import os
 import shutil
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any
 
 from utils import log_debug
+
+# Pakistan timezone (UTC+5)
+PKT = timezone(timedelta(hours=5))
 
 LOG_FILE = os.getenv("SIGNAL_LOG_FILE", "signal_log.csv")
 
@@ -191,7 +194,7 @@ def log_signal(
     m1  = timeframe_indicators.get("M1",  {})
 
     row = {
-        "timestamp":          datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "timestamp":          datetime.now(PKT).isoformat(timespec="seconds"),
         "symbol":             symbol,
         "session":            session,
         "signal":             signal,
