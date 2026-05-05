@@ -95,6 +95,14 @@ _LAST_SESSION = None  # Track session to reset streak on session change
 _PREV_CALIBRATION_COUNT = None  # Previous cycle's completed trade count
 _CALIBRATION_MODE_EXITED = False  # True once we transition from <50 to >=50 trades
 
+# UPGRADE 2A: ATR spike detection for crash mode
+_PREVIOUS_SESSION_ATR = None  # M15 ATR value from previous cycle
+_CRASH_MODE_ACTIVE = False  # True when ATR spike detected (ratio > 1.7)
+
+# UPGRADE 1B: Oversold M1 RSI depth tracking for continuation entries
+_OVERSOLD_DEPTH_M1 = None  # Lowest M1 RSI seen in current oversold episode (None when episode cleared)
+_OVERSOLD_ENTRY_RSI = None  # RSI value when oversold episode started
+
 
 def _signal_handler(signum: int, frame: Any) -> None:
     """Handle Ctrl+C gracefully."""
@@ -160,6 +168,8 @@ def main_loop() -> None:
     global _H4_EMA_HISTORY, _H4_NEGATIVE_STREAK, _H4_RECOVERY_WATCH, _H4_RECOVERY_TRIGGERED_AT, _H4_RECOVERY_TRIGGERED_CYCLE
     global _PREV_M1_RSI, _RSI_BOUNCE_DETECTED, _PREV_CYCLE_SCORE
     global _PREV_CALIBRATION_COUNT, _CALIBRATION_MODE_EXITED
+    global _PREVIOUS_SESSION_ATR, _CRASH_MODE_ACTIVE  # UPGRADE 2A: ATR spike detection
+    global _OVERSOLD_DEPTH_M1, _OVERSOLD_ENTRY_RSI  # UPGRADE 1B: Oversold depth tracking
     
     # Install signal handler for graceful Ctrl+C
     signal.signal(signal.SIGINT, _signal_handler)
@@ -294,6 +304,32 @@ def main_loop() -> None:
             log_debug(f"[CYCLE {now.strftime('%H:%M:%S')}] Session: {session} | {config.SYMBOL}: {current_price} | ATR: {atr_display}")
             log_debug("═" * 70)
             
+            # ════════════════════════════════════════════════════════════════
+            # UPGRADE 2A: ATR SPIKE DETECTION — Detect volatility explosions
+            # ════════════════════════════════════════════════════════════════
+            crash_mode_reason = ""
+            if isinstance(m15_atr, (int, float)) and m15_atr > 0:
+                if _PREVIOUS_SESSION_ATR is not None and _PREVIOUS_SESSION_ATR > 0:
+                    atr_ratio = m15_atr / _PREVIOUS_SESSION_ATR
+                    
+                    # Entering crash mode: ratio > 1.7 (volatility doubles)
+                    if atr_ratio > 1.7 and not _CRASH_MODE_ACTIVE:
+                        _CRASH_MODE_ACTIVE = True
+                        crash_mode_reason = f"ATR SPIKE from {_PREVIOUS_SESSION_ATR:.2f} → {m15_atr:.2f} (ratio={atr_ratio:.2f} > 1.7)"
+                        log_debug(f"[ATR SPIKE] CRASH MODE ACTIVATED: {crash_mode_reason} — confidence +10% required")
+                    
+                    # Exiting crash mode: ratio drops below 1.3 (volatility cooling)
+                    elif atr_ratio < 1.3 and _CRASH_MODE_ACTIVE:
+                        _CRASH_MODE_ACTIVE = False
+                        crash_mode_reason = f"ATR NORMAL: {_PREVIOUS_SESSION_ATR:.2f} → {m15_atr:.2f} (ratio={atr_ratio:.2f} < 1.3)"
+                        log_debug(f"[ATR NORMAL] CRASH MODE DEACTIVATED: {crash_mode_reason} — returning to normal thresholds")
+                    
+                    elif _CRASH_MODE_ACTIVE:
+                        crash_mode_reason = f"CRASH MODE ACTIVE: ratio={atr_ratio:.2f}, threshold below 1.3 to deactivate"
+                
+                # Store current ATR for next cycle's comparison
+                _PREVIOUS_SESSION_ATR = m15_atr
+            
             try:
                 # ────────────────────────────────────────────────────────────
                 # STAGE 1: CHEAP SCAN (always runs)
@@ -324,6 +360,56 @@ def main_loop() -> None:
                 indicators = stage1_result["indicators"]
                 trade_levels = stage1_result["trade_levels"]
                 risk_level = stage1_result["risk_level"]
+                
+                # ════════════════════════════════════════════════════════════
+                # UPGRADE 1B: OVERSOLD M1 RSI DEPTH TRACKING
+                # ════════════════════════════════════════════════════════════
+                m1_rsi = indicators.get("M1", {}).get("rsi_14")
+                
+                if m1_rsi is not None:
+                    # STEP 1: Track lowest RSI during current oversold episode
+                    if m1_rsi < 30:
+                        # Entry into oversold zone
+                        if _OVERSOLD_DEPTH_M1 is None:
+                            # NEW OVERSOLD EPISODE
+                            _OVERSOLD_DEPTH_M1 = m1_rsi
+                            _OVERSOLD_ENTRY_RSI = m1_rsi
+                            log_debug(
+                                f"[OVERSOLD ENTRY] M1 RSI {m1_rsi:.1f} < 30 — oversold episode starts | "
+                                f"depth={_OVERSOLD_DEPTH_M1:.1f}"
+                            )
+                        elif m1_rsi < _OVERSOLD_DEPTH_M1:
+                            # DEEPER INTO OVERSOLD
+                            _OVERSOLD_DEPTH_M1 = m1_rsi
+                            log_debug(
+                                f"[OVERSOLD DEPTH] M1 RSI dropped to {m1_rsi:.1f} — "
+                                f"new low in current episode (was {_OVERSOLD_ENTRY_RSI:.1f})"
+                            )
+                    
+                    # STEP 2: Check for recovery from oversold and clear episode if conditions met
+                    elif _OVERSOLD_DEPTH_M1 is not None and m1_rsi >= 30:
+                        # We're out of oversold zone (RSI >= 30)
+                        # Check if recovery requirement is met
+                        
+                        recovery_requirement = None
+                        if _OVERSOLD_DEPTH_M1 < 20:
+                            # Deep oversold: require recovery to 38
+                            recovery_requirement = 38
+                        else:
+                            # Shallow oversold (20-30): require recovery to 32
+                            recovery_requirement = 32
+                        
+                        # Determine re-entry condition: RSI >= recovery_requirement AND RSI < 50
+                        can_reentry = (m1_rsi >= recovery_requirement and m1_rsi < 50)
+                        
+                        if can_reentry:
+                            # OVERSOLD EPISODE CLEARED - safe to allow continuation SELL
+                            log_debug(
+                                f"[OVERSOLD CLEARED] M1 RSI {m1_rsi:.1f} recovered from depth {_OVERSOLD_DEPTH_M1:.1f} "
+                                f"(requirement: {recovery_requirement}) — continuation SELL entries now allowed"
+                            )
+                            _OVERSOLD_DEPTH_M1 = None
+                            _OVERSOLD_ENTRY_RSI = None
                 
                 # ────────────────────────────────────────────────────────────
                 # FIX 5: ALL TIMEFRAMES LOW VOLUME CHECK
@@ -364,13 +450,39 @@ def main_loop() -> None:
                     time.sleep(sleep_time)
                     continue
                 elif len(low_volume_timeframes) >= 4:
-                    log_debug(
-                        f"[VOLUME WARNING] 4/5 timeframes Low volume ({', '.join(low_volume_timeframes)}) — "
-                        "confidence penalized additionally (-10%)"
+                    # ════════════════════════════════════════════════════════════
+                    # UPGRADE 1A: Skip volume penalty for extremely strong signals
+                    # ════════════════════════════════════════════════════════════
+                    # High conviction condition: score ≥ 8.0, zero conflicts, 5/5 TF aligned
+                    score_strength = abs(score)
+                    perfect_alignment = stage1_result.get("perfect_tf_alignment", False)
+                    has_conflicts = stage1_result.get("has_tf_conflicts", False)
+                    
+                    is_high_conviction = (
+                        score_strength >= 8.0
+                        and not has_conflicts
+                        and perfect_alignment
+                        and direction in {"BUY", "SELL"}
                     )
-                    # Apply extra -10% confidence penalty
-                    confidence = max(0, confidence - 10)
-                    confidence_display = f"{confidence}% (volume penalty -10%)"
+                    
+                    if is_high_conviction:
+                        log_debug(
+                            f"[VOL EXEMPT] 4/5 timeframes Low volume ({', '.join(low_volume_timeframes)}) — "
+                            f"HIGH CONVICTION signal: score={score_strength:.2f} ≥ 8.0 + "
+                            f"perfect 5/5 alignment + zero conflicts — penalty SKIPPED"
+                        )
+                        # NO penalty applied
+                        confidence_display = f"{confidence}% (volume penalty waived - high conviction)"
+                    else:
+                        log_debug(
+                            f"[VOLUME WARNING] 4/5 timeframes Low volume ({', '.join(low_volume_timeframes)}) — "
+                            f"confidence penalized additionally (-10%) | "
+                            f"score={score_strength:.2f} (need ≥8.0) + "
+                            f"alignment={perfect_alignment} + conflicts={has_conflicts}"
+                        )
+                        # Apply extra -10% confidence penalty
+                        confidence = max(0, confidence - 10)
+                        confidence_display = f"{confidence}% (volume penalty -10%)"
                 
                 # ────────────────────────────────────────────────────────────
                 # H1 & H4 EMA STRENGTH RECOVERY TRACKING (early warning system)
@@ -547,26 +659,49 @@ def main_loop() -> None:
                 
                 perfect_tf_alignment = (tf_alignment_count == 5 and direction in {"BUY", "SELL"})
                 
+                # ════════════════════════════════════════════════════════════
+                # UPGRADE 1B (CONFIDENCE FLOOR): Adjust threshold based on calibration progress
+                # ════════════════════════════════════════════════════════════
+                # When no trades exist (0), be lenient (40%)
+                # When enough data collected (25+), require higher confidence (42%)
+                baseline_confidence_floor = 42 if completed_trades >= 25 else 40
+                log_debug(
+                    f"[CALIBRATION FLOOR] Completed trades: {completed_trades} → "
+                    f"baseline confidence floor: {baseline_confidence_floor}%"
+                )
+                
                 # Determine required confidence based on calibration mode
                 if completed_trades < 50:
                     # CALIBRATION MODE: Reduced confidence requirement
                     # FIX 2: Even further reduced when score > 7.0 + perfect 5/5 TF alignment
                     if perfect_tf_alignment and abs(score) > 7.0:
-                        # Exceptional setup: perfect alignment + high score — lower to 45%
-                        required_confidence = 45
+                        # Exceptional setup: perfect alignment + high score — lower toward floor
+                        required_confidence = baseline_confidence_floor + 3
                         if session == "London":
-                            required_confidence = 42  # London session can go lower
+                            required_confidence = baseline_confidence_floor  # London: use floor directly
                         log_debug(
                             f"[CALIBRATION BOOST] score={abs(score):.2f} > 7.0 AND 5/5 TF alignment — "
-                            f"lowering threshold to {required_confidence}% (was 45%)"
+                            f"lowering threshold to {required_confidence}% (baseline {baseline_confidence_floor}%)"
                         )
                     elif session == "London":
-                        required_confidence = 42  # More relaxed in best session
+                        required_confidence = baseline_confidence_floor  # More relaxed in best session (uses baseline)
                     else:
-                        required_confidence = 45  # Standard for other sessions
+                        required_confidence = baseline_confidence_floor + 3  # Standard: baseline + buffer
                 else:
                     # PRODUCTION MODE: Standard confidence requirement
                     required_confidence = 45
+                
+                # ════════════════════════════════════════════════════════════
+                # UPGRADE 2A: Apply crash mode penalty to required confidence
+                # ════════════════════════════════════════════════════════════
+                crash_mode_adjustment = 0
+                if _CRASH_MODE_ACTIVE:
+                    crash_mode_adjustment = 10
+                    required_confidence += crash_mode_adjustment
+                    log_debug(
+                        f"[CRASH MODE] Volatility spike detected — confidence threshold raised by +{crash_mode_adjustment}% "
+                        f"(now {required_confidence}%) to reduce entries during chaotic price action"
+                    )
                 
                 if confidence < required_confidence or trade_signal == "NO TRADE":
                     h4_trend = indicators.get("H4", {}).get("trend_classification", "Unknown")
@@ -593,8 +728,9 @@ def main_loop() -> None:
                                 log_debug(f"{cal_mode_label} [BLOCKED] Reason: Score {score:.2f} < threshold {session_threshold:.2f}")
                                 blocking_reason = f"score {score:.2f} < {session_threshold:.2f}"
                     elif confidence < required_confidence:
-                        log_debug(f"{cal_mode_label} [BLOCKED] Reason: confidence {confidence}% < {required_confidence}% minimum threshold")
-                        blocking_reason = f"confidence {confidence}% < {required_confidence}%"
+                        crash_mode_note = f" (includes +{crash_mode_adjustment}% crash mode penalty)" if crash_mode_adjustment > 0 else ""
+                        log_debug(f"{cal_mode_label} [BLOCKED] Reason: confidence {confidence}% < {required_confidence}% minimum threshold{crash_mode_note}")
+                        blocking_reason = f"confidence {confidence}% < {required_confidence}%{crash_mode_note}"
                     
                     sleep_time = calculate_sleep_time(
                         confidence=confidence,
@@ -640,7 +776,11 @@ def main_loop() -> None:
                 # ────────────────────────────────────────────────────────────
                 # STAGE 2: INTERMARKET CHECK (only if stage 1 passes)
                 # ────────────────────────────────────────────────────────────
-                stage2_result = stage2.run_stage2(direction, indicators)
+                stage2_result = stage2.run_stage2(
+                    direction, 
+                    indicators,
+                    oversold_depth_m1=_OVERSOLD_DEPTH_M1  # UPGRADE 1B: Pass oversold depth tracking
+                )
                 
                 # Hard block check
                 if stage2_result["hard_block"]:
