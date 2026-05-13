@@ -738,3 +738,8 @@ def analyze_post_event_sentiment(headlines: list[str]) -> tuple[str, float]:
         # Mixed or neutral
         log_debug(f"[POST-EVENT] 〰️ Mixed/neutral signals detected")
         return "neutral", 0.0
+
+def high_impact_news_within_minutes(minutes: int = 15) -> bool:
+    from news_handler import check_high_impact_news
+    within, _ = check_high_impact_news(within_minutes=minutes)
+    return within
