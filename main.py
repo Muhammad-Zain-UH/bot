@@ -15,6 +15,7 @@ from risk_manager import (get_current_session, get_daily_pnl_pct, is_daily_loss_
                           consecutive_losses, calculate_lot_size)
 from news_handler import high_impact_news_within_minutes
 from utils import log_debug
+from cvd_divergence import detect_cvd_divergence
 import MetaTrader5 as mt5
 
 _SHOULD_CONTINUE = True
@@ -36,12 +37,50 @@ def fetch_all_indicators(symbol: str, n_candles: int) -> dict:
         # Use enhanced calculation for M15 (includes swing data for Fibonacci)
         if label == "M15":
             result[label] = calculate_indicators_with_swings(data)
+        # Store raw data for M5 (CVD divergence uses M5, more responsive)
+        elif label == "M5":
+            ind = calculate_indicators(data)
+            ind["raw_data"] = data.copy()
+            result[label] = ind
         else:
             result[label] = calculate_indicators(data)
         
         log_debug(f"{label} → trend={result[label].get('trend_classification')} | RSI={result[label].get('rsi_14')}")
     
     return result
+
+
+def _check_rejection_wick(candle_dict: dict, direction: str) -> bool:
+    """Check if M1 candle has a rejection wick against the direction.
+    
+    BUY setup: Long lower wick (sellers rejected)
+    SELL setup: Long upper wick (buyers rejected)
+    """
+    try:
+        open_p = float(candle_dict.get('open') or 0)
+        close_p = float(candle_dict.get('close') or 0)
+        high_p = float(candle_dict.get('high') or 0)
+        low_p = float(candle_dict.get('low') or 0)
+        
+        if any(v == 0 for v in [open_p, close_p, high_p, low_p]):
+            return False
+        
+        body = abs(close_p - open_p)
+        full = high_p - low_p
+        if full <= 0:
+            return False
+        
+        wick_ratio = (full - body) / full
+        
+        if direction == "BUY":
+            lower_wick = low_p - min(open_p, close_p)
+            return lower_wick > body and wick_ratio > 0.6
+        else:  # SELL
+            upper_wick = max(open_p, close_p) - high_p
+            return upper_wick > body and wick_ratio > 0.6
+    except Exception as e:
+        log_debug(f"Rejection wick check error: {e}")
+        return False
 
 def main_loop():
     global _SHOULD_CONTINUE
@@ -146,19 +185,46 @@ def main_loop():
                             m1_close = m1_current.get("close")
                             m1_trend = m1_current.get("trend_classification")
 
-                            # 3. Check M1 trigger confirmation
+                            # 3. RE-CHECK REJECTION WICK on latest M1 candle
+                            m1_candle = {
+                                'open': m1_current.get('open'),
+                                'high': m1_current.get('high'),
+                                'low': m1_current.get('low'),
+                                'close': m1_current.get('close')
+                            }
+                            has_wick = _check_rejection_wick(m1_candle, direction)
+                            
+                            if not has_wick:
+                                log_debug(f"[INTRACANDLE] M1: {m1_close:.2f} | Trend: {m1_trend} | No rejection wick yet – waiting...")
+                                time.sleep(5)
+                                continue
+
+                            # 4. CHECK CVD DIVERGENCE on M5 data
+                            cvd_confirmation = False
+                            try:
+                                m5_data = get_market_data(config.SYMBOL, mt5.TIMEFRAME_M5, 20)
+                                if not m5_data.empty:
+                                    cvd_result = detect_cvd_divergence(m5_data, lookback=20)
+                                    if cvd_result.get("has_divergence") and cvd_result.get("type") in ["bullish", "bearish"]:
+                                        log_debug(f"[INTRACANDLE] CVD {cvd_result['type'].upper()} divergence confirmed")
+                                        cvd_confirmation = True
+                            except Exception as cvd_exc:
+                                log_debug(f"[INTRACANDLE] CVD check: {cvd_exc}")
+                                cvd_confirmation = True  # Don't block on CVD failure
+
+                            # 5. Check M1 trigger confirmation + wick + CVD
                             if direction == "BUY" and "Bullish" in str(m1_trend):
                                 entry_confirmed = True
                                 entry_confirmed_price = m1_close
-                                log_debug(f"✓ [M1 TRIGGER] Bullish candle printed → {m1_close:.2f} | Entry confirmed")
+                                log_debug(f"✓ [M1 TRIGGER] Bullish candle + rejection wick + CVD → {m1_close:.2f} | Entry confirmed")
                                 break
                             elif direction == "SELL" and "Bearish" in str(m1_trend):
                                 entry_confirmed = True
                                 entry_confirmed_price = m1_close
-                                log_debug(f"✓ [M1 TRIGGER] Bearish candle printed → {m1_close:.2f} | Entry confirmed")
+                                log_debug(f"✓ [M1 TRIGGER] Bearish candle + rejection wick + CVD → {m1_close:.2f} | Entry confirmed")
                                 break
                             else:
-                                log_debug(f"[INTRACANDLE] M1: {m1_close:.2f} | Trend: {m1_trend} | waiting...")
+                                log_debug(f"[INTRACANDLE] M1: {m1_close:.2f} | Trend: {m1_trend} | waiting for confirmation...")
 
                         # Wait 5 seconds before next M1 check
                         time.sleep(5)

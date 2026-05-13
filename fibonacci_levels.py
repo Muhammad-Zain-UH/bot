@@ -26,7 +26,10 @@ def _to_float(value: Any) -> float | None:
 
 
 def find_swing_high_low(data: pd.DataFrame, lookback: int = 50) -> tuple[float | None, float | None, int, int]:
-    """Find the most recent swing high and low in the last 'lookback' candles.
+    """Find the most recent swing high and low using fractal pattern (not just max/min).
+    
+    Fractal swing: A high/low surrounded by lower/higher candles on both sides.
+    More accurate than max/min for choppy markets.
     
     Returns:
         (swing_high_price, swing_low_price, high_index, low_index)
@@ -34,12 +37,46 @@ def find_swing_high_low(data: pd.DataFrame, lookback: int = 50) -> tuple[float |
     if len(data) < lookback:
         lookback = len(data)
     
+    if len(data) < 5:  # Need at least 5 candles for fractal detection
+        # Fallback to max/min if insufficient data
+        recent = data.iloc[-lookback:] if len(data) >= lookback else data
+        swing_high = recent['high'].max()
+        swing_low = recent['low'].min()
+        high_idx = recent['high'].idxmax()
+        low_idx = recent['low'].idxmin()
+        return swing_high, swing_low, high_idx, low_idx
+    
     recent = data.iloc[-lookback:]
     
-    swing_high = recent['high'].max()
-    swing_low = recent['low'].min()
-    high_idx = recent['high'].idxmax()
-    low_idx = recent['low'].idxmin()
+    # Find fractal swing high: high surrounded by lower highs
+    swing_high = None
+    high_idx = None
+    for i in range(2, len(recent) - 2):
+        if (recent['high'].iloc[i] > recent['high'].iloc[i-1] and
+            recent['high'].iloc[i] > recent['high'].iloc[i-2] and
+            recent['high'].iloc[i] > recent['high'].iloc[i+1] and
+            recent['high'].iloc[i] > recent['high'].iloc[i+2]):
+            swing_high = recent['high'].iloc[i]
+            high_idx = recent.index[i]
+    
+    # Find fractal swing low: low surrounded by higher lows
+    swing_low = None
+    low_idx = None
+    for i in range(2, len(recent) - 2):
+        if (recent['low'].iloc[i] < recent['low'].iloc[i-1] and
+            recent['low'].iloc[i] < recent['low'].iloc[i-2] and
+            recent['low'].iloc[i] < recent['low'].iloc[i+1] and
+            recent['low'].iloc[i] < recent['low'].iloc[i+2]):
+            swing_low = recent['low'].iloc[i]
+            low_idx = recent.index[i]
+    
+    # Fallback to max/min if no fractal found
+    if swing_high is None:
+        swing_high = recent['high'].max()
+        high_idx = recent['high'].idxmax()
+    if swing_low is None:
+        swing_low = recent['low'].min()
+        low_idx = recent['low'].idxmin()
     
     return swing_high, swing_low, high_idx, low_idx
 

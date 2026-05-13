@@ -219,18 +219,19 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
 
         # 9. CVD DIVERGENCE CHECK (NEW)
         # Detect if volume is NOT confirming price extremes (early reversal signal)
+        # Use M5 data for better responsiveness on entry timing
         cvd_divergence_adjustment = 0.0
         if direction in TRADE_SIGNALS:
             try:
-                # Get raw M15 DataFrame for CVD calculation
-                m15_raw_data = tfi.get("M15", {}).get("raw_data")
-                if m15_raw_data is not None and isinstance(m15_raw_data, pd.DataFrame) and not m15_raw_data.empty:
-                    cvd_result = detect_cvd_divergence(m15_raw_data, lookback=20)
+                # Get raw M5 DataFrame for CVD calculation (more responsive than M15)
+                m5_raw_data = tfi.get("M5", {}).get("raw_data")
+                if m5_raw_data is not None and isinstance(m5_raw_data, pd.DataFrame) and not m5_raw_data.empty:
+                    cvd_result = detect_cvd_divergence(m5_raw_data, lookback=20)
                     if cvd_result.get("has_divergence"):
                         cvd_divergence_adjustment = cvd_result.get("confidence_adjustment", 0.0)
-                        log_debug(f"[CVD DIVERGENCE] {cvd_result['type'].upper()} divergence detected → +{cvd_divergence_adjustment:.0f}% confidence")
+                        log_debug(f"[CVD DIVERGENCE] M5: {cvd_result['type'].upper()} divergence detected → +{cvd_divergence_adjustment:.0f}% confidence")
                 else:
-                    log_debug("[CVD] Raw M15 data unavailable for divergence check")
+                    log_debug("[CVD] Raw M5 data unavailable for divergence check")
             except Exception as cvd_exc:
                 log_debug(f"CVD divergence check warning: {cvd_exc} — proceeding")
 
