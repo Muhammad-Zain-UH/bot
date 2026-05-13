@@ -198,9 +198,8 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
                     swing_high = _to_float(recent_data.get("swing_high"))
                     swing_low = _to_float(recent_data.get("swing_low"))
                     
-                    # If we don't have pre-calculated swings, estimate from recent extremes
                     if swing_high is None or swing_low is None:
-                        log_debug("Fibonacci: swing data not pre-calculated, allowing entry")
+                        log_debug("[FIBONACCI] Swing data unavailable – skipping Fibonacci check")
                     else:
                         fib_levels = calculate_fibonacci_levels(swing_high, swing_low, direction)
                         fib_check = check_fibonacci_confirmation(current_price, fib_levels, direction, tolerance_pips=8.0)
@@ -223,12 +222,15 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
         cvd_divergence_adjustment = 0.0
         if direction in TRADE_SIGNALS:
             try:
-                # In production, fetch M5 data for CVD calculation
-                # For now, using available data
-                cvd_result = detect_cvd_divergence(tfi.get("M15_data", pd.DataFrame()), lookback=20)
-                if cvd_result.get("has_divergence"):
-                    cvd_divergence_adjustment = cvd_result.get("confidence_adjustment", 0.0)
-                    log_debug(f"[CVD DIVERGENCE] {cvd_result['type'].upper()} divergence detected → +{cvd_divergence_adjustment:.0f}% confidence")
+                # Get raw M15 DataFrame for CVD calculation
+                m15_raw_data = tfi.get("M15", {}).get("raw_data")
+                if m15_raw_data is not None and isinstance(m15_raw_data, pd.DataFrame) and not m15_raw_data.empty:
+                    cvd_result = detect_cvd_divergence(m15_raw_data, lookback=20)
+                    if cvd_result.get("has_divergence"):
+                        cvd_divergence_adjustment = cvd_result.get("confidence_adjustment", 0.0)
+                        log_debug(f"[CVD DIVERGENCE] {cvd_result['type'].upper()} divergence detected → +{cvd_divergence_adjustment:.0f}% confidence")
+                else:
+                    log_debug("[CVD] Raw M15 data unavailable for divergence check")
             except Exception as cvd_exc:
                 log_debug(f"CVD divergence check warning: {cvd_exc} — proceeding")
 

@@ -9,7 +9,7 @@ import os
 
 import config
 from mt5_handler import connect_mt5, get_market_data, shutdown_mt5, get_current_spread
-from indicators import calculate_indicators
+from indicators import calculate_indicators, calculate_indicators_with_swings
 from technical_engine import get_technical_signal
 from risk_manager import (get_current_session, get_daily_pnl_pct, is_daily_loss_limit_hit,
                           consecutive_losses, calculate_lot_size)
@@ -32,8 +32,15 @@ def fetch_all_indicators(symbol: str, n_candles: int) -> dict:
         data = get_market_data(symbol, tf, n_candles)
         if data.empty:
             raise ValueError(f"No data for {label}")
-        result[label] = calculate_indicators(data)
+        
+        # Use enhanced calculation for M15 (includes swing data for Fibonacci)
+        if label == "M15":
+            result[label] = calculate_indicators_with_swings(data)
+        else:
+            result[label] = calculate_indicators(data)
+        
         log_debug(f"{label} → trend={result[label].get('trend_classification')} | RSI={result[label].get('rsi_14')}")
+    
     return result
 
 def main_loop():
@@ -44,7 +51,6 @@ def main_loop():
         return
     loss_pause_end = None
     regime_validated = False
-    last_signal_setup = None  # Track the last identified setup
 
     while _SHOULD_CONTINUE:
         try:
@@ -60,7 +66,7 @@ def main_loop():
                 log_debug(f"Daily loss limit hit ({pnl:.2f}%) – stopping")
                 break
 
-            # Consecutive loss pause (pass log file explicitly)
+            # Consecutive loss pause
             loss_hit, loss_count = consecutive_losses("signal_log.csv")
             if loss_hit:
                 if loss_pause_end is None:
@@ -97,8 +103,7 @@ def main_loop():
                 time.sleep(30)
                 continue
 
-            # ========== MAIN CYCLE (60 second) ==========
-            # Fetch indicators
+            # ========== MAIN 60-SECOND CYCLE ==========
             tfi = fetch_all_indicators(config.SYMBOL, config.N_CANDLES)
             tech = get_technical_signal(config.SYMBOL, tfi)
             trade_signal = tech["technical_signal"]
@@ -106,7 +111,8 @@ def main_loop():
             confidence = tech["technical_confidence"]
             score = tech["weighted_score"]
 
-            if trade_signal in ("BUY","SELL") and confidence >= 45:
+            # If setup detected (not NO TRADE), enter fast confirmation loop
+            if direction in ("BUY", "SELL") and confidence >= 45:
                 levels = tech.get("trade_levels", {})
                 entry = levels.get("entry_price")
                 sl = levels.get("stop_loss")
@@ -116,82 +122,81 @@ def main_loop():
                 stop_dist = abs(entry - sl) if entry and sl else 10.0
                 lot = calculate_lot_size(balance, 1.0, stop_dist)
 
-                print("\n" + "="*60)
-                print(f"*** SIGNAL READY ***")
-                print(f"Direction: {trade_signal}")
-                print(f"Confidence: {confidence}%")
-                print(f"Score: {score:.2f}/{tech['max_score']}")
-                print(f"Entry: {entry} | SL: {sl} | TP: {tp}")
-                print(f"Lot size: {lot:.2f}")
-                print("="*60 + "\n")
+                log_debug(f"[SETUP DETECTED] {direction} | conf={confidence}% | score={score:.2f}")
+                log_debug(f"[ENTRY WINDOW] Waiting for M1 trigger confirmation (max 60 seconds)...")
 
-                # Store the setup for intracandle confirmation
-                last_signal_setup = {
-                    "signal": trade_signal,
-                    "direction": direction,
-                    "confidence": confidence,
-                    "score": score,
-                    "entry": entry,
-                    "sl": sl,
-                    "tp": tp,
-                    "lot": lot,
-                    "setup_time": datetime.now(),
-                }
-
-                # ========== INTRACANDLE M1 SUB-LOOP (5 seconds) ==========
-                # When signal is confirmed, run a tight loop to catch exact M1 entry
-                log_debug(f"[ENTRY WINDOW] Starting 5-second intracandle checks for {trade_signal}...")
-                intracandle_timeout = datetime.now() + timedelta(seconds=30)  # 30 sec window
+                # ========== INTRACANDLE LOOP: Wait for M1 trigger ==========
+                entry_confirmed = False
+                entry_confirmed_price = None
+                intracandle_timeout = datetime.now() + timedelta(seconds=60)
 
                 while datetime.now() < intracandle_timeout and _SHOULD_CONTINUE:
                     try:
-                        # Fetch fresh M1 data only (fastest update)
+                        # 1. RE-CHECK SPREAD before any entry
+                        current_spread = get_current_spread(config.SYMBOL)
+                        if current_spread > 50:
+                            log_debug(f"[INTRACANDLE] Spread widened to {current_spread:.0f} pts – waiting...")
+                            time.sleep(5)
+                            continue
+
+                        # 2. Fetch fresh M1 data
                         m1_data = get_market_data(config.SYMBOL, mt5.TIMEFRAME_M1, 5)
                         if not m1_data.empty:
                             m1_current = calculate_indicators(m1_data)
                             m1_close = m1_current.get("close")
                             m1_trend = m1_current.get("trend_classification")
 
-                            log_debug(
-                                f"[INTRACANDLE] M1: {m1_close:.2f} | Trend: {m1_trend} | "
-                                f"Time: {datetime.now().strftime('%H:%M:%S')}"
-                            )
-
-                            # Check for entry confirmation on M1
-                            if trade_signal == "BUY" and "Bullish" in str(m1_trend):
-                                log_debug(f"✓ [ENTRY CONFIRMED] M1 printed bullish candle → ENTER BUY at {m1_close:.2f}")
-                                # Execute trade here (placeholder)
+                            # 3. Check M1 trigger confirmation
+                            if direction == "BUY" and "Bullish" in str(m1_trend):
+                                entry_confirmed = True
+                                entry_confirmed_price = m1_close
+                                log_debug(f"✓ [M1 TRIGGER] Bullish candle printed → {m1_close:.2f} | Entry confirmed")
                                 break
-                            elif trade_signal == "SELL" and "Bearish" in str(m1_trend):
-                                log_debug(f"✓ [ENTRY CONFIRMED] M1 printed bearish candle → ENTER SELL at {m1_close:.2f}")
-                                # Execute trade here (placeholder)
+                            elif direction == "SELL" and "Bearish" in str(m1_trend):
+                                entry_confirmed = True
+                                entry_confirmed_price = m1_close
+                                log_debug(f"✓ [M1 TRIGGER] Bearish candle printed → {m1_close:.2f} | Entry confirmed")
                                 break
+                            else:
+                                log_debug(f"[INTRACANDLE] M1: {m1_close:.2f} | Trend: {m1_trend} | waiting...")
 
-                        # Sleep 5 seconds before next M1 check
+                        # Wait 5 seconds before next M1 check
                         time.sleep(5)
 
                     except Exception as intra_exc:
-                        log_debug(f"Intracandle check error: {intra_exc}")
+                        log_debug(f"[INTRACANDLE] Check error: {intra_exc}")
                         time.sleep(5)
 
-                # Log to CSV (whether entry was executed or timed out)
-                log_file = "signal_log.csv"
-                file_exists = os.path.isfile(log_file)
-                with open(log_file, "a", newline="") as f:
-                    writer = csv.writer(f)
-                    if not file_exists:
-                        writer.writerow(["timestamp","symbol","signal","confidence","score","entry","sl","tp","lot","intracandle_confirmed"])
-                    intracandle_confirmed = (datetime.now() < intracandle_timeout)
-                    writer.writerow([datetime.now().isoformat(), config.SYMBOL, trade_signal, confidence, score, entry, sl, tp, lot, intracandle_confirmed])
+                # ========== SIGNAL OUTPUT (only if M1 confirmed) ==========
+                if entry_confirmed:
+                    # Print signal ONLY after M1 confirmation
+                    print("\n" + "="*60)
+                    print(f"*** ENTRY SIGNAL CONFIRMED ***")
+                    print(f"Direction: {direction}")
+                    print(f"Confirmed at: {entry_confirmed_price:.2f}")
+                    print(f"Confidence: {confidence}%")
+                    print(f"Score: {score:.2f}/{tech['max_score']}")
+                    print(f"Entry: {entry} | SL: {sl} | TP: {tp}")
+                    print(f"Lot size: {lot:.2f}")
+                    print("="*60 + "\n")
 
-                # Reset setup tracking
-                last_signal_setup = None
+                    # Log to CSV
+                    log_file = "signal_log.csv"
+                    file_exists = os.path.isfile(log_file)
+                    with open(log_file, "a", newline="") as f:
+                        writer = csv.writer(f)
+                        if not file_exists:
+                            writer.writerow(["timestamp", "symbol", "signal", "confidence", "score", "entry", "sl", "tp", "lot", "m1_confirmed"])
+                        writer.writerow([datetime.now().isoformat(), config.SYMBOL, direction, confidence, score, entry, sl, tp, lot, True])
+                else:
+                    # Setup detected but no M1 trigger within timeout
+                    log_debug(f"[SETUP TIMEOUT] {direction} setup expired (no M1 trigger within 60s)")
 
             else:
-                # No signal or confidence below threshold
+                # No setup or confidence too low
                 print(f"[{datetime.now().strftime('%H:%M:%S')}] {session} | {trade_signal} | conf={confidence}% | score={score:.2f}")
 
-            # Main loop sleep (60 seconds baseline)
+            # Main loop sleep
             time.sleep(60)
 
         except Exception as e:

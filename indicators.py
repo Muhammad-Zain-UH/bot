@@ -128,6 +128,41 @@ def calculate_indicators(data: pd.DataFrame) -> dict:
         log_debug(f"Indicator calculation failed: {exc}")
         return {}
 
+
+def calculate_indicators_with_swings(data: pd.DataFrame) -> dict:
+    """Calculate all indicators AND compute swing highs/lows for Fibonacci levels.
+    
+    Use this for M15 timeframe when Fibonacci retracement is needed.
+    """
+    base_indicators = calculate_indicators(data)
+    if not base_indicators:
+        return base_indicators
+    
+    try:
+        if len(data) >= 20:
+            # Find swing high/low using fractal pattern on last 50 candles
+            lookback = min(50, len(data))
+            recent = data.iloc[-lookback:]
+            
+            swing_high = recent['high'].max()
+            swing_low = recent['low'].min()
+            
+            base_indicators["swing_high"] = _to_float(swing_high)
+            base_indicators["swing_low"] = _to_float(swing_low)
+            base_indicators["raw_data"] = data.copy()  # Store for CVD calculation
+            
+            log_debug(f"[SWINGS] High: {swing_high:.2f} | Low: {swing_low:.2f}")
+        else:
+            base_indicators["swing_high"] = None
+            base_indicators["swing_low"] = None
+            base_indicators["raw_data"] = None
+    except Exception as exc:
+        log_debug(f"Swing calculation error: {exc}")
+        base_indicators["swing_high"] = None
+        base_indicators["swing_low"] = None
+    
+    return base_indicators
+
 def find_last_swing(data: pd.DataFrame) -> dict:
     """Return {'type': 'HIGH'/'LOW', 'price': float, 'index': int} using fractal pattern."""
     if len(data) < 5:
