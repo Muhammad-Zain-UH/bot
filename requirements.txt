@@ -1,5 +1,5 @@
 # MetaTrader 5 Integration
-MetaTrader5==5.0.45
+MetaTrader5>=5.0.5000
 
 # Data Processing & Analysis
 pandas>=1.5.0

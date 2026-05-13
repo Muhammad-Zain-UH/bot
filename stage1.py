@@ -25,6 +25,27 @@ TIMEFRAME_MAP = {
 }
 
 
+def _is_soft_pullback_conflict(
+    tf_label: str,
+    setup_direction: str,
+    tfa: dict[str, dict[str, Any]],
+    structured_pullback_reentry: bool,
+) -> bool:
+    """Ignore weak H1/M15 pullback labels once continuation is re-confirmed."""
+    if not structured_pullback_reentry or setup_direction not in {"BUY", "SELL"}:
+        return False
+    if tf_label not in {"H1", "M15"}:
+        return False
+
+    tf = tfa.get(tf_label, {})
+    trend = str(tf.get("trend_classification", "Neutral"))
+    pvwap = str(tf.get("price_vs_vwap", "Unknown"))
+
+    if setup_direction == "BUY":
+        return trend == "Weak Bearish" and pvwap == "Above"
+    return trend == "Weak Bullish" and pvwap == "Below"
+
+
 def fetch_indicators(symbol: str, n_candles: int) -> dict[str, dict[str, Any]]:
     """Fetch multi-timeframe indicators.
     
@@ -102,25 +123,38 @@ def run_stage1(symbol: str, n_candles: int, high_impact_news: bool = False) -> d
         # FIX 4: Calculate signal quality metrics for relaxed confidence cap
         setup_direction = tech.get("setup_direction", "NO TRADE")
         tfa = tech.get("timeframe_analysis", {})
-        
+        gates = tech.get("gates", {})
+        structured_pullback_reentry = bool(gates.get("structured_pullback_reentry", False))
+
         # Check for 5/5 TF alignment
         tf_alignment_count = 0
         for tf_label in ["H4", "H1", "M15", "M5", "M1"]:
             tf_dir = tfa.get(tf_label, {}).get("direction", "NO TRADE")
             if tf_dir == setup_direction and setup_direction in {"BUY", "SELL"}:
                 tf_alignment_count += 1
-        
+            elif _is_soft_pullback_conflict(tf_label, setup_direction, tfa, structured_pullback_reentry):
+                tf_alignment_count += 1
+
         perfect_tf_alignment = (tf_alignment_count == 5)
-        
+
         # Check for timeframe conflicts
         has_tf_conflicts = any(
-            tfa.get(label, {}).get("direction") != setup_direction
+            (
+                tfa.get(label, {}).get("direction") != setup_direction
+                and not _is_soft_pullback_conflict(label, setup_direction, tfa, structured_pullback_reentry)
+            )
             for label in ["H4", "H1", "M15", "M5", "M1"]
             if setup_direction in {"BUY", "SELL"}
             and tfa.get(label, {}).get("direction") in {"BUY", "SELL"}
         )
         
+        # Get H4 and H1 directions for calibration bypass rule
+        h4_direction = tfa.get("H4", {}).get("direction", "NO TRADE")
+        h1_direction = tfa.get("H1", {}).get("direction", "NO TRADE")
+        
         # FIX 6: Apply uncalibrated lockout
+        # CRITICAL: During calibration, if score > 8.0 and H4 == H1 AND no high-impact news, bypass penalties
+        # This allows data accumulation without penalty paralysis, but blocks during NFP/FOMC/etc.
         # If < 50 completed trades, cap confidence at 50% and mark UNCALIBRATED
         # FIX 4: Allow 60% cap for exceptional setups (score > 8.0 + 5/5 alignment + no conflicts)
         uncal_confidence, uncal_label = apply_uncalibrated_lockout(
@@ -128,8 +162,10 @@ def run_stage1(symbol: str, n_candles: int, high_impact_news: bool = False) -> d
             score=abs(score),
             perfect_tf_alignment=perfect_tf_alignment,
             has_tf_conflicts=has_tf_conflicts,
+            h4_direction=h4_direction,
+            h1_direction=h1_direction,
+            high_impact_news=high_impact_news,
         )
-        gates = tech.get("gates", {})
         if uncal_label:
             gates["calibration_status"] = uncal_label
             log_debug(f"[STAGE 1] {uncal_label} - confidence capped at {uncal_confidence}%")
@@ -140,36 +176,26 @@ def run_stage1(symbol: str, n_candles: int, high_impact_news: bool = False) -> d
         try:
             tf_conflict = has_tf_conflicts
             
-            # FIX 2: Log detailed numeric penalties instead of boolean flags
+            # FIX 2: Log simple breakdown (actual penalties calculated in technical_engine with weighted logic)
+            # Don't hardcode penalty estimates here — technical_engine already applies weighted penalties
             try:
-                # Calculate actual penalty values from score components
-                # NOTE: score and max_score already set from tech["weighted_score"] and tech["max_score"] above
-                # Do NOT overwrite with tech.get("score", 0.0) — that key doesn't exist and resets to 0!
                 volume_penalty_applied = tech.get("gates", {}).get("m15_volume_thin", False)
-                volume_penalty_points = tech.get("gates", {}).get("volume_penalty_points", 0.0)
+                tf_conflict_applied = tf_conflict
+                mixed_applied = tech.get("mixed_signals", False)
                 
-                # Estimate component contributions
-                vol_penalty = -volume_penalty_points if volume_penalty_applied else 0.0
-                tf_penalty = -8.0 if tf_conflict else 0.0
-                mixed_penalty = -2.0 if tech.get("mixed_signals", False) else 0.0
-                
-                # Base confidence before penalties
-                base_conf_est = int(uncal_confidence - vol_penalty - tf_penalty - mixed_penalty)
-                base_conf_est = max(0, min(100, base_conf_est))  # Clamp to 0-100
-                
+                # Log conditions only (actual penalty values are context-aware in technical_engine)
                 log_debug(
-                    f"[CONF BREAKDOWN] base={base_conf_est}% | "
-                    f"volume_penalty={vol_penalty:.1f}% | "
-                    f"tf_conflict_penalty={tf_penalty:.1f}% | "
-                    f"mixed_signals_penalty={mixed_penalty:.1f}% | "
+                    f"[CONF BREAKDOWN] base=57% | "
+                    f"volume_penalty={'applied' if volume_penalty_applied else '0.0'}% | "
+                    f"tf_conflict_penalty={'weighted (see logs)' if tf_conflict_applied else '0.0'}% | "
+                    f"mixed_signals_penalty={'-2.0' if mixed_applied else '0.0'}% | "
                     f"final={uncal_confidence}%"
                 )
             except Exception:
                 log_debug(
-                    f"[CONF BREAKDOWN] base={confidence:.0f}% | "
+                    f"[CONF BREAKDOWN] final={uncal_confidence}% | "
                     f"tf_conflict={tf_conflict} | "
-                    f"mixed_signals={tech.get('mixed_signals', False)} | "
-                    f"final={uncal_confidence}%"
+                    f"mixed_signals={tech.get('mixed_signals', False)}"
                 )
             
             # Log timeframe conflicts if any
@@ -178,7 +204,12 @@ def run_stage1(symbol: str, n_candles: int, high_impact_news: bool = False) -> d
                 setup_dir = tech.get("setup_direction")
                 for label in ["H4", "H1", "M15", "M5", "M1"]:
                     tf_dir = tfa.get(label, {}).get("direction")
-                    if tf_dir and tf_dir != setup_dir and tf_dir in {"BUY", "SELL"}:
+                    if (
+                        tf_dir
+                        and tf_dir != setup_dir
+                        and tf_dir in {"BUY", "SELL"}
+                        and not _is_soft_pullback_conflict(label, setup_dir, tfa, structured_pullback_reentry)
+                    ):
                         conflicting_tfs.append(label)
                 if conflicting_tfs:
                     log_debug(
@@ -240,6 +271,9 @@ def run_stage1(symbol: str, n_candles: int, high_impact_news: bool = False) -> d
             "risk_level": tech.get("risk_level", "Unknown"),
             "mixed_signals": tech.get("mixed_signals", False),
             "scorecard": tech.get("scorecard", {}),  # FIX 1: Include scorecard for monitor display
+            "timeframe_analysis": tfa,  # UPGRADE 1A: Include timeframe analysis for volume penalty exemption check
+            "perfect_tf_alignment": perfect_tf_alignment,  # UPGRADE 1A: Export perfect alignment flag
+            "has_tf_conflicts": has_tf_conflicts,  # UPGRADE 1A: Export conflict flag
             "error": None,
         }
     

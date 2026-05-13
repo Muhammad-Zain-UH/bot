@@ -1,6 +1,6 @@
 ==================================================================
   XAUUSD SIGNAL — READY FOR CLAUDE REVIEW
-  Generated : 2026-05-04 14:04:38
+  Generated : 2026-05-11 15:44:42
   Session   : London
   [AI status to be updated by Stage 3]
 
@@ -19,15 +19,15 @@ the bottom of this report.
 ==================================================================
 
   Direction       : SELL
-  Confidence      : 53%
-  Technical Score : -9.46 / 12.5
+  Confidence      : 47%
+  Technical Score : -4.05 / 20.5
   Risk Level      : Medium
   Session         : London
-  Entry Price     : 4581.79
-  Stop Loss       : 4594.45  (12.5 pts from entry)
-  Take Profit     : 4556.99  (24.8 pts from entry)
+  Entry Price     : 4663.89
+  Stop Loss       : 4676.69  (12.6 pts from entry)
+  Take Profit     : 4638.79  (25.1 pts from entry)
   Risk/Reward     : 1:2.0
-  ATR (M15)       : 8.3 pts
+  ATR (M15)       : 8.4 pts
 
 ==================================================================
   TIMEFRAME ALIGNMENT
@@ -35,46 +35,46 @@ the bottom of this report.
 
   TF   | Trend           | RSI   | vs VWAP | Volume
   ────────────────────────────────────────────────────────────
-  H4  | Strong Bearish  |  43.5 | Below   | Low   
-  H1  | Weak Bearish    |  39.0 | Below   | Low   
-  M15 | Strong Bearish  |  38.3 | Below   | Low   
-  M5  | Strong Bearish  |  44.7 | Below   | Normal
-  M1  | Weak Bearish    |  57.3 | Below   | Low   
+  H4  | Strong Bullish  |  47.2 | Below   | Low   
+  H1  | Strong Bearish  |  39.3 | Below   | Low   
+  M15 | Strong Bearish  |  42.0 | Below   | Normal
+  M5  | Strong Bearish  |  46.3 | Below   | Normal
+  M1  | Weak Bullish    |  43.4 | Below   | Low   
 
-  Alignment score: 5/5 timeframes support SELL direction
+  Alignment score: 3/5 timeframes support SELL direction
 
 ==================================================================
   KEY PRICE LEVELS
 ==================================================================
 
-  Current Price    : 4581.79
-  Daily Pivot PP   : 4610.36  (28.6 pts away)
-  Daily R1         : 4660.62  (78.8 pts away)
-  Daily R2         : 4710.42  (128.6 pts away)
-  Daily S1         : 4560.56  (21.2 pts away)
-  Daily S2         : 4510.30  (71.5 pts away)
-  Weekly PP        : 4616.98  (35.2 pts away)
-  Weekly R1        : 4723.95  (142.2 pts away)
-  Weekly S1        : 4503.86  (77.9 pts away)
+  Current Price    : 4663.89
+  Daily Pivot PP   : 4717.27  (53.4 pts away)
+  Daily R1         : 4756.25  (92.4 pts away)
+  Daily R2         : 4788.49  (124.6 pts away)
+  Daily S1         : 4685.03  (21.1 pts away)
+  Daily S2         : 4646.05  (17.8 pts away)
+  Weekly PP        : 4663.27  (0.6 pts away)
+  Weekly R1        : 4825.55  (161.7 pts away)
+  Weekly S1        : 4561.72  (102.2 pts away)
   ────────────────────────────────────────────────────────────
-  Planned Entry    : 4581.79
-  Entry → Stop     : 12.5 pts
-  Entry → Target   : 24.8 pts
-  Stop location    : ATR-based — nearest level is Daily PP @ 4610.36 (15.9 pts away)
+  Planned Entry    : 4663.89
+  Entry → Stop     : 12.6 pts
+  Entry → Target   : 25.1 pts
+  Stop location    : ATR-based — nearest level is Daily S1 @ 4685.03 (8.3 pts away)
 
 ==================================================================
   INTERMARKET CORRELATION
 ==================================================================
 
-  Overall Score  : +2  (WEAK CONFIRMATION — macro is neutral)
+  Overall Score  : +1  (WEAK CONFIRMATION — macro is neutral)
 
   Symbol   | Trend           | RSI   | Supports SELL?
   ───────────────────────────────────────────────────────
-  EURUSD   | Strong Bearish  |  46.3 | YES
-  XAGUSD   | Strong Bearish  |  30.0 | YES
-  US500    | Weak Bullish    |   N/A | YES
+  EURUSD   | Strong Bullish  |  57.9 | NO
+  XAGUSD   | Weak Bearish    |  45.0 | YES
+  US500    | Strong Bullish  |   N/A | YES
 
-  Macro confirmation: 2/2 correlated assets support signal
+  Macro confirmation: 1/2 correlated assets support signal
 
 ==================================================================
   NEWS AND GEOPOLITICAL CONTEXT
@@ -88,11 +88,11 @@ the bottom of this report.
   Inflation Pressure  : Unknown
 
   Top 5 Headlines:
-  1. [Investing Gold | 5.3h ago] Tech stocks see largest hedge fund selloff in decade: Goldman Sachs
-  2. [ForexLive | 5.4h ago] ECB survey of professional forecasters see higher inflation and lower growth this year. Full report here The latest ECB Survey of Professional Forecasters (SPF) showed a complex environment for the Eurozone economy in the short-term, characterized by higher inflationary pressures and sof
-  3. [FXStreet | 5.4h ago] NZD/USD inches higher to near 0.5900 as US-Iran tensions lift US Dollar. NZD/USD holds ground after experiencing volatility, trading around 0.5900 during the European hours on Monday. The pair gains ground as the US Dollar (USD) has recovered its daily losses and is extend
-  4. [FXStreet | 5.5h ago] Oil: Conflict-driven gains fuel inflation risks – Danske Bank. Danske Research Team underlines that the US–Iran conflict and closure risks in the Strait of Hormuz are heavily impacting energy markets. US gasoline prices have surged nearly 50% since hostilities be
-  5. [ForexLive | 5.6h ago] Eurozone May Sentix investor confidence -16.4 vs -21.0 expected. Prior -19.2 Euro area investor morale surprisingly picks up in May, indicating that investors do not expect a further escalation to the US-Iran conflict. There was one notable exception though, being 
+  1. [Investing Gold | 5.3h ago] U.S. stock futures subdued as talks with Iran stall
+  2. [Investing Gold | 5.3h ago] Goldman sees Q1 earnings strength driving S&P 500 to new highs
+  3. [Investing Gold | 5.4h ago] Ferrovial and Holcim shine for J.P. Morgan as UK housing hit by Iran conflict
+  4. [MarketWatch | 5.5h ago] I’m giving $10,000 to my stepchildren. My wife warned me against gifts of equal value for my nephews. Is that fair?. “Our net worth is about $4 million, and we are both 60.”
+  5. [MarketWatch | 5.8h ago] As Trump heads to China, here’s how much the dollar is overvalued, according to Goldman Sachs. China may allow its currency to succumb to upward pressure as part of its trade negotiations with the U.S. The renminbi is cheaper than it has been for several decades, according to GS forex strategis
 
   Economic Events Next 4 Hours:
   No high-impact events scheduled next 4h
@@ -101,23 +101,25 @@ the bottom of this report.
   TRADE VIABILITY SCORE
 ==================================================================
 
-  Score: 64 / 100
-  Rating: CAUTION — tradeable but manage size carefully
+  Score: 24 / 100
+  Rating: DO NOT TRADE — too many conflicts
 
   Score breakdown:
-    TF Alignment         : + 10 pts
-    Macro Confirm        : + 10 pts
-    Confidence           : +  2 pts
-    H4 Direction         : +  5 pts
+    TF Alignment         : +  3 pts
+    Macro Confirm        : +  2 pts
+    H4 Direction         : -10 pts
     News Alignment       :  -8 pts
     Event Risk           : +  3 pts
-    Conflict Penalty     :  -8 pts
+    Conflict Penalty     : -16 pts
     ────────────────────────────────────────
-    Total                :  64 / 100
+    Total                :  24 / 100
 
 ==================================================================
   CONFLICT WARNINGS
 ==================================================================
+
+⚠ WARNING: Selling against Strong Bullish H4 trend
+             — counter-trend trade, higher risk
 
 ⚠ WARNING: News/macro is Bullish on gold but signal is SELL
              — news opposes trade direction
@@ -126,11 +128,11 @@ the bottom of this report.
   QUICK STATS SUMMARY
 ==================================================================
 
-  TF Alignment    : 5/5 support SELL direction
-  Macro Confirm   : 2/2 intermarket assets confirm
-  Conflict Count  : 1 warnings detected
+  TF Alignment    : 3/5 support SELL direction
+  Macro Confirm   : 1/2 intermarket assets confirm
+  Conflict Count  : 2 warnings detected
 
-  Overall Setup Quality: B  GRADE
+  Overall Setup Quality: C  GRADE
 
 ==================================================================
   FIVE QUESTIONS FOR CLAUDE
@@ -147,7 +149,7 @@ Q2. What is the single biggest risk with this specific
 Q3. Does the current news and macro environment support
     or oppose this SELL on gold right now?
 
-Q4. Is 4581.79 a good entry, or should I wait for a
+Q4. Is 4663.89 a good entry, or should I wait for a
     specific price level? If so, what level and why?
 
 Q5. Rate this setup overall: A / B / C / D and explain
@@ -162,7 +164,7 @@ Q5 GRADE      : [A/B/C/D] — [one sentence reason]
 EXTRA NOTE    : [anything critical I should know]
 
 ==================================================================
-Generated by XAUUSD Trading Bot | 2026-05-04 14:04:38
+Generated by XAUUSD Trading Bot | 2026-05-11 15:44:42
 Bot continues monitoring — file updates on 5%+ conf change
 Check live MT5 price before executing — may be up to 5 min old
 ==================================================================

@@ -31,6 +31,13 @@ from confidence_calibrator import is_calibration_complete, get_calibration_progr
 from indicators import calculate_indicators
 from key_levels import build_pivot_context
 from mt5_handler import connect_mt5, get_market_data, shutdown_mt5
+from news_handler import (
+    fetch_economic_calendar,
+    classify_event,
+    get_event_impact_zone,
+    analyze_post_event_sentiment,
+)
+from rss_feed import get_headline_strings
 from risk_manager import (
     get_current_session,
     get_daily_pnl_pct,
@@ -63,6 +70,11 @@ _LAST_WRITTEN_CONF = 0
 _LAST_WRITTEN_DIRECTION = None
 _RESULT_TXT_ACTIVE = False
 _RESULT_TXT_WRITE_TIME = 0  # Unix timestamp when result.txt was last written
+
+# Duplicate signal suppression gate
+_LAST_SIGNAL_ENTRY_PRICE = None  # Track entry price of last logged signal
+_LAST_SIGNAL_DIRECTION = None  # Track direction of last logged signal
+_LAST_SIGNAL_TIME = None  # Track time of last logged signal for decay
 
 # Intermarket hard block streak tracking (for BLOCK D)
 _INTERMARKET_BLOCK_STREAK = 0
@@ -102,6 +114,87 @@ _CRASH_MODE_ACTIVE = False  # True when ATR spike detected (ratio > 1.7)
 # UPGRADE 1B: Oversold M1 RSI depth tracking for continuation entries
 _OVERSOLD_DEPTH_M1 = None  # Lowest M1 RSI seen in current oversold episode (None when episode cleared)
 _OVERSOLD_ENTRY_RSI = None  # RSI value when oversold episode started
+
+# POST-EVENT NEWS TRACKING: After Fed events, analyze news outcome and adjust confidence
+_FED_EVENT_TIME = None  # Timestamp when the last Fed event occurred
+_FED_EVENT_NAME = None  # Name of the Fed event
+_FED_EVENT_POST_ANALYSIS_END = None  # Timestamp when post-event analysis window closes
+_POST_EVENT_ANALYSIS_WINDOW_MINUTES = 30  # Analyze news for 30 min after Fed event
+
+
+def _check_and_track_fed_events() -> tuple[str, float]:
+    """Track Fed events and analyze post-event sentiment.
+    
+    Returns:
+        (impact_zone, confidence_adjustment_pct)
+        
+    Logic:
+    1. Fetch upcoming economic events and classify them
+    2. Apply pre-event penalties only for FED events (not CPI, NFP, GDP, etc.)
+    3. After Fed event passes, analyze RSS headlines for bullish/bearish outcome
+    4. Adjust confidence based on alignment with current signal direction
+    """
+    global _FED_EVENT_TIME, _FED_EVENT_NAME, _FED_EVENT_POST_ANALYSIS_END
+    
+    try:
+        # Get pre-event zone impact (already filters out IGNORE events)
+        impact_zone, pre_event_adjustment = get_event_impact_zone(
+            within_minutes=15,
+            post_delay_minutes=10
+        )
+        
+        # If we're in post-event period for a Fed event, analyze news sentiment
+        now = datetime.now(timezone.utc)
+        
+        if _FED_EVENT_POST_ANALYSIS_END is not None and now < _FED_EVENT_POST_ANALYSIS_END:
+            # We're in the post-event analysis window
+            try:
+                headlines = get_headline_strings(limit=20)
+                sentiment_dir, sentiment_adj = analyze_post_event_sentiment(headlines)
+                
+                if sentiment_dir != "neutral":
+                    log_debug(
+                        f"[POST-EVENT ANALYSIS] {_FED_EVENT_NAME}: {sentiment_dir} outcome detected. "
+                        f"Confidence adjustment: {sentiment_adj:+.0f}%"
+                    )
+                    return impact_zone, sentiment_adj
+            except Exception as exc:
+                log_debug(f"[POST-EVENT] News analysis error: {exc}")
+        
+        # Check if any Fed event just happened to start the post-event window
+        events = fetch_economic_calendar()
+        for event in events:
+            event_class = classify_event(event.get("event_name", ""))
+            
+            # Only track Fed events for post-event analysis
+            if event_class != "FED":
+                continue
+            
+            et = event.get("time")
+            if et is None:
+                continue
+            
+            diff_minutes = (et - now).total_seconds() / 60
+            
+            # Event just passed: within 0-10 minutes after
+            if 0 <= diff_minutes <= 10:
+                # Mark the start of post-event analysis window if not already tracking
+                if _FED_EVENT_TIME is None or (_FED_EVENT_POST_ANALYSIS_END is not None and now >= _FED_EVENT_POST_ANALYSIS_END):
+                    _FED_EVENT_TIME = et
+                    _FED_EVENT_NAME = event.get("event_name", "Unknown")
+                    _FED_EVENT_POST_ANALYSIS_END = now + timedelta(
+                        minutes=_POST_EVENT_ANALYSIS_WINDOW_MINUTES
+                    )
+                    log_debug(
+                        f"[FED EVENT] {_FED_EVENT_NAME} just occurred. "
+                        f"Opening {_POST_EVENT_ANALYSIS_WINDOW_MINUTES}-min news analysis window."
+                    )
+        
+        return impact_zone, pre_event_adjustment
+        
+    except Exception as exc:
+        log_debug(f"[EVENT TRACKING] Error: {exc}")
+        return "clean", 0.0
 
 
 def _signal_handler(signum: int, frame: Any) -> None:
@@ -163,6 +256,7 @@ def main_loop() -> None:
     Runs forever until stopped by user (Ctrl+C) or market closure.
     """
     global _SHOULD_CONTINUE, _LAST_WRITTEN_CONF, _LAST_WRITTEN_DIRECTION, _RESULT_TXT_ACTIVE
+    global _LAST_SIGNAL_ENTRY_PRICE, _LAST_SIGNAL_DIRECTION, _LAST_SIGNAL_TIME  # Duplicate signal suppression gate
     global _INTERMARKET_BLOCK_STREAK, _INTERMARKET_BLOCK_STREAK_CYCLES, _LAST_INTERMARKET_SCORE, _LAST_SESSION
     global _H1_EMA_HISTORY, _H1_NEGATIVE_STREAK, _H1_RECOVERY_WATCH, _H1_RECOVERY_TRIGGERED_AT, _H1_RECOVERY_TRIGGERED_CYCLE
     global _H4_EMA_HISTORY, _H4_NEGATIVE_STREAK, _H4_RECOVERY_WATCH, _H4_RECOVERY_TRIGGERED_AT, _H4_RECOVERY_TRIGGERED_CYCLE
@@ -170,6 +264,7 @@ def main_loop() -> None:
     global _PREV_CALIBRATION_COUNT, _CALIBRATION_MODE_EXITED
     global _PREVIOUS_SESSION_ATR, _CRASH_MODE_ACTIVE  # UPGRADE 2A: ATR spike detection
     global _OVERSOLD_DEPTH_M1, _OVERSOLD_ENTRY_RSI  # UPGRADE 1B: Oversold depth tracking
+    global _FED_EVENT_TIME, _FED_EVENT_NAME, _FED_EVENT_POST_ANALYSIS_END  # POST-EVENT NEWS TRACKING
     
     # Install signal handler for graceful Ctrl+C
     signal.signal(signal.SIGINT, _signal_handler)
@@ -226,6 +321,67 @@ def main_loop() -> None:
                     break
             
             session = get_current_session()
+            
+            # ────────────────────────────────────────────────────────────
+            # ARCHITECTURAL FIX: Daily session reset
+            # ────────────────────────────────────────────────────────────
+            # Clear setup bias and pullback wait state at session start
+            from setup_tracker import reset_daily_bias
+            from pullback_handler import clear_pullback_wait_state
+            current_date = now.strftime("%Y-%m-%d")
+            reset_daily_bias(current_date)
+            
+            # ────────────────────────────────────────────────────────────
+            # FIX 3: NFP HARDCODED GUARD — Block trades within 45min of NFP
+            # ────────────────────────────────────────────────────────────
+            # Calendar APIs fail on NFP day. Use hardcoded detection instead.
+            import datetime as dt_module
+            nfp_guard_active = False
+            now_utc = datetime.now(timezone.utc)
+            
+            # NFP: First Friday of each month at 13:30 UTC
+            if now_utc.weekday() == 4 and now_utc.day <= 7:  # Friday and first 7 days of month
+                nfp_time = now_utc.replace(hour=13, minute=30, second=0, microsecond=0)
+                time_diff_seconds = abs((now_utc - nfp_time).total_seconds())
+                if time_diff_seconds <= 2700:  # 45 minutes = 2700 seconds
+                    nfp_guard_active = True
+                    nfp_guard_time = now_utc.isoformat()
+                    log_debug(f"[NFP GUARD] Within 45min of NFP release — all signals blocked")
+                    log_debug(f"[NFP GUARD] Calendar APIs cannot be relied upon during event window")
+                    # Don't attempt to write result.txt during NFP — use write_signal_expired instead if needed
+                    try:
+                        write_signal_expired(
+                            reason="NFP release window — cannot rely on economic calendar",
+                            old_direction="WAIT",
+                            old_conf=0
+                        )
+                    except Exception as e:
+                        log_debug(f"[NFP GUARD] Could not update result.txt: {e}")
+                    
+                    time.sleep(300)  # Sleep 5 minutes and re-evaluate
+                    continue
+            
+            # FOMC: Manually check for Wednesday high-volatility window (rough guard)
+            # FOMC releases on specific Wednesdays at 18:00 UTC during meeting months
+            if now_utc.weekday() == 2:  # Wednesday
+                fomc_time = now_utc.replace(hour=18, minute=0, second=0, microsecond=0)
+                time_diff_seconds = abs((now_utc - fomc_time).total_seconds())
+                if time_diff_seconds <= 1800:  # 30 minutes = 1800 seconds
+                    nfp_guard_active = True
+                    log_debug(f"[FOMC GUARD] Within 30min of potential FOMC window — all signals blocked")
+                    log_debug(f"[FOMC GUARD] Refer to economic calendar for exact FOMC dates")
+                    # Don't attempt to write result.txt during FOMC — use write_signal_expired instead if needed
+                    try:
+                        write_signal_expired(
+                            reason="FOMC release window — cannot rely on economic calendar",
+                            old_direction="WAIT",
+                            old_conf=0
+                        )
+                    except Exception as e:
+                        log_debug(f"[FOMC GUARD] Could not update result.txt: {e}")
+                    
+                    time.sleep(300)  # Sleep 5 minutes and re-evaluate
+                    continue
             
             # Reset intermarket streak if session changed
             if _LAST_SESSION is not None and _LAST_SESSION != session:
@@ -664,7 +820,8 @@ def main_loop() -> None:
                 # ════════════════════════════════════════════════════════════
                 # When no trades exist (0), be lenient (40%)
                 # When enough data collected (25+), require higher confidence (42%)
-                baseline_confidence_floor = 42 if completed_trades >= 25 else 40
+                # UPGRADE 3B: Adjusted calibration floors for better signal capture
+                baseline_confidence_floor = 40 if completed_trades >= 25 else 38
                 log_debug(
                     f"[CALIBRATION FLOOR] Completed trades: {completed_trades} → "
                     f"baseline confidence floor: {baseline_confidence_floor}%"
@@ -672,24 +829,29 @@ def main_loop() -> None:
                 
                 # Determine required confidence based on calibration mode
                 if completed_trades < 50:
-                    # CALIBRATION MODE: Reduced confidence requirement
-                    # FIX 2: Even further reduced when score > 7.0 + perfect 5/5 TF alignment
-                    if perfect_tf_alignment and abs(score) > 7.0:
-                        # Exceptional setup: perfect alignment + high score — lower toward floor
-                        required_confidence = baseline_confidence_floor + 3
-                        if session == "London":
-                            required_confidence = baseline_confidence_floor  # London: use floor directly
+                    # CALIBRATION MODE: Reduced confidence requirement to accumulate quality data
+                    # UPGRADE 3B: More aggressive high-conviction thresholds
+                    if perfect_tf_alignment and abs(score) > 7.5:
+                        # Exceptional setup: perfect alignment + very high score — use floor directly
+                        required_confidence = baseline_confidence_floor
                         log_debug(
-                            f"[CALIBRATION BOOST] score={abs(score):.2f} > 7.0 AND 5/5 TF alignment — "
+                            f"[CALIBRATION BOOST] score={abs(score):.2f} > 7.5 AND 5/5 TF alignment — "
                             f"lowering threshold to {required_confidence}% (baseline {baseline_confidence_floor}%)"
                         )
+                    elif perfect_tf_alignment and abs(score) > 6.5:
+                        # High-conviction setup (not quite exceptional): baseline + 2
+                        required_confidence = baseline_confidence_floor + 2
+                        log_debug(
+                            f"[CALIBRATION BOOST] score={abs(score):.2f} > 6.5 AND 5/5 TF alignment — "
+                            f"lowering threshold to {required_confidence}%"
+                        )
                     elif session == "London":
-                        required_confidence = baseline_confidence_floor  # More relaxed in best session (uses baseline)
+                        required_confidence = baseline_confidence_floor + 2  # More relaxed in best session
                     else:
-                        required_confidence = baseline_confidence_floor + 3  # Standard: baseline + buffer
+                        required_confidence = baseline_confidence_floor + 4  # Standard: baseline + buffer
                 else:
-                    # PRODUCTION MODE: Standard confidence requirement
-                    required_confidence = 45
+                    # PRODUCTION MODE: Standard confidence requirement (after calibration complete)
+                    required_confidence = 43
                 
                 # ════════════════════════════════════════════════════════════
                 # UPGRADE 2A: Apply crash mode penalty to required confidence
@@ -767,6 +929,9 @@ def main_loop() -> None:
                 if _RESULT_TXT_ACTIVE and (_LAST_WRITTEN_DIRECTION != direction or confidence < _LAST_WRITTEN_CONF - 15):
                     if _LAST_WRITTEN_DIRECTION != direction:
                         reason = f"Direction changed from {_LAST_WRITTEN_DIRECTION} to {direction}"
+                        # Reset duplicate suppression gate when direction changes
+                        _LAST_SIGNAL_ENTRY_PRICE = None
+                        _LAST_SIGNAL_DIRECTION = None
                     else:
                         reason = f"Confidence dropped from {_LAST_WRITTEN_CONF}% to {confidence}%"
                     
@@ -781,6 +946,20 @@ def main_loop() -> None:
                     indicators,
                     oversold_depth_m1=_OVERSOLD_DEPTH_M1  # UPGRADE 1B: Pass oversold depth tracking
                 )
+                
+                # FIX 2 APPLIED: Confluence override gate — boost confidence when ALL systems agree
+                intermarket_score = stage2_result.get("intermarket_score", 0)
+                if (completed_trades < 50 and 
+                    intermarket_score >= 5 and 
+                    tf_alignment_count >= 4 and 
+                    abs(score) > 6.0):
+                    # All systems aligned: intermarket +5 + 4/5 TF + strong score
+                    uncalibrated_conf = min(uncalibrated_conf + 12, 95)  # Boost by 12%
+                    required_confidence = baseline_confidence_floor
+                    log_debug(
+                        f"[CONFLUENCE OVERRIDE] intermarket={intermarket_score:.0f} + "
+                        f"TF_align={tf_alignment_count}/5 + score={abs(score):.2f} → "
+                        f"boost confidence +12% → {uncalibrated_conf}% | required={required_confidence}%")
                 
                 # Hard block check
                 if stage2_result["hard_block"]:
@@ -841,6 +1020,22 @@ def main_loop() -> None:
                 
                 log_debug(f"[GATE 2] PASS: no hard blocks, intermarket={stage2_result['intermarket_label']}")
                 intermarket_data = stage2_result.get("data", {})
+                
+                # ────────────────────────────────────────────────────────────
+                # POST-EVENT NEWS TRACKING & ANALYSIS
+                # ────────────────────────────────────────────────────────────
+                # Check for Fed events and analyze post-event news sentiment
+                fed_impact_zone, fed_confidence_adj = _check_and_track_fed_events()
+                
+                if fed_confidence_adj != 0.0:
+                    # Adjust confidence based on post-event analysis
+                    old_confidence = confidence
+                    confidence = max(20, min(95, confidence + fed_confidence_adj))  # Clamp between 20-95%
+                    log_debug(
+                        f"[POST-EVENT ADJUSTMENT] {fed_impact_zone}: confidence {old_confidence}% → {confidence}% "
+                        f"({fed_confidence_adj:+.0f}%)"
+                    )
+                    confidence_display = f"{confidence}% (post-event adjusted)"
                 
                 # ────────────────────────────────────────────────────────────
                 # RESULT WRITER: Write formatted signal to result.txt
@@ -970,29 +1165,62 @@ def main_loop() -> None:
                         "m1_caution": m1_rsi_current < 35 if m1_rsi_current is not None else False,
                     }
                     
+                    # ────────────────────────────────────────────────────────────
+                    # DUPLICATE SIGNAL SUPPRESSION GATE
+                    # ────────────────────────────────────────────────────────────
+                    current_time = time.time()
+                    current_entry = trade_levels.get('entry_price', 0)
+                    
+                    # Reset suppression if >10 minutes have elapsed
+                    if _LAST_SIGNAL_TIME is not None and (current_time - _LAST_SIGNAL_TIME) > 600:
+                        _LAST_SIGNAL_ENTRY_PRICE = None
+                        _LAST_SIGNAL_DIRECTION = None
+                        _LAST_SIGNAL_TIME = None
+                    
+                    if (
+                        _LAST_SIGNAL_DIRECTION == direction
+                        and _LAST_SIGNAL_ENTRY_PRICE is not None
+                        and abs(current_entry - _LAST_SIGNAL_ENTRY_PRICE) < 5.0
+                    ):
+                        log_debug(
+                            f"[DUPLICATE SUPPRESSED] Same {direction} setup — "
+                            f"entry {current_entry:.2f} within 5.0 of last signal "
+                            f"{_LAST_SIGNAL_ENTRY_PRICE:.2f} — skipping CSV log"
+                        )
+                        skip_csv_log = True
+                    else:
+                        skip_csv_log = False
+                    
                     # Log the signal to CSV
-                    log_signal(
-                        symbol=config.SYMBOL,
-                        signal=direction,
-                        confidence=confidence,
-                        weighted_score=score,
-                        risk_level=risk_level,
-                        trade_levels=trade_levels,
-                        timeframe_indicators=stage1_result.get("indicators", {}),
-                        ai_decision=ai_decision,
-                        news_sentiment=news_sentiment if news_sentiment else {},
-                        high_impact_news=stage1_result.get("high_impact_news", False),
-                        high_impact_event=None,
-                        session=session,
-                        gates=gates,
-                        mixed_signals=stage1_result.get("mixed_signals", False),
-                        daily_pnl_pct=daily_pnl,
-                        account_balance=account_balance,
-                        lot_size=micro_lot,
-                        reason=f"{direction} signal | score={score:.2f} | viability={viability_score}/100",
-                        intermarket_data=intermarket_data,
-                    )
-                    log_debug(f"[LOGGING] Signal logged to signal_log.csv: {direction} @ {trade_levels.get('entry_price', 'N/A')}")
+                    if not skip_csv_log:
+                        log_signal(
+                            symbol=config.SYMBOL,
+                            signal=direction,
+                            confidence=confidence,
+                            weighted_score=score,
+                            risk_level=risk_level,
+                            trade_levels=trade_levels,
+                            timeframe_indicators=stage1_result.get("indicators", {}),
+                            ai_decision=ai_decision,
+                            news_sentiment=news_sentiment if news_sentiment else {},
+                            high_impact_news=stage1_result.get("high_impact_news", False),
+                            high_impact_event=None,
+                            session=session,
+                            gates=gates,
+                            mixed_signals=stage1_result.get("mixed_signals", False),
+                            daily_pnl_pct=daily_pnl,
+                            account_balance=account_balance,
+                            lot_size=micro_lot,
+                            reason=f"{direction} signal | score={score:.2f} | viability={viability_score}/100",
+                            intermarket_data=intermarket_data,
+                        )
+                        # Update duplicate suppression tracking after successful CSV log (with timestamp)
+                        _LAST_SIGNAL_ENTRY_PRICE = trade_levels.get('entry_price')
+                        _LAST_SIGNAL_DIRECTION = direction
+                        _LAST_SIGNAL_TIME = current_time
+                        log_debug(f"[LOGGING] Signal logged to signal_log.csv: {direction} @ {trade_levels.get('entry_price', 'N/A')}")
+                    else:
+                        log_debug(f"[CSV LOG SUPPRESSED] Duplicate signal skipped — direction={direction}, entry={current_entry:.2f}")
                     
                     # Print clear console notification — only if viability gate passed
                     print("=" * 60)

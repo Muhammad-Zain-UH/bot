@@ -508,17 +508,63 @@ def check_high_impact_news(within_minutes: int = 30) -> tuple[bool, dict[str, An
         return False, None
 
 
+# ---------------------------------------------------------------------------
+# Event Classification — Fed vs. Ignored Events
+# ---------------------------------------------------------------------------
+
+FED_EVENT_KEYWORDS = [
+    "fomc", "rate decision", "rate cut", "rate hike",
+    "fed", "federal reserve", "jerome powell", "powell",
+    "fed minutes", "fed minutes", "federal reserve minutes",
+]
+
+IGNORE_EVENT_KEYWORDS = [
+    "cpi", "non-farm payroll", "nfp", "jobs",
+    "gdp", "pce", "inflation", "adp", "unemployment",
+    "consumer price", "producer price", "ppi",
+]
+
+
+def classify_event(event_name: str) -> str:
+    """Classify an economic event.
+    
+    Args:
+        event_name: Name of the economic event (e.g., "FOMC Rate Decision", "CPI m/m")
+    
+    Returns:
+        "FED" → Fed-related event (FOMC, rate decision, Powell, Fed minutes)
+        "IGNORE" → Event to ignore completely (CPI, NFP, GDP, PCE, ADP, inflation, etc.)
+        "OTHER" → Other high-impact events (ECB, BOE, etc.)
+    """
+    name_lower = event_name.lower()
+    
+    # Check Fed keywords first
+    for kw in FED_EVENT_KEYWORDS:
+        if kw in name_lower:
+            return "FED"
+    
+    # Check ignore keywords
+    for kw in IGNORE_EVENT_KEYWORDS:
+        if kw in name_lower:
+            return "IGNORE"
+    
+    # Everything else is treated as other events
+    return "OTHER"
+
+
 def get_event_impact_zone(within_minutes: int = 15, post_delay_minutes: int = 10) -> tuple[str, float]:
     """TIER 1: Advanced event detection — PRE-EVENT GAP, LIVE EVENT, POST-EVENT VOLATILITY.
+    
+    Only applies penalties for FED events. IGNORE events (CPI, NFP, GDP, etc.) are skipped.
     
     Returns:
         (zone_label, confidence_adjustment_pct)
         
     Zone labels:
-        "clean" → No event within 30 min, normal trading
-        "pre_event_gap" → Event within 10 min before, confidence -30%
-        "live_event" → Event within ±2 min, confidence -50% (AVOID entry)
-        "post_event_vol" → Event just happened, vol spike 10 min, confidence -20%
+        "clean" → No FED event within 30 min, normal trading
+        "pre_event_gap" → FED event within 10 min before, confidence -30%
+        "live_event" → FED event within ±2 min, confidence -50% (AVOID entry)
+        "post_event_vol" → FED event just happened, vol spike 10 min, confidence -20%
     """
     try:
         events = fetch_economic_calendar()
@@ -530,6 +576,12 @@ def get_event_impact_zone(within_minutes: int = 15, post_delay_minutes: int = 10
         for event in events:
             if _is_estimated_event(event):
                 continue
+            
+            # SKIP ignored events completely — no penalties
+            event_classification = classify_event(event.get("event_name", ""))
+            if event_classification == "IGNORE":
+                continue
+            
             et = event.get("time")
             if et is None:
                 continue
@@ -547,27 +599,28 @@ def get_event_impact_zone(within_minutes: int = 15, post_delay_minutes: int = 10
             return "clean", 0.0
         
         event, minutes_away = nearest_event
+        event_class = classify_event(event.get("event_name", ""))
         
-        # LIVE EVENT: within ±2 minutes
+        # LIVE EVENT: within ±2 minutes (only apply to FED events)
         if abs(minutes_away) <= 2:
             log_debug(
-                f"🔴 LIVE_EVENT: {event['event_name']} happening NOW. "
+                f"🔴 LIVE_EVENT ({event_class}): {event['event_name']} happening NOW. "
                 f"Extreme volatility risk. Avoid new entries."
             )
             return "live_event", -50.0
         
-        # PRE-EVENT GAP: within -15 to -2 minutes (before event)
+        # PRE-EVENT GAP: within -15 to -2 minutes (only apply to FED events)
         if -within_minutes <= minutes_away < -2:
             log_debug(
-                f"⚠️ PRE_EVENT_GAP: {event['event_name']} in {abs(minutes_away):.0f} min. "
+                f"⚠️ PRE_EVENT_GAP ({event_class}): {event['event_name']} in {abs(minutes_away):.0f} min. "
                 f"Liquidity hole starting. Reduce confidence 30%."
             )
             return "pre_event_gap", -30.0
         
-        # POST-EVENT VOLATILITY: within 0 to +10 minutes (after event)
+        # POST-EVENT VOLATILITY: within 0 to +10 minutes (only apply to FED events)
         if 0 < minutes_away <= post_delay_minutes:
             log_debug(
-                f"⚠️ POST_EVENT_VOL: {event['event_name']} happened {minutes_away:.0f} min ago. "
+                f"⚠️ POST_EVENT_VOL ({event_class}): {event['event_name']} happened {minutes_away:.0f} min ago. "
                 f"Vol spike ongoing. Be cautious."
             )
             return "post_event_vol", -20.0
@@ -610,3 +663,78 @@ def format_calendar_for_prompt(events: list[dict[str, Any]], limit: int = 5) -> 
             f"• {e['event_name']} [{e['currency']} | {e['impact']}] — {time_str}"
         )
     return "\n".join(lines)
+
+
+def analyze_post_event_sentiment(headlines: list[str]) -> tuple[str, float]:
+    """Analyze news sentiment AFTER a Fed event to determine bullish/bearish outcome.
+    
+    Used to adjust confidence after Fed events have occurred. Examines headlines
+    for keywords indicating whether the Fed action was hawkish or dovish, and
+    how that affects gold.
+    
+    Args:
+        headlines: List of recent news headlines/strings
+    
+    Returns:
+        (sentiment_direction, confidence_adjustment_pct)
+        
+    Direction:
+        "bullish" → Gold-positive outcome (rate cut, dovish, dollar falls, gold rallies)
+        "bearish" → Gold-negative outcome (rate hike, hawkish, dollar jumps, gold tumbles)
+        "neutral" → Unclear or mixed signals
+    
+    Confidence adjustment:
+        -20 to +20 percentage points
+    """
+    if not headlines:
+        log_debug("[POST-EVENT] No headlines to analyze — neutral sentiment")
+        return "neutral", 0.0
+    
+    combined_text = " ".join(headlines).lower()
+    
+    # Bullish for gold indicators
+    bullish_keywords = [
+        "rate cut", "dovish", "lower rates", "cut rates",
+        "dollar falls", "dollar drops", "dollar weakness",
+        "gold rally", "gold rallies", "gold surge", "gold surges",
+        "gold up", "rally",
+        "risk off", "risk aversion",
+        "recession", "slowdown", "concerns",
+    ]
+    
+    # Bearish for gold indicators  
+    bearish_keywords = [
+        "rate hike", "hawkish", "higher rates", "hike rates",
+        "dollar jump", "dollar jumps", "dollar strength", "dollar rally",
+        "gold drop", "gold falls", "gold decline", "gold down",
+        "sell off", "gold pressure",
+        "strong economy", "growth", "inflation surprise",
+    ]
+    
+    bullish_count = sum(1 for kw in bullish_keywords if kw in combined_text)
+    bearish_count = sum(1 for kw in bearish_keywords if kw in combined_text)
+    
+    log_debug(
+        f"[POST-EVENT] Sentiment analysis: bullish={bullish_count}, bearish={bearish_count}"
+    )
+    
+    if bullish_count > bearish_count:
+        # Bullish outcome detected
+        adjustment = +15.0  # Boost confidence by 15% if bullish
+        log_debug(
+            f"[POST-EVENT] 📈 Bullish outcome detected: rate cut / dovish / dollar weakness / gold rally. "
+            f"Confidence +15%"
+        )
+        return "bullish", adjustment
+    elif bearish_count > bullish_count:
+        # Bearish outcome detected
+        adjustment = -15.0  # Reduce confidence by 15% if bearish
+        log_debug(
+            f"[POST-EVENT] 📉 Bearish outcome detected: rate hike / hawkish / dollar strength / gold pressure. "
+            f"Confidence -15%"
+        )
+        return "bearish", adjustment
+    else:
+        # Mixed or neutral
+        log_debug(f"[POST-EVENT] 〰️ Mixed/neutral signals detected")
+        return "neutral", 0.0

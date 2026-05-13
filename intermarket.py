@@ -305,41 +305,49 @@ def _score_intermarket_alignment(
     # Falling yields = weaker dollar + safe-haven demand = gold bid
     if us10y_data:
         trend = us10y_data.get("trend_classification", "Neutral")
+        used_symbol = us10y_data.get("used_symbol", "US10Y")
+        
+        # FIX 3: GBPJPY as yield fallback should be scored lighter (-1 not -2) since it's risk proxy not direct yield
+        is_gbpjpy_fallback = "GBPJPY" in used_symbol or "AUDJPY" in used_symbol or "NZDJPY" in used_symbol
+        strong_penalty = -1 if is_gbpjpy_fallback else -2  # -1 for yen pairs (risk proxy), -2 for direct yields
+        strong_bonus = 2 if is_gbpjpy_fallback else 2  # Keep bonus at 2 for consistency
         
         if gold_signal == "SELL":
             # For SELL (gold down), rising yields support this
             if "Strong Bullish" in trend:
-                score += 2
-                log_debug(f"  US10Y Strong Bullish (+2): rising yields pressure gold down")
+                score += strong_bonus
+                penalty_desc = "risk-on" if is_gbpjpy_fallback else "rising yields"
+                log_debug(f"  {used_symbol} Strong Bullish (+{strong_bonus}): {penalty_desc} pressure gold down")
             elif "Weak Bullish" in trend:
                 score += 1
-                log_debug(f"  US10Y Weak Bullish (+1): yields rising supports SELL")
+                log_debug(f"  {used_symbol} Weak Bullish (+1): yields rising supports SELL")
             elif "Neutral" in trend:
                 score += 0
-                log_debug(f"  US10Y Neutral (0): no yield impact")
+                log_debug(f"  {used_symbol} Neutral (0): no yield impact")
             elif "Weak Bearish" in trend:
                 score -= 1
-                log_debug(f"  US10Y Weak Bearish (-1): falling yields oppose SELL")
+                log_debug(f"  {used_symbol} Weak Bearish (-1): falling yields oppose SELL")
             elif "Strong Bearish" in trend:
                 score -= 2
-                log_debug(f"  US10Y Strong Bearish (-2): falling yields strongly oppose SELL")
+                log_debug(f"  {used_symbol} Strong Bearish (-2): falling yields strongly oppose SELL")
         else:  # BUY
             # For BUY (gold up), falling yields support this
             if "Strong Bearish" in trend:
                 score += 2
-                log_debug(f"  US10Y Strong Bearish (+2): falling yields support BUY")
+                log_debug(f"  {used_symbol} Strong Bearish (+2): falling yields support BUY")
             elif "Weak Bearish" in trend:
                 score += 1
-                log_debug(f"  US10Y Weak Bearish (+1): yields falling supports BUY")
+                log_debug(f"  {used_symbol} Weak Bearish (+1): yields falling supports BUY")
             elif "Neutral" in trend:
                 score += 0
-                log_debug(f"  US10Y Neutral (0): no yield impact")
+                log_debug(f"  {used_symbol} Neutral (0): no yield impact")
             elif "Weak Bullish" in trend:
                 score -= 1
-                log_debug(f"  US10Y Weak Bullish (-1): rising yields oppose BUY")
+                log_debug(f"  {used_symbol} Weak Bullish (-1): rising yields oppose BUY")
             elif "Strong Bullish" in trend:
-                score -= 2
-                log_debug(f"  US10Y Strong Bullish (-2): rising yields strongly oppose BUY")
+                score += strong_penalty
+                penalty_desc = "risk-on" if is_gbpjpy_fallback else "rising yields"
+                log_debug(f"  {used_symbol} Strong Bullish ({strong_penalty}): {penalty_desc} oppose BUY")
     
     # --------------- Oil (Energy/Risk sentiment — FIX 5) ---------------
     # Oil spike = geopolitical risk = risk-off = gold bid
@@ -422,6 +430,28 @@ def _score_intermarket_alignment(
             elif "Strong Bullish" in trend:
                 score -= 1
                 log_debug(f"  US500 Strong Bullish (-1): risk-on opposes BUY")
+    
+    # FIX: Add BUY boost logic (symmetric to SELL opposition)
+    # If all correlations oppose a SELL, they support a BUY
+    if gold_signal == "BUY" and score >= 0:
+        # Count how many instruments are bullish (supporting BUY)
+        bullish_count = 0
+        if dxy_data and "Bullish" in dxy_data.get("trend_classification", ""):
+            bullish_count += 1
+        if silver_data and "Bullish" in silver_data.get("trend_classification", ""):
+            bullish_count += 1
+        if us10y_data and ("Bearish" in us10y_data.get("trend_classification", "") or "GBPJPY" in us10y_data.get("used_symbol", "")):
+            bullish_count += 1  # Falling yields or risk-on
+        if oil_data and "Bullish" in oil_data.get("trend_classification", ""):
+            bullish_count += 1
+        if sp500_data and "Bearish" in sp500_data.get("trend_classification", ""):
+            bullish_count += 1  # Risk-off = safe-haven gold demand
+        
+        # If 4+ instruments bullish for gold, apply macro confluence boost
+        if bullish_count >= 4:
+            macro_boost = 3
+            score = min(9, score + macro_boost)
+            log_debug(f"[MACRO CONFLUENCE BUY] {bullish_count}/5 instruments bullish — confluence boost +{macro_boost}")
     
     # Cap the score
     score = max(-8, min(9, int(score)))

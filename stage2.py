@@ -16,14 +16,20 @@ from utils import log_debug
 def run_stage2(
     direction: str,
     timeframe_indicators: dict[str, dict[str, Any]],
+    oversold_depth_m1: float | None = None,  # UPGRADE 1B: Oversold depth tracking
 ) -> dict[str, Any]:
     """Execute STAGE 2: Intermarket analysis with hard blocks.
     
     HARD BLOCKS (absolute vetoes):
     - BLOCK A: XAGUSD is "Strong Bearish" AND direction is BUY
     - BLOCK B: M1 RSI > 70 AND direction is BUY
-    - BLOCK C: M1 RSI < 30 AND direction is SELL
+    - BLOCK C: M1 RSI < 30 AND direction is SELL (unless in recovery from oversold)
     - BLOCK D: Intermarket score <= -3
+    
+    Args:
+        direction: Trade direction (BUY, SELL, etc.)
+        timeframe_indicators: Dict of timeframe indicators
+        oversold_depth_m1: Lowest M1 RSI in current oversold episode (None if episode cleared)
     
     Returns:
         {
@@ -79,20 +85,40 @@ def run_stage2(
                 "error": None,
             }
         
-        # HARD BLOCK C: M1 RSI < 30 + SELL
-        if direction == "SELL" and m1_rsi is not None and m1_rsi < 30:
-            log_debug(f"[STAGE 2] HARD BLOCK C: M1 RSI {m1_rsi:.1f} < 30, SELL blocked")
-            return {
-                "passed": False,
-                "intermarket_score": score,
-                "intermarket_label": label,
-                "hard_block": "C",
-                "hard_block_reason": f"M1 RSI {m1_rsi:.1f} is oversold — SELL entry unsafe",
-                "headwind_detected": False,
-                "headwind_reason": "",
-                "data": intermarket,
-                "error": None,
-            }
+        # HARD BLOCK C: M1 RSI < 30 + SELL (UPGRADE 1B: Modified for oversold depth tracking)
+        if direction == "SELL" and m1_rsi is not None:
+            # Check if still in active oversold episode (not yet cleared)
+            if oversold_depth_m1 is not None:
+                # Still in oversold episode - recovery requirement not yet met
+                log_debug(
+                    f"[STAGE 2] HARD BLOCK C: M1 RSI {m1_rsi:.1f} — active oversold episode from depth {oversold_depth_m1:.1f}, "
+                    f"SELL blocked until recovery requirement met"
+                )
+                return {
+                    "passed": False,
+                    "intermarket_score": score,
+                    "intermarket_label": label,
+                    "hard_block": "C",
+                    "hard_block_reason": f"M1 RSI {m1_rsi:.1f} in active oversold episode (depth {oversold_depth_m1:.1f}) — SELL blocked until recovery",
+                    "headwind_detected": False,
+                    "headwind_reason": "",
+                    "data": intermarket,
+                    "error": None,
+                }
+            elif m1_rsi < 30:
+                # Fresh entry into oversold, not yet tracking
+                log_debug(f"[STAGE 2] HARD BLOCK C: M1 RSI {m1_rsi:.1f} < 30, SELL blocked")
+                return {
+                    "passed": False,
+                    "intermarket_score": score,
+                    "intermarket_label": label,
+                    "hard_block": "C",
+                    "hard_block_reason": f"M1 RSI {m1_rsi:.1f} is oversold — SELL entry unsafe",
+                    "headwind_detected": False,
+                    "headwind_reason": "",
+                    "data": intermarket,
+                    "error": None,
+                }
         
         # HARD BLOCK D: Intermarket score <= -3
         if score <= -3:

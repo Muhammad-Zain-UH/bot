@@ -337,6 +337,22 @@ def _calculate_trade_viability_score(
     else:
         breakdown["Calendar Blind"] = 0
     
+    # FIX: Detect transition state vs genuine conflict
+    # If score is near zero (0-15) AND macro is bullish AND H4 is bullish, allow trade (transition in progress)
+    # This allows entry during momentum shifts instead of blocking them
+    transition_bonus = 0
+    if final_score < 100 and 0 <= final_score <= 15:
+        # Check for transition state: near-zero score + macro bullish + H4 bullish = momentum building
+        is_h4_bullish = direction == "BUY" and "Bullish" in h4_trend
+        macro_not_opposed = macro_confirm >= 0 or (macro_total - macro_confirm) <= macro_total // 2
+        
+        if is_h4_bullish and macro_not_opposed:
+            # This is a transition, not a conflict — allow entry and boost viability
+            transition_bonus = 15
+            score += transition_bonus
+            breakdown["Transition Bonus"] = transition_bonus
+            log_debug("[VIABILITY] Near-zero score + H4 bullish + macro aligned = transition state — allowing entry")
+    
     # CLAMP SCORE 0-100
     final_score = max(0, min(100, int(score)))
     

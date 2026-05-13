@@ -286,6 +286,10 @@ def is_calibration_complete(log_file: str = LOG_FILE) -> tuple[bool, int]:
     Returns: (is_complete, completed_trade_count)
     - is_complete: True if >= 50 completed trades, False otherwise
     - completed_trade_count: Number of completed BUY/SELL trades with WIN/LOSS outcomes
+    
+    FIX 3 SMART MODE: 
+    - If >50% of signals have empty outcomes → treat as LIVE mode (count all signals)
+    - Otherwise → treat as BACKTEST mode (count only WIN/LOSS)
     """
     path = Path(log_file)
     if not path.is_file():
@@ -297,12 +301,45 @@ def is_calibration_complete(log_file: str = LOG_FILE) -> tuple[bool, int]:
     except Exception:
         return False, 0
     
+    if not rows:
+        return False, 0
+    
+    # First pass: count total signals and empty outcomes
+    total_signals = 0
+    signals_with_outcomes = 0
+    
+    for row in rows:
+        signal = str(row.get("signal", "")).strip().upper()
+        if signal not in {"BUY", "SELL"}:
+            continue
+        total_signals += 1
+        
+        outcome = str(row.get("outcome", "")).strip().upper()
+        if outcome in {"WIN", "LOSS"}:
+            signals_with_outcomes += 1
+    
+    if total_signals == 0:
+        return False, 0
+    
+    # Smart mode detection: if >50% of signals have empty outcomes, use LIVE mode
+    empty_outcome_ratio = (total_signals - signals_with_outcomes) / total_signals
+    is_live_mode = empty_outcome_ratio > 0.5
+    
+    # Second pass: count based on mode
     completed_count = 0
     for row in rows:
         signal = str(row.get("signal", "")).strip().upper()
-        outcome = str(row.get("outcome", "")).strip().upper()
-        if signal in {"BUY", "SELL"} and outcome in {"WIN", "LOSS"}:
+        if signal not in {"BUY", "SELL"}:
+            continue
+        
+        if is_live_mode:
+            # LIVE MODE: Count all BUY/SELL signals (outcomes will populate later)
             completed_count += 1
+        else:
+            # BACKTEST MODE: Count only WIN/LOSS outcomes
+            outcome = str(row.get("outcome", "")).strip().upper()
+            if outcome in {"WIN", "LOSS"}:
+                completed_count += 1
     
     return completed_count >= MIN_COMPLETED_TRADES, completed_count
 
@@ -313,14 +350,17 @@ def apply_uncalibrated_lockout(
     score: float | None = None,
     perfect_tf_alignment: bool = False,
     has_tf_conflicts: bool = False,
+    h4_direction: str | None = None,
+    h1_direction: str | None = None,
+    high_impact_news: bool = False,
 ) -> tuple[int, str]:
     """
-    Apply FIX 6: If calibration incomplete (<50 trades), cap confidence at 50% and mark UNCALIBRATED.
+    Apply calibration mode confidence logic.
     
-    FIX 4: Relax cap to 60% when:
-    - score > 8.0 AND
-    - perfect_tf_alignment (5/5 TF all agree) AND
-    - has_tf_conflicts is False (no timeframe conflicts)
+    CRITICAL FIX: During calibration (<50 trades), when score > 8.0 and H4 == H1,
+    bypass penalties BUT ONLY if no critical gates are triggered:
+    - Must NOT fire during high_impact_news events (NFP, FOMC, etc.)
+    Purpose: Accumulate trade data without penalty paralysis, but maintain safety gates.
     
     Returns: (capped_confidence, calibration_label)
     - capped_confidence: varies based on conditions
@@ -331,7 +371,20 @@ def apply_uncalibrated_lockout(
     if is_complete:
         return confidence, ""
     
-    # Uncalibrated mode: determine cap based on signal quality
+    # CRITICAL SAFETY GATE: Never bypass during high-impact news events
+    # NFP, FOMC, etc. create abnormal volatility that ruins calibration data
+    if not high_impact_news and score is not None and score > 8.0 and h4_direction == h1_direction and h4_direction in {"BUY", "SELL"}:
+        # CRITICAL: Calibration bypass rule — but respect safety gates
+        log_debug(
+            f"[CALIBRATION BYPASS] Score {score:.1f} > 8.0 + H4=H1={h4_direction} + no news event "
+            f"— bypass penalties, use 40% floor for data accumulation ({completed_count}/50 trades)"
+        )
+        return 40, f"CALIBRATION ({completed_count}/50 - bypass penalty mode)"
+    
+    if high_impact_news:
+        log_debug(f"[CALIBRATION BLOCKED] High-impact news event active — do not trade during anomalous volatility")
+    
+    # Normal uncalibrated mode: determine cap based on signal quality
     # FIX 4: Higher cap (60%) for exceptional setups
     if score is not None and score > 8.0 and perfect_tf_alignment and not has_tf_conflicts:
         cap_value = 60

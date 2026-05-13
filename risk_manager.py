@@ -110,9 +110,9 @@ def get_session_score_threshold(base_threshold: float = 4.5) -> float:
 
 
 def is_good_trading_session() -> tuple[bool, str]:
-    """Return (True, session_name) only for active London/NY trading windows."""
+    """Return (True, session_name) only for active London/NY/Asian trading windows."""
     session = get_current_session()
-    if session in {"Closed", "Dead", "Asian"}:
+    if session in {"Closed", "Dead"}:
         return False, session
     return True, session
 

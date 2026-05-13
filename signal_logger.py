@@ -49,6 +49,10 @@ FIELDS = [
     # Gates & flags
     "all_vol_low", "rsi_caution", "m1_counter", "mixed_signals",
     "high_impact_news", "high_impact_event",
+    # Wyckoff Market Structure
+    "wyckoff_phase", "wyckoff_phase_strength", "wyckoff_valid", "wyckoff_imbalances",
+    # Institutional Patterns: Upthrust & Liquidity Sweep
+    "is_upthrust", "upthrust_severity", "is_liquidity_sweep", "sweep_type", "sweep_severity",
     # TIER 1+: New event/confluence/volatility data
     "event_zone", "event_confidence_adjustment", "asian_zone_penalty",
     "volatility_adjusted_threshold", "confluence_bonus", "confluence_reason",
@@ -254,6 +258,17 @@ def log_signal(
         "mixed_signals":      _s(mixed_signals),
         "high_impact_news":   _s(high_impact_news),
         "high_impact_event":  high_impact_event.get("event_name", "") if high_impact_event else "",
+        # Wyckoff Market Structure
+        "wyckoff_phase":      gates.get("wyckoff_phase", ""),
+        "wyckoff_phase_strength": _s(gates.get("wyckoff_phase_strength", 0.0), 2),
+        "wyckoff_valid":      _s(gates.get("wyckoff_valid", False)),
+        "wyckoff_imbalances": _s(str(gates.get("wyckoff_imbalances", []))),
+        # Institutional Patterns
+        "is_upthrust":        _s(gates.get("is_upthrust", False)),
+        "upthrust_severity":  _s(gates.get("upthrust_severity", 0.0), 2),
+        "is_liquidity_sweep": _s(gates.get("is_liquidity_sweep", False)),
+        "sweep_type":         gates.get("sweep_type", ""),
+        "sweep_severity":     _s(gates.get("sweep_severity", 0.0), 2),
         # Risk
         "daily_pnl_pct":      _s(daily_pnl_pct, 2),
         "account_balance":    _s(account_balance, 2),
