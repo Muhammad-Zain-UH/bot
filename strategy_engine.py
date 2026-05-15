@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Any
 
 from institutional_patterns import detect_institutional_patterns
+from technical_engine import get_technical_signal as get_technical_filters
 from utils import log_debug
 
 WAIT_SIGNAL = "WAIT_FOR_CONFIRMATION"
@@ -860,6 +861,14 @@ def get_technical_signal(
             f"conf={technical_confidence}% | risk={risk_level}"
         )
 
+        # FIX #6: Extract trap filter status from technical engine for transparency logging
+        trap_filter_status = ""
+        try:
+            tech_filters = get_technical_filters(symbol, tfi)
+            trap_filter_status = tech_filters.get("trap_filter_status", "")
+        except Exception as e:
+            log_debug(f"[TRAP FILTER] Could not extract trap filters: {e}")
+
         return {
             "technical_signal": technical_signal,
             "bias_direction": setup_direction,
@@ -879,6 +888,7 @@ def get_technical_signal(
             "entry_timing_state": entry_state,
             "wait_reason": wait_reason,
             "wait_trigger": wait_trigger,
+            "trap_filter_status": trap_filter_status,
         }
     except Exception as exc:
         log_debug(f"Strategy engine failed: {exc}")

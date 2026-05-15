@@ -139,31 +139,43 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
         open_m15 = _to_float(m15.get("open")) or 0.01
         price_change_pct = (close_m15 - open_m15) / max(abs(open_m15), 0.01)
 
+        # FIX #6: TRANSPARENCY LOGGING - Trap filter status tracking
+        trap_status_parts = []
+        
         # 1. Consolidation
         if _is_consolidation(tfi):
             log_debug("Consolidation detected – NO TRADE")
             return _empty_result("Consolidation")
+        trap_status_parts.append("Consolidation: OK")
+        
         # 2. Volume climax
         if _volume_climax(vol_ratio):
             log_debug(f"Volume climax ({vol_ratio:.2f}) – possible fakeout")
             return _empty_result("Volume climax")
+        trap_status_parts.append("Volume: OK")
+        
         # 3. Absorption
         if _absorption(vol_ratio, price_change_pct, atr_ratio):
             log_debug("Absorption detected – institutional trading, wait")
             return _empty_result("Absorption")
+        trap_status_parts.append("Absorption: OK")
+        
         # 4. Liquidity sweep
         prev_day = tfi.get("D1", {})
         prev_day_high = _to_float(prev_day.get("high"))
         prev_day_low = _to_float(prev_day.get("low"))
         current_price = _to_float(m1.get("close")) or _to_float(m5.get("close")) or _to_float(m15.get("close")) or 0
+        sweep_status = "None"
         if prev_day_high and prev_day_low and current_price:
             sweep, sweep_reason = _liquidity_sweep(direction, current_price, prev_day_high, prev_day_low)
             if sweep:
                 if direction == "BUY" and current_price > prev_day_low + 2.0:
                     log_debug(f"Sweep reclaimed: {sweep_reason}")
+                    sweep_status = "Reclaimed"
                 else:
                     log_debug(f"Sweep not reclaimed – waiting: {sweep_reason}")
                     return _empty_result("Liquidity sweep not reclaimed")
+        trap_status_parts.append(f"Sweep: {sweep_status}")
         # 5. CVD proxy (weight 0.4)
         cvd = compute_cvd_proxy(symbol)
         cvd_conf = 0.0
@@ -190,6 +202,7 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
             confidence = _clip(confidence, MIN_CONFIDENCE, 92)
             final_signal = direction if confidence >= 45 else WAIT_SIGNAL
             levels = _build_levels(direction, tfi)
+            trap_filter_status = " | ".join(trap_status_parts)
             log_debug(f"[CONTINUATION] All TFs aligned {direction} – entering without wick/Fib requirements | confidence={confidence}%")
             return {
                 "technical_signal": final_signal,
@@ -203,6 +216,7 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
                 "trade_levels": levels,
                 "gates": {"entry_method": "continuation", "continuation_reason": f"All TFs aligned: H1={h1_dir} M15={m15_dir} M5={m5_dir} M1={m1_dir}"},
                 "error": None,
+                "trap_filter_status": trap_filter_status,
             }
         
         # ===== MOMENTUM ENTRY CHECK (NEW) =====
@@ -228,6 +242,7 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
             confidence = _clip(confidence, MIN_CONFIDENCE, 92)
             final_signal = direction if confidence >= 45 else WAIT_SIGNAL
             levels = _build_levels(direction, tfi)
+            trap_filter_status = " | ".join(trap_status_parts)
             log_debug(f"[MOMENTUM] Entry confirmed – confidence={confidence}%")
             return {
                 "technical_signal": final_signal,
@@ -241,6 +256,7 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
                 "trade_levels": levels,
                 "gates": {"entry_method": "momentum", "momentum_reason": momentum_reason},
                 "error": None,
+                "trap_filter_status": trap_filter_status,
             }
         
         # 6. Rejection wick on M1 (entry trigger for non-momentum entries)
@@ -250,20 +266,28 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
             'low': _to_float(m1.get('low')),
             'close': _to_float(m1.get('close'))
         }
+        wick_status = "OK"
         if not _rejection_wick(m1_candle, direction):
             log_debug("No rejection wick – waiting for entry signal")
-            return _empty_result("No rejection wick")
+            wick_status = "TIMEOUT"
+        trap_status_parts.append(f"Wick: {wick_status}")
+        
         # 7. VWAP proximity check (optional)
         vwap = _to_float(m15.get("vwap"))
+        vwap_status = "OK"
         if vwap and direction == "BUY" and current_price < vwap - 2.0:
             log_debug("Price below VWAP – wait for reclaim")
+            vwap_status = "BELOW"
             return _empty_result("Price below VWAP")
         if vwap and direction == "SELL" and current_price > vwap + 2.0:
             log_debug("Price above VWAP – wait for reclaim")
+            vwap_status = "ABOVE"
             return _empty_result("Price above VWAP")
+        trap_status_parts.append(f"VWAP: {vwap_status}")
 
         # 8. FIBONACCI RETRACEMENT CHECK (NEW)
         # Require price to be near 0.618 Fibonacci level for entry confirmation
+        fib_status = "OK"
         if direction in TRADE_SIGNALS:
             recent_data = tfi.get("M15", {})
             if recent_data:
@@ -284,11 +308,13 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
                                 f"[FIBONACCI] Price {current_price:.2f} not at 0.618 "
                                 f"(distance: {fib_618_dist:.1f} pips) – wait for retracement"
                             )
+                            fib_status = f"AWAY {fib_618_dist:.0f}p"
                             return _empty_result(f"Not at Fibonacci 0.618 level ({fib_618_dist:.1f}pips away)")
                         else:
                             log_debug(f"[FIBONACCI] ✓ Price at valid retracement level: {fib_check.get('nearest_level')}")
                 except Exception as fib_exc:
                     log_debug(f"Fibonacci check warning: {fib_exc} — proceeding with entry")
+        trap_status_parts.append(f"Fib: {fib_status}")
 
         # 9. CVD DIVERGENCE CHECK (NEW)
         # Detect if volume is NOT confirming price extremes (early reversal signal)
@@ -324,6 +350,15 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
         confidence += cvd_conf * 10  # max +4%
         confidence += cvd_divergence_adjustment  # CVD divergence bonus
         confidence = _clip(confidence, MIN_CONFIDENCE, 92)
+        
+        # FIX #3: APPLY SESSION MULTIPLIERS
+        session = get_current_session()
+        session_multiplier = SESSION_SCORE_MULTIPLIERS.get(session, 1.0)
+        original_confidence = confidence
+        confidence = confidence * session_multiplier
+        confidence = _clip(confidence, MIN_CONFIDENCE, 92)
+        if session_multiplier != 1.0:
+            log_debug(f"[SESSION MULTIPLIER] {session}: {original_confidence:.0f}% × {session_multiplier} = {confidence:.0f}%")
 
         # Spread check
         spread = get_current_spread(symbol)
@@ -334,6 +369,9 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
         final_signal = direction if confidence >= 45 and direction in TRADE_SIGNALS else WAIT_SIGNAL
         # Build trade levels
         levels = _build_levels(direction, tfi)
+        
+        # FIX #6: TRANSPARENCY - Final trap filter status string
+        trap_filter_status = " | ".join(trap_status_parts)
 
         return {
             "technical_signal": final_signal,
@@ -347,6 +385,7 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
             "trade_levels": levels,
             "gates": {"calibration_status": ""},
             "error": None,
+            "trap_filter_status": trap_filter_status,
         }
     except Exception as exc:
         log_debug(f"Technical engine failed: {exc}")

@@ -70,20 +70,41 @@ def _classify_volume(volume_ratio):
     return "Normal"
 
 def _compute_session_vwap(frame: pd.DataFrame) -> pd.Series:
-    # Use pandas_ta if available
-    vwap = ta.vwap(high=frame["high"], low=frame["low"], close=frame["close"], volume=frame["volume"])
-    if vwap is not None and not vwap.dropna().empty:
-        return vwap
+    # FIX #5: Ensure DatetimeIndex is sorted before VWAP calculation
+    try:
+        frame_copy = frame.copy()
+        if not isinstance(frame_copy.index, pd.DatetimeIndex):
+            if 'time' in frame_copy.columns:
+                frame_copy = frame_copy.set_index('time')
+        
+        # Sort DatetimeIndex to avoid warnings
+        if isinstance(frame_copy.index, pd.DatetimeIndex):
+            frame_copy = frame_copy.sort_index()
+        
+        # Use pandas_ta if available
+        vwap = ta.vwap(high=frame_copy["high"], low=frame_copy["low"], close=frame_copy["close"], volume=frame_copy["volume"])
+        if vwap is not None and not vwap.dropna().empty:
+            return vwap
+    except Exception as e:
+        log_debug(f"VWAP calculation error: {e}")
+    
     # Fallback: anchor to the latest date only (single session)
-    latest_date = frame.index[-1].date()
-    session_mask = frame.index.date == latest_date
-    session = frame[session_mask].copy()
-    if session.empty:
-        session = frame.iloc[-50:].copy()
-    typical = (session["high"] + session["low"] + session["close"]) / 3
-    cum_vol = session["volume"].cumsum().replace(0, float("nan"))
-    session_vwap = (typical * session["volume"]).cumsum() / cum_vol
-    return session_vwap.reindex(frame.index)
+    try:
+        latest_date = frame.index[-1].date() if isinstance(frame.index, pd.DatetimeIndex) else None
+        if latest_date:
+            session_mask = frame.index.date == latest_date
+        else:
+            session_mask = pd.Series([True] * len(frame), index=frame.index)
+        session = frame[session_mask].copy()
+        if session.empty:
+            session = frame.iloc[-50:].copy()
+        typical = (session["high"] + session["low"] + session["close"]) / 3
+        cum_vol = session["volume"].cumsum().replace(0, float("nan"))
+        session_vwap = (typical * session["volume"]).cumsum() / cum_vol
+        return session_vwap.reindex(frame.index)
+    except Exception as e:
+        log_debug(f"Fallback VWAP error: {e}")
+        return pd.Series([None] * len(frame), index=frame.index)
 
 def calculate_indicators(data: pd.DataFrame) -> dict:
     try:

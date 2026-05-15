@@ -90,6 +90,7 @@ def main_loop():
         return
     loss_pause_end = None
     regime_validated = False
+    last_m5_candle_time = None  # FIX #2: Track M5 candle for RSI oscillation
 
     while _SHOULD_CONTINUE:
         try:
@@ -156,6 +157,26 @@ def main_loop():
 
             # If setup detected (BUY/SELL with high confidence)
             if direction in ("BUY", "SELL") and confidence >= 45:
+                # FIX #1: POSITION CHECK GUARD - Prevent duplicate entries
+                existing_positions = mt5.positions_get(symbol=config.SYMBOL)
+                if existing_positions and len(existing_positions) > 0:
+                    log_debug(f"[POSITION GUARD] {len(existing_positions)} position(s) exist – skipping entry")
+                    time.sleep(60)
+                    continue
+                
+                # FIX #2: M5 RSI OSCILLATION TRAP - Only 1 entry per M5 candle
+                try:
+                    m5_data = get_market_data(config.SYMBOL, mt5.TIMEFRAME_M5, 1)
+                    if not m5_data.empty:
+                        current_m5_time = m5_data['time'].iloc[-1]
+                        if last_m5_candle_time is not None and last_m5_candle_time == current_m5_time:
+                            log_debug(f"[M5 OSCILLATION GUARD] Same M5 candle – skipping duplicate entry")
+                            time.sleep(60)
+                            continue
+                        last_m5_candle_time = current_m5_time
+                except Exception as e:
+                    log_debug(f"[M5 GUARD] Error: {e}")
+                
                 levels = tech.get("trade_levels", {})
                 entry = levels.get("entry_price")
                 sl = levels.get("stop_loss")
@@ -165,6 +186,11 @@ def main_loop():
                 stop_dist = abs(entry - sl) if entry and sl else 10.0
                 lot = calculate_lot_size(balance, 1.0, stop_dist)
 
+                # FIX #6: TRANSPARENCY - Print trap filter status
+                trap_status = tech.get("trap_filter_status", "")
+                time_str = datetime.now().strftime('%H:%M:%S')
+                if trap_status:
+                    print(f"[{time_str}] {direction} | {trap_status}")
                 log_debug(f"[SETUP DETECTED] {direction} | conf={confidence}% | score={score:.2f} | entry_state={entry_timing_state}")
                 
                 # NEW: Support for dual entry paths (momentum vs pullback)
@@ -191,6 +217,21 @@ def main_loop():
 
                     # ========== INTRACANDLE LOOP: Wait for M1 wick confirmation ==========
                     while datetime.now() < intracandle_timeout and _SHOULD_CONTINUE:
+                        # FIX #4: PULLBACK TIMEOUT OVERRIDE - Allow entry after 60s timeout
+                        time_remaining = (intracandle_timeout - datetime.now()).total_seconds()
+                        if time_remaining <= 0:
+                            log_debug(f"[PULLBACK TIMEOUT] 60s expired – allowing entry override")
+                            entry_confirmed = True
+                            try:
+                                m1_data = get_market_data(config.SYMBOL, mt5.TIMEFRAME_M1, 1)
+                                if not m1_data.empty:
+                                    m1_current = calculate_indicators(m1_data)
+                                    entry_confirmed_price = m1_current.get("close")
+                            except Exception as e:
+                                log_debug(f"[PULLBACK TIMEOUT] M1 fetch error: {e}")
+                                entry_confirmed_price = None
+                            break
+                        
                         try:
                             # 1. RE-CHECK SPREAD before any entry
                             current_spread = get_current_spread(config.SYMBOL)
