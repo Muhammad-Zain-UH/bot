@@ -190,7 +190,7 @@ def main_loop():
                 trap_status = tech.get("trap_filter_status", "")
                 time_str = datetime.now().strftime('%H:%M:%S')
                 if trap_status:
-                    print(f"[{time_str}] {direction} | {trap_status}")
+                    print(f"[{time_str}] {direction} | {trap_status}", flush=True)
                 log_debug(f"[SETUP DETECTED] {direction} | conf={confidence}% | score={score:.2f} | entry_state={entry_timing_state}")
                 
                 # NEW: Support for dual entry paths (momentum vs pullback)
@@ -210,6 +210,42 @@ def main_loop():
                     except Exception as e:
                         log_debug(f"[MOMENTUM ENTRY] M1 data fetch error: {e}")
                         entry_confirmed_price = None
+                
+                # Path 1b: OTHER READY STATES (continuation, etc - fast entry)
+                elif entry_timing_state in ("ready", "continuation_entry"):
+                    log_debug(f"[{entry_timing_state.upper()}] All conditions met – entering immediately...")
+                    entry_confirmed = True
+                    try:
+                        m1_data = get_market_data(config.SYMBOL, mt5.TIMEFRAME_M1, 1)
+                        if not m1_data.empty:
+                            m1_current = calculate_indicators(m1_data)
+                            entry_confirmed_price = m1_current.get("close")
+                    except Exception as e:
+                        log_debug(f"[{entry_timing_state.upper()}] M1 data fetch error: {e}")
+                        entry_confirmed_price = None
+                
+                # Path 1c: WAIT_FOR_VOLUME (volume recovering - check if recovered)
+                elif entry_timing_state == "wait_for_volume":
+                    log_debug(f"[WAIT_FOR_VOLUME] Checking if volume has recovered...")
+                    try:
+                        m15_data = get_market_data(config.SYMBOL, mt5.TIMEFRAME_M15, 50)
+                        if not m15_data.empty:
+                            m15_ind = calculate_indicators(m15_data)
+                            vol_ratio = m15_ind.get("volume_ratio")
+                            if vol_ratio is not None and vol_ratio >= 0.5:
+                                log_debug(f"[WAIT_FOR_VOLUME] Volume recovered ({vol_ratio:.2f}) – entering...")
+                                entry_confirmed = True
+                                try:
+                                    m1_data = get_market_data(config.SYMBOL, mt5.TIMEFRAME_M1, 1)
+                                    if not m1_data.empty:
+                                        m1_current = calculate_indicators(m1_data)
+                                        entry_confirmed_price = m1_current.get("close")
+                                except Exception:
+                                    entry_confirmed_price = None
+                            else:
+                                log_debug(f"[WAIT_FOR_VOLUME] Volume still low ({vol_ratio:.2f}) – holding...")
+                    except Exception as e:
+                        log_debug(f"[WAIT_FOR_VOLUME] Volume check error: {e}")
                 
                 # Path 2: PULLBACK ENTRY (waits for M15 pullback completion + M1 wick)
                 elif entry_timing_state == "ready_pullback_await_wick":

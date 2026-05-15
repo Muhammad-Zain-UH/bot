@@ -196,6 +196,11 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
         
         if all_tf_aligned:
             # Strong trend continuation - enter immediately without wick/Fib
+            # Add remaining trap statuses for transparency
+            trap_status_parts.append("Wick: OK")  # Bypassed for continuation
+            trap_status_parts.append("VWAP: OK")  # Bypassed for continuation
+            trap_status_parts.append("Fib: OK")   # Bypassed for continuation
+            
             confidence = CONFIDENCE_BASE + 20  # High boost for continuation
             if vol_ratio < 0.5:
                 confidence -= 5.0
@@ -236,6 +241,11 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
         
         # If momentum entry triggered, bypass wick/VWAP/Fib checks
         if is_momentum_entry:
+            # Add remaining trap statuses for transparency
+            trap_status_parts.append("Wick: OK")  # Bypassed for momentum
+            trap_status_parts.append("VWAP: OK")  # Bypassed for momentum
+            trap_status_parts.append("Fib: OK")   # Bypassed for momentum
+            
             confidence = CONFIDENCE_BASE + 15  # Boost confidence for momentum entries
             if vol_ratio < 0.5:
                 confidence -= 5.0

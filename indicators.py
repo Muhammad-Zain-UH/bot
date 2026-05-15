@@ -1,5 +1,9 @@
 """Technical indicator calculations with session‑aware volume and anchored VWAP."""
 from __future__ import annotations
+import warnings
+import io
+import sys
+import contextlib
 import pandas as pd
 import pandas_ta as ta
 from utils import log_debug
@@ -81,8 +85,12 @@ def _compute_session_vwap(frame: pd.DataFrame) -> pd.Series:
         if isinstance(frame_copy.index, pd.DatetimeIndex):
             frame_copy = frame_copy.sort_index()
         
-        # Use pandas_ta if available
-        vwap = ta.vwap(high=frame_copy["high"], low=frame_copy["low"], close=frame_copy["close"], volume=frame_copy["volume"])
+        # Use pandas_ta if available (suppress all warnings and stdout/stderr)
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore')
+            with contextlib.redirect_stdout(io.StringIO()):
+                with contextlib.redirect_stderr(io.StringIO()):
+                    vwap = ta.vwap(high=frame_copy["high"], low=frame_copy["low"], close=frame_copy["close"], volume=frame_copy["volume"])
         if vwap is not None and not vwap.dropna().empty:
             return vwap
     except Exception as e:
