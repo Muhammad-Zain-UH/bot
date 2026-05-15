@@ -149,8 +149,11 @@ def main_loop():
             direction = tech["setup_direction"]
             confidence = tech["technical_confidence"]
             score = tech["weighted_score"]
+            entry_timing_state = tech.get("entry_timing_state", "not_actionable")
+            entry_method = tech.get("gates", {}).get("entry_method")  # NEW: momentum or pullback
+            h4_conflict = tech.get("gates", {}).get("h4_conflict_warning", False)  # NEW
 
-            # If setup detected (not NO TRADE), enter fast confirmation loop
+            # If setup detected (BUY/SELL with high confidence)
             if direction in ("BUY", "SELL") and confidence >= 45:
                 levels = tech.get("trade_levels", {})
                 entry = levels.get("entry_price")
@@ -161,84 +164,99 @@ def main_loop():
                 stop_dist = abs(entry - sl) if entry and sl else 10.0
                 lot = calculate_lot_size(balance, 1.0, stop_dist)
 
-                log_debug(f"[SETUP DETECTED] {direction} | conf={confidence}% | score={score:.2f}")
-                log_debug(f"[ENTRY WINDOW] Waiting for M1 trigger confirmation (max 60 seconds)...")
-
-                # ========== INTRACANDLE LOOP: Wait for M1 trigger ==========
+                log_debug(f"[SETUP DETECTED] {direction} | conf={confidence}% | score={score:.2f} | entry_state={entry_timing_state}")
+                
+                # NEW: Support for dual entry paths (momentum vs pullback)
                 entry_confirmed = False
                 entry_confirmed_price = None
                 intracandle_timeout = datetime.now() + timedelta(seconds=60)
+                
+                # Path 1: MOMENTUM ENTRY (fast, no M1 wick wait)
+                if entry_timing_state == "ready_momentum":
+                    log_debug(f"[MOMENTUM ENTRY] M5 RSI in momentum zone – entering without pullback wait...")
+                    entry_confirmed = True
+                    m1_data = get_market_data(config.SYMBOL, mt5.TIMEFRAME_M1, 1)
+                    if not m1_data.empty:
+                        m1_current = calculate_indicators(m1_data)
+                        entry_confirmed_price = m1_current.get("close")
+                
+                # Path 2: PULLBACK ENTRY (waits for M15 pullback completion + M1 wick)
+                elif entry_timing_state == "ready_pullback_await_wick":
+                    log_debug(f"[PULLBACK ENTRY] Waiting for M1 trigger confirmation (max 60 seconds)...")
 
-                while datetime.now() < intracandle_timeout and _SHOULD_CONTINUE:
-                    try:
-                        # 1. RE-CHECK SPREAD before any entry
-                        current_spread = get_current_spread(config.SYMBOL)
-                        if current_spread > 50:
-                            log_debug(f"[INTRACANDLE] Spread widened to {current_spread:.0f} pts – waiting...")
-                            time.sleep(5)
-                            continue
-
-                        # 2. Fetch fresh M1 data
-                        m1_data = get_market_data(config.SYMBOL, mt5.TIMEFRAME_M1, 5)
-                        if not m1_data.empty:
-                            m1_current = calculate_indicators(m1_data)
-                            m1_close = m1_current.get("close")
-                            m1_trend = m1_current.get("trend_classification")
-
-                            # 3. RE-CHECK REJECTION WICK on latest M1 candle
-                            m1_candle = {
-                                'open': m1_current.get('open'),
-                                'high': m1_current.get('high'),
-                                'low': m1_current.get('low'),
-                                'close': m1_current.get('close')
-                            }
-                            has_wick = _check_rejection_wick(m1_candle, direction)
-                            
-                            if not has_wick:
-                                log_debug(f"[INTRACANDLE] M1: {m1_close:.2f} | Trend: {m1_trend} | No rejection wick yet – waiting...")
+                    # ========== INTRACANDLE LOOP: Wait for M1 wick confirmation ==========
+                    while datetime.now() < intracandle_timeout and _SHOULD_CONTINUE:
+                        try:
+                            # 1. RE-CHECK SPREAD before any entry
+                            current_spread = get_current_spread(config.SYMBOL)
+                            if current_spread > 50:
+                                log_debug(f"[INTRACANDLE] Spread widened to {current_spread:.0f} pts – waiting...")
                                 time.sleep(5)
                                 continue
 
-                            # 4. CHECK CVD DIVERGENCE on M5 data
-                            cvd_confirmation = False
-                            try:
-                                m5_data = get_market_data(config.SYMBOL, mt5.TIMEFRAME_M5, 20)
-                                if not m5_data.empty:
-                                    cvd_result = detect_cvd_divergence(m5_data, lookback=20)
-                                    if cvd_result.get("has_divergence") and cvd_result.get("type") in ["bullish", "bearish"]:
-                                        log_debug(f"[INTRACANDLE] CVD {cvd_result['type'].upper()} divergence confirmed")
-                                        cvd_confirmation = True
-                            except Exception as cvd_exc:
-                                log_debug(f"[INTRACANDLE] CVD check: {cvd_exc}")
-                                cvd_confirmation = True  # Don't block on CVD failure
+                            # 2. Fetch fresh M1 data
+                            m1_data = get_market_data(config.SYMBOL, mt5.TIMEFRAME_M1, 5)
+                            if not m1_data.empty:
+                                m1_current = calculate_indicators(m1_data)
+                                m1_close = m1_current.get("close")
+                                m1_trend = m1_current.get("trend_classification")
 
-                            # 5. Check M1 trigger confirmation + wick + CVD
-                            if direction == "BUY" and "Bullish" in str(m1_trend):
-                                entry_confirmed = True
-                                entry_confirmed_price = m1_close
-                                log_debug(f"✓ [M1 TRIGGER] Bullish candle + rejection wick + CVD → {m1_close:.2f} | Entry confirmed")
-                                break
-                            elif direction == "SELL" and "Bearish" in str(m1_trend):
-                                entry_confirmed = True
-                                entry_confirmed_price = m1_close
-                                log_debug(f"✓ [M1 TRIGGER] Bearish candle + rejection wick + CVD → {m1_close:.2f} | Entry confirmed")
-                                break
-                            else:
-                                log_debug(f"[INTRACANDLE] M1: {m1_close:.2f} | Trend: {m1_trend} | waiting for confirmation...")
+                                # 3. RE-CHECK REJECTION WICK on latest M1 candle
+                                m1_candle = {
+                                    'open': m1_current.get('open'),
+                                    'high': m1_current.get('high'),
+                                    'low': m1_current.get('low'),
+                                    'close': m1_current.get('close')
+                                }
+                                has_wick = _check_rejection_wick(m1_candle, direction)
+                                
+                                if not has_wick:
+                                    log_debug(f"[INTRACANDLE] M1: {m1_close:.2f} | Trend: {m1_trend} | No rejection wick yet – waiting...")
+                                    time.sleep(5)
+                                    continue
 
-                        # Wait 5 seconds before next M1 check
-                        time.sleep(5)
+                                # 4. CHECK CVD DIVERGENCE on M5 data
+                                cvd_confirmation = False
+                                try:
+                                    m5_data = get_market_data(config.SYMBOL, mt5.TIMEFRAME_M5, 20)
+                                    if not m5_data.empty:
+                                        cvd_result = detect_cvd_divergence(m5_data, lookback=20)
+                                        if cvd_result.get("has_divergence") and cvd_result.get("type") in ["bullish", "bearish"]:
+                                            log_debug(f"[INTRACANDLE] CVD {cvd_result['type'].upper()} divergence confirmed")
+                                            cvd_confirmation = True
+                                except Exception as cvd_exc:
+                                    log_debug(f"[INTRACANDLE] CVD check: {cvd_exc}")
+                                    cvd_confirmation = True  # Don't block on CVD failure
 
-                    except Exception as intra_exc:
-                        log_debug(f"[INTRACANDLE] Check error: {intra_exc}")
-                        time.sleep(5)
+                                # 5. Check M1 trigger confirmation + wick + CVD
+                                if direction == "BUY" and "Bullish" in str(m1_trend):
+                                    entry_confirmed = True
+                                    entry_confirmed_price = m1_close
+                                    log_debug(f"✓ [M1 TRIGGER] Bullish candle + rejection wick + CVD → {m1_close:.2f} | Entry confirmed")
+                                    break
+                                elif direction == "SELL" and "Bearish" in str(m1_trend):
+                                    entry_confirmed = True
+                                    entry_confirmed_price = m1_close
+                                    log_debug(f"✓ [M1 TRIGGER] Bearish candle + rejection wick + CVD → {m1_close:.2f} | Entry confirmed")
+                                    break
+                                else:
+                                    log_debug(f"[INTRACANDLE] M1: {m1_close:.2f} | Trend: {m1_trend} | waiting for confirmation...")
 
-                # ========== SIGNAL OUTPUT (only if M1 confirmed) ==========
+                            # Wait 5 seconds before next M1 check
+                            time.sleep(5)
+
+                        except Exception as intra_exc:
+                            log_debug(f"[INTRACANDLE] Check error: {intra_exc}")
+                            time.sleep(5)
+                
+                # ========== SIGNAL OUTPUT (only if entry confirmed) ==========
                 if entry_confirmed:
-                    # Print signal ONLY after M1 confirmation
+                    # Print signal ONLY after confirmation
                     print("\n" + "="*60)
                     print(f"*** ENTRY SIGNAL CONFIRMED ***")
                     print(f"Direction: {direction}")
+                    print(f"Entry Method: {entry_method or 'standard'}")  # NEW
+                    print(f"H4 Status: {'⚠️ CONFLICT' if h4_conflict else 'Normal'}")  # NEW
                     print(f"Confirmed at: {entry_confirmed_price:.2f}")
                     print(f"Confidence: {confidence}%")
                     print(f"Score: {score:.2f}/{tech['max_score']}")
@@ -246,17 +264,22 @@ def main_loop():
                     print(f"Lot size: {lot:.2f}")
                     print("="*60 + "\n")
 
-                    # Log to CSV
+                    # Log to CSV (with NEW columns: entry_method and h4_status)
                     log_file = "signal_log.csv"
                     file_exists = os.path.isfile(log_file)
                     with open(log_file, "a", newline="") as f:
                         writer = csv.writer(f)
                         if not file_exists:
-                            writer.writerow(["timestamp", "symbol", "signal", "confidence", "score", "entry", "sl", "tp", "lot", "m1_confirmed"])
-                        writer.writerow([datetime.now().isoformat(), config.SYMBOL, direction, confidence, score, entry, sl, tp, lot, True])
+                            writer.writerow(["timestamp", "symbol", "signal", "confidence", "score", "entry", "sl", "tp", "lot", 
+                                           "entry_method", "h4_status", "entry_timing_state"])  # NEW columns
+                        writer.writerow([datetime.now().isoformat(), config.SYMBOL, direction, confidence, score, entry, sl, tp, lot,
+                                       entry_method or "standard", "CONFLICT" if h4_conflict else "normal", entry_timing_state])  # NEW
                 else:
-                    # Setup detected but no M1 trigger within timeout
-                    log_debug(f"[SETUP TIMEOUT] {direction} setup expired (no M1 trigger within 60s)")
+                    # Setup detected but no confirmation within timeout
+                    if entry_timing_state == "ready_pullback_await_wick":
+                        log_debug(f"[SETUP TIMEOUT] {direction} setup expired (no M1 wick confirmation within 60s)")
+                    else:
+                        log_debug(f"[SETUP TIMEOUT] {direction} setup expired (entry_state={entry_timing_state})")
 
             else:
                 # No setup or confidence too low

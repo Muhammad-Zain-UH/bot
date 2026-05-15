@@ -81,6 +81,10 @@ SYMBOL:    str   = "XAUUSD"
 LOT_SIZE:  float = 0.01
 N_CANDLES: int   = 250
 
+# Momentum Entry RSI Thresholds (for fast entry without pullback wait)
+M5_RSI_MOMENTUM_BUY:  float = 60.0   # M5 RSI > 60 triggers momentum BUY entry
+M5_RSI_MOMENTUM_SELL: float = 40.0   # M5 RSI < 40 triggers momentum SELL entry
+
 # ---------------------------------------------------------------------------
 # MetaTrader 5
 # ---------------------------------------------------------------------------

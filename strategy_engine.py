@@ -105,61 +105,52 @@ def _bias_context(
     tfi: dict[str, dict[str, Any]],
     tfa: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
+    """Bias context using H1 as PRIMARY direction source.
+    H4 is used only as a conflict warning flag, not for direction determination.
+    """
     h4 = tfa.get("H4", {})
     h1 = tfa.get("H1", {})
     h4_dir = h4.get("direction", "NO TRADE")
     h1_dir = h1.get("direction", "NO TRADE")
     h4_trend = str(h4.get("trend_classification", "Neutral"))
     h1_trend = str(h1.get("trend_classification", "Neutral"))
-    h4_strength = _clip((_f(tfi.get("H4", {}).get("trend_strength_ratio")) or 0.0) / 1.2, 0.0, 1.0)
     h1_strength = _clip((_f(tfi.get("H1", {}).get("trend_strength_ratio")) or 0.0) / 1.2, 0.0, 1.0)
 
-    if h4_dir == h1_dir and h4_dir in TRADE_SIGNALS:
-        strength = 0.55 + ((h4_strength * 0.55) + (h1_strength * 0.45)) * 0.35
+    # H1 is PRIMARY direction source
+    if h1_dir in TRADE_SIGNALS:
+        # Strength based on H1 only
+        strength = 0.65 + (h1_strength * 0.3)
+        h4_conflict = h4_dir in TRADE_SIGNALS and h4_dir != h1_dir
+        return {
+            "direction": h1_dir,
+            "strength": round(_clip(strength, 0.65, 0.95), 2),
+            "conflicted": h4_conflict,
+            "h1_countertrend": False,
+            "h4_conflict_warning": h4_conflict,
+            "reason": f"H1 primary direction is {h1_dir} ({h1_trend}). H4 status: {'⚠️ CONFLICT ' + h4_dir if h4_conflict else 'aligned or neutral'}",
+        }
+    
+    # H1 is NO TRADE but H4 has a signal - use H4 with lower confidence
+    if h4_dir in TRADE_SIGNALS:
+        strength = 0.50  # Weaker confidence when H1 is neutral; H4 alone is not primary
         return {
             "direction": h4_dir,
-            "strength": round(_clip(strength, 0.55, 0.95), 2),
-            "conflicted": False,
-            "h1_countertrend": False,
-            "reason": f"H4 and H1 align {h4_dir} ({h4_trend} / {h1_trend}).",
+            "strength": round(_clip(strength, 0.50, 0.70), 2),
+            "conflicted": True,  # H1 neutral is a conflict with H4 signal
+            "h1_countertrend": True,
+            "h4_conflict_warning": True,
+            "reason": f"H1 is neutral, H4 signals {h4_dir}; reduced confidence (H4-only signal).",
         }
-
-    if h4_dir in TRADE_SIGNALS and h1_dir == "NO TRADE":
-        strength = 0.45 + (h4_strength * 0.25)
-        return {
-            "direction": h4_dir,
-            "strength": round(_clip(strength, 0.45, 0.75), 2),
-            "conflicted": False,
-            "h1_countertrend": False,
-            "reason": f"H4 carries the structural {h4_dir} bias while H1 is neutral.",
-        }
-
-    if h4_dir in TRADE_SIGNALS and h1_dir in TRADE_SIGNALS and h4_dir != h1_dir:
-        h4_is_strong = h4_trend.startswith("Strong")
-        h1_is_weak = h1_trend.startswith("Weak")
-        if h4_is_strong and h1_is_weak:
-            return {
-                "direction": h4_dir,
-                "strength": 0.56,
-                "conflicted": True,
-                "h1_countertrend": True,
-                "reason": f"H4 remains {h4_trend} while H1 shows only a weak countertrend pullback.",
-            }
-        if h4_is_strong:
-            return {
-                "direction": h4_dir,
-                "strength": 0.50,
-                "conflicted": True,
-                "h1_countertrend": True,
-                "reason": f"H4 is structurally {h4_trend}, but H1 is still pushing {h1_trend}; wait for re-alignment.",
-            }
-        return {
-            "direction": "NO TRADE",
-            "strength": 0.0,
-            "conflicted": True,
-            "h1_countertrend": False,
-            "reason": f"H4 ({h4_trend}) and H1 ({h1_trend}) conflict without a dominant structure.",
-        }
+    
+    # No trade: both H1 and H4 are neutral or no trade
+    return {
+        "direction": "NO TRADE",
+        "strength": 0.0,
+        "conflicted": False,
+        "h1_countertrend": False,
+        "h4_conflict_warning": False,
+        "reason": "H1 and H4 both show no trade signal.",
+    }
 
     if h4_dir == "NO TRADE" and h1_dir in TRADE_SIGNALS and h1_strength >= 0.6:
         return {
@@ -300,6 +291,138 @@ def _pullback_context(
     }
 
 
+def _momentum_entry_conditions(
+    direction: str,
+    bias: dict[str, Any],
+    tfi: dict[str, dict[str, Any]],
+    tfa: dict[str, dict[str, Any]],
+    volume: dict[str, Any],
+) -> dict[str, Any]:
+    """Evaluate momentum-based fast entry: M5 RSI in extreme territory.
+    
+    BUY: M5 RSI > 60 (momentum buyers) + H1 BUY bias
+    SELL: M5 RSI < 40 (momentum sellers) + H1 SELL bias
+    
+    Does NOT require M15 pullback or M1 rejection wick.
+    Entry happens quickly when momentum conditions align.
+    """
+    if direction not in TRADE_SIGNALS:
+        return {
+            "momentum_ready": False,
+            "entry_type": None,
+            "reason": "Invalid direction",
+            "m5_rsi": None,
+        }
+    
+    # Check H1 bias alignment (primary requirement)
+    if bias.get("direction") != direction:
+        return {
+            "momentum_ready": False,
+            "entry_type": None,
+            "reason": f"H1 bias ({bias.get('direction')}) does not match direction {direction}",
+            "m5_rsi": None,
+        }
+    
+    # Check volume is acceptable (dead volume blocks all entries)
+    if volume.get("dead", False):
+        return {
+            "momentum_ready": False,
+            "entry_type": None,
+            "reason": "Entry participation is dead",
+            "m5_rsi": None,
+        }
+    
+    # Get M5 RSI
+    m5_rsi = _f(tfi.get("M5", {}).get("rsi_14"))
+    if m5_rsi is None:
+        return {
+            "momentum_ready": False,
+            "entry_type": None,
+            "reason": "M5 RSI not available",
+            "m5_rsi": None,
+        }
+    
+    # Evaluate momentum RSI thresholds
+    if direction == "BUY":
+        momentum_ready = m5_rsi > 60.0
+        reason = f"M5 RSI={m5_rsi:.1f} {'✓ momentum buy signal' if momentum_ready else '✗ not yet in momentum zone (need >60)'}"
+    else:  # SELL
+        momentum_ready = m5_rsi < 40.0
+        reason = f"M5 RSI={m5_rsi:.1f} {'✓ momentum sell signal' if momentum_ready else '✗ not yet in momentum zone (need <40)'}"
+    
+    return {
+        "momentum_ready": momentum_ready,
+        "entry_type": "momentum" if momentum_ready else None,
+        "reason": reason,
+        "m5_rsi": m5_rsi,
+    }
+
+
+def _pullback_entry_conditions(
+    direction: str,
+    bias: dict[str, Any],
+    tfi: dict[str, dict[str, Any]],
+    tfa: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Evaluate pullback-based entry: M15 pullback completion + M1 rejection wick.
+    
+    This is the conservative path:
+    - Wait for M15/M5 to pullback (reverse direction)
+    - Wait for M1 rejection wick confirmation
+    - Fibonacci levels used as completion zones
+    
+    Slower than momentum entry but higher probability.
+    """
+    if direction not in TRADE_SIGNALS:
+        return {
+            "pullback_ready": False,
+            "entry_type": None,
+            "target_zone": None,
+            "reason": "Invalid direction",
+        }
+    
+    # Check H1 bias alignment
+    if bias.get("direction") != direction:
+        return {
+            "pullback_ready": False,
+            "entry_type": None,
+            "target_zone": None,
+            "reason": f"H1 bias ({bias.get('direction')}) does not match direction {direction}",
+        }
+    
+    # Get M15/M5 directions
+    m15_dir = tfa.get("M15", {}).get("direction", "NO TRADE")
+    m5_dir = tfa.get("M5", {}).get("direction", "NO TRADE")
+    
+    # Pullback is active when M15/M5 are opposite to bias direction
+    pullback_active = False
+    if direction == "BUY":
+        pullback_active = m15_dir == "SELL" or m5_dir == "SELL"
+    else:  # SELL
+        pullback_active = m15_dir == "BUY" or m5_dir == "BUY"
+    
+    # Calculate target zone (where pullback should complete)
+    daily_pivot = _f(tfi.get("D1", {}).get("daily_pivot"))
+    daily_s1 = _f(tfi.get("D1", {}).get("daily_s1"))
+    daily_r1 = _f(tfi.get("D1", {}).get("daily_r1"))
+    atr = _f(tfi.get("M15", {}).get("atr_14")) or _f(tfi.get("M5", {}).get("atr_14")) or 0.0
+    
+    target_zone = None
+    if direction == "BUY":
+        target_zone = daily_pivot if daily_pivot is not None else (daily_s1 + atr * 0.5 if daily_s1 is not None else None)
+    else:  # SELL
+        target_zone = daily_pivot if daily_pivot is not None else (daily_r1 - atr * 0.5 if daily_r1 is not None else None)
+    
+    reason = f"M15={m15_dir}, M5={m5_dir}; pullback {'active' if pullback_active else 'completed'}"
+    
+    return {
+        "pullback_ready": not pullback_active,  # Ready when pullback has completed (flipped back)
+        "entry_type": "pullback" if not pullback_active else None,
+        "target_zone": target_zone,
+        "reason": reason,
+    }
+
+
 def _phase_context(
     direction: str,
     bias: dict[str, Any],
@@ -312,7 +435,8 @@ def _phase_context(
     if patterns.get("is_liquidity_sweep"):
         return ("SPRING", 72.0) if direction == "BUY" else ("UPTHRUST", 72.0)
 
-    aligned_higher = tfa.get("H4", {}).get("direction") == direction and tfa.get("H1", {}).get("direction") in {direction, "NO TRADE"}
+    # H1 is now the primary higher timeframe check (H4 removed)
+    aligned_higher = tfa.get("H1", {}).get("direction") == direction
     aligned_entry = tfa.get("M15", {}).get("direction") == direction and tfa.get("M5", {}).get("direction") == direction
 
     if aligned_higher and aligned_entry:
@@ -334,7 +458,6 @@ def _directional_quality(
 ) -> tuple[float, dict[str, float]]:
     components = {
         "bias": 0.0,
-        "h4_h1_alignment": 0.0,
         "m15_structure": 0.0,
         "m5_trigger": 0.0,
         "m1_trigger": 0.0,
@@ -344,15 +467,12 @@ def _directional_quality(
         "patterns": 0.0,
     }
 
+    # Bias scoring: H1 primary only (H4 removed)
     if bias.get("direction") == direction:
-        components["bias"] = 2.2 + (bias.get("strength", 0.0) * 1.8)
-        if not bias.get("conflicted", False):
-            components["h4_h1_alignment"] = 1.0
-        else:
-            components["h4_h1_alignment"] = -0.5
+        # Increased from 2.2 to 2.8 to compensate for removed h4_h1_alignment
+        components["bias"] = 2.8 + (bias.get("strength", 0.0) * 1.8)
     elif bias.get("direction") in TRADE_SIGNALS:
         components["bias"] = -1.8
-        components["h4_h1_alignment"] = -1.0
 
     if tfa.get("M15", {}).get("direction") == direction:
         components["m15_structure"] = 1.6
@@ -594,8 +714,13 @@ def get_technical_signal(
         pullback = _pullback_context(setup_direction, bias, tfi, tfa)
         phase, phase_strength = _phase_context(setup_direction, bias, tfa, patterns)
         m1_ready, m1_reason = _m1_trigger_ready(setup_direction, tfi, tfa)
+        
+        # NEW: Dual-entry evaluation (momentum vs pullback)
+        momentum = _momentum_entry_conditions(setup_direction, bias, tfi, tfa, volume)
+        pullback_cond = _pullback_entry_conditions(setup_direction, bias, tfi, tfa)
 
         entry_state = "not_actionable"
+        entry_method = None  # Track which entry method is active: "momentum" or "pullback"
         technical_signal = "NO TRADE"
         wait_reason = ""
         wait_trigger = ""
@@ -607,11 +732,26 @@ def get_technical_signal(
             entry_state = "wait_for_volume"
             wait_reason = volume["reason"]
             wait_trigger = "Wait for M15 participation to recover before evaluating entry again."
+        # NEW: Momentum entry path (fast, no pullback wait required)
+        elif momentum["momentum_ready"]:
+            technical_signal = setup_direction
+            entry_state = "ready_momentum"
+            entry_method = "momentum"
+            wait_reason = ""
+            wait_trigger = ""
+        # Fallback to pullback path
         elif pullback["active"]:
             technical_signal = WAIT_SIGNAL
             entry_state = "wait_for_pullback_completion"
             wait_reason = pullback["reason"]
             wait_trigger = f"{pullback['trigger']} {pullback['target_zone']}".strip()
+        elif pullback_cond["pullback_ready"]:
+            # Pullback has completed, now wait for M1 confirmation
+            technical_signal = WAIT_SIGNAL
+            entry_state = "ready_pullback_await_wick"
+            entry_method = "pullback"
+            wait_reason = "Pullback completed; awaiting M1 rejection wick confirmation."
+            wait_trigger = "Look for M1 rejection wick and CVD divergence."
         elif rsi_ctx["exhausted"]:
             technical_signal = WAIT_SIGNAL
             entry_state = "wait_for_rsi_reset"
@@ -652,6 +792,8 @@ def get_technical_signal(
             "all_vol_low": volume["dead"],
             "m15_volume_thin": volume["thin"],
             "m15_volume_reason": volume["reason"],
+            "h4_conflict_warning": bias.get("h4_conflict_warning", False),
+            "h4_status": bias.get("h4_conflict_warning", False),
             "higher_tf_conflict": bias.get("conflicted", False),
             "higher_tf_reason": bias.get("reason", "") if bias.get("conflicted", False) else "",
             "higher_tf_bias": setup_direction if setup_direction in TRADE_SIGNALS else "",
@@ -664,12 +806,16 @@ def get_technical_signal(
             "wait_reason": wait_reason,
             "wait_trigger": wait_trigger,
             "entry_timing_state": entry_state,
-            "structured_pullback_reentry": pullback["structured_reentry"],
+            "entry_method": entry_method,  # NEW: Track momentum vs pullback
+            "momentum_ready": momentum["momentum_ready"],  # NEW
+            "momentum_rsi": momentum.get("m5_rsi"),  # NEW
+            "momentum_reason": momentum["reason"],  # NEW
             "pullback_in_progress": pullback["active"],
             "pullback_detection_reason": pullback["reason"],
             "pullback_reversal_ready": not pullback["active"],
             "pullback_ready_reason": "" if pullback["active"] else "Lower timeframes aligned with higher-timeframe bias.",
             "pullback_target_zone": pullback["target_zone"],
+            "structured_pullback_reentry": pullback["structured_reentry"],
             "wyckoff_phase": phase,
             "wyckoff_phase_strength": phase_strength,
             "wyckoff_phase_reason": f"{phase} context derived from higher-timeframe bias and lower-timeframe behaviour.",
