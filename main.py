@@ -10,7 +10,7 @@ import os
 import config
 from mt5_handler import connect_mt5, get_market_data, shutdown_mt5, get_current_spread
 from indicators import calculate_indicators, calculate_indicators_with_swings
-from technical_engine import get_technical_signal
+from strategy_engine import get_technical_signal
 from risk_manager import (get_current_session, get_daily_pnl_pct, is_daily_loss_limit_hit,
                           consecutive_losses, calculate_lot_size)
 from news_handler import high_impact_news_within_minutes
@@ -144,7 +144,8 @@ def main_loop():
 
             # ========== MAIN 60-SECOND CYCLE ==========
             tfi = fetch_all_indicators(config.SYMBOL, config.N_CANDLES)
-            tech = get_technical_signal(config.SYMBOL, tfi)
+            is_high_impact_news = high_impact_news_within_minutes(15)
+            tech = get_technical_signal(config.SYMBOL, tfi, high_impact_news=is_high_impact_news)
             trade_signal = tech["technical_signal"]
             direction = tech["setup_direction"]
             confidence = tech["technical_confidence"]
@@ -175,10 +176,14 @@ def main_loop():
                 if entry_timing_state == "ready_momentum":
                     log_debug(f"[MOMENTUM ENTRY] M5 RSI in momentum zone – entering without pullback wait...")
                     entry_confirmed = True
-                    m1_data = get_market_data(config.SYMBOL, mt5.TIMEFRAME_M1, 1)
-                    if not m1_data.empty:
-                        m1_current = calculate_indicators(m1_data)
-                        entry_confirmed_price = m1_current.get("close")
+                    try:
+                        m1_data = get_market_data(config.SYMBOL, mt5.TIMEFRAME_M1, 1)
+                        if not m1_data.empty:
+                            m1_current = calculate_indicators(m1_data)
+                            entry_confirmed_price = m1_current.get("close")
+                    except Exception as e:
+                        log_debug(f"[MOMENTUM ENTRY] M1 data fetch error: {e}")
+                        entry_confirmed_price = None
                 
                 # Path 2: PULLBACK ENTRY (waits for M15 pullback completion + M1 wick)
                 elif entry_timing_state == "ready_pullback_await_wick":
@@ -211,7 +216,8 @@ def main_loop():
                                 has_wick = _check_rejection_wick(m1_candle, direction)
                                 
                                 if not has_wick:
-                                    log_debug(f"[INTRACANDLE] M1: {m1_close:.2f} | Trend: {m1_trend} | No rejection wick yet – waiting...")
+                                    price_str = f"{m1_close:.2f}" if m1_close is not None else "N/A"
+                                    log_debug(f"[INTRACANDLE] M1: {price_str} | Trend: {m1_trend} | No rejection wick yet – waiting...")
                                     time.sleep(5)
                                     continue
 
@@ -229,18 +235,19 @@ def main_loop():
                                     cvd_confirmation = True  # Don't block on CVD failure
 
                                 # 5. Check M1 trigger confirmation + wick + CVD
-                                if direction == "BUY" and "Bullish" in str(m1_trend):
+                                if direction == "BUY" and "Bullish" in str(m1_trend) and m1_close is not None:
                                     entry_confirmed = True
                                     entry_confirmed_price = m1_close
                                     log_debug(f"✓ [M1 TRIGGER] Bullish candle + rejection wick + CVD → {m1_close:.2f} | Entry confirmed")
                                     break
-                                elif direction == "SELL" and "Bearish" in str(m1_trend):
+                                elif direction == "SELL" and "Bearish" in str(m1_trend) and m1_close is not None:
                                     entry_confirmed = True
                                     entry_confirmed_price = m1_close
                                     log_debug(f"✓ [M1 TRIGGER] Bearish candle + rejection wick + CVD → {m1_close:.2f} | Entry confirmed")
                                     break
                                 else:
-                                    log_debug(f"[INTRACANDLE] M1: {m1_close:.2f} | Trend: {m1_trend} | waiting for confirmation...")
+                                    price_str = f"{m1_close:.2f}" if m1_close is not None else "N/A"
+                                    log_debug(f"[INTRACANDLE] M1: {price_str} | Trend: {m1_trend} | waiting for confirmation...")
 
                             # Wait 5 seconds before next M1 check
                             time.sleep(5)

@@ -26,11 +26,17 @@ def _classify_trend(ema_20, ema_50, close, atr):
     normalized = None
     is_strong = False
     if atr not in (None, 0):
-        normalized = abs(ema_strength) / atr
-        is_strong = normalized >= TREND_STRENGTH_ATR_THRESHOLD
+        try:
+            normalized = abs(ema_strength) / atr
+            is_strong = normalized >= TREND_STRENGTH_ATR_THRESHOLD
+        except (TypeError, ZeroDivisionError):
+            normalized = None
     elif close not in (None, 0):
-        normalized = abs(ema_strength) / close
-        is_strong = normalized >= TREND_STRENGTH_PRICE_THRESHOLD
+        try:
+            normalized = abs(ema_strength) / close
+            is_strong = normalized >= TREND_STRENGTH_PRICE_THRESHOLD
+        except (TypeError, ZeroDivisionError):
+            normalized = None
     direction = "Bullish" if ema_strength > 0 else "Bearish"
     strength_label = "Strong" if is_strong else "Weak"
     return direction, f"{strength_label} {direction}", ema_strength, normalized
@@ -107,22 +113,22 @@ def calculate_indicators(data: pd.DataFrame) -> dict:
             "close": _to_float(latest["close"]),
             "ema_20": _to_float(latest["ema_20"]),
             "ema_50": _to_float(latest["ema_50"]),
-            "ema_strength": _to_float(latest["ema_20"] - latest["ema_50"]) if latest["ema_20"] is not None else None,
+            "ema_strength": _to_float(latest["ema_20"] - latest["ema_50"]) if _to_float(latest["ema_20"]) is not None and _to_float(latest["ema_50"]) is not None else None,
             "trend_strength_ratio": _to_float(latest.get("trend_strength_ratio")),
-            "indicator_bias": "Bullish" if _to_float(latest["ema_20"]) > _to_float(latest["ema_50"]) else "Bearish" if _to_float(latest["ema_20"]) is not None else "Neutral",
+            "indicator_bias": ("Bullish" if _to_float(latest["ema_20"]) > _to_float(latest["ema_50"]) else "Bearish") if _to_float(latest["ema_20"]) is not None and _to_float(latest["ema_50"]) is not None else "Neutral",
             "trend_classification": _classify_trend(_to_float(latest["ema_20"]), _to_float(latest["ema_50"]), _to_float(latest["close"]), _to_float(latest["atr_14"]))[1],
             "rsi_14": _to_float(latest["rsi_14"]),
             "rsi_signal": _classify_rsi(_to_float(latest["rsi_14"])),
             "atr_14": _to_float(latest["atr_14"]),
             "atr_average_20": _to_float(latest["atr_average_20"]),
-            "atr_ratio": _to_float(latest["atr_14"] / latest["atr_average_20"]) if latest["atr_average_20"] not in (None,0) else None,
+            "atr_ratio": (_to_float(latest["atr_14"]) / _to_float(latest["atr_average_20"])) if _to_float(latest["atr_14"]) is not None and _to_float(latest["atr_average_20"]) not in (None, 0) else None,
             "volatility_classification": _classify_volatility(_to_float(latest["atr_14"]), _to_float(latest["atr_average_20"]))[0],
             "vwap": _to_float(latest["vwap"]),
             "latest_volume": latest_vol,
             "average_volume_20": _to_float(latest["average_volume_20"]),
             "volume_ratio": vol_ratio,
             "volume_classification": _classify_volume(vol_ratio),
-            "price_vs_vwap": "Above" if latest["close"] > latest["vwap"] else "Below" if latest["vwap"] else "Unknown",
+            "price_vs_vwap": ("Above" if _to_float(latest["close"]) > _to_float(latest["vwap"]) else "Below") if _to_float(latest["close"]) is not None and _to_float(latest["vwap"]) is not None else "Unknown",
         }
     except Exception as exc:
         log_debug(f"Indicator calculation failed: {exc}")

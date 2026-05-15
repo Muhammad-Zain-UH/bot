@@ -111,14 +111,15 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
         session = get_current_session()
         threshold_mult = SESSION_SCORE_MULTIPLIERS.get(session, 1.0)
 
-        # Simple scoring: H4/H1 alignment
+        # Simple scoring: H1 is PRIMARY (higher weight than H4 which lagged)
+        # This ensures fast-moving H1 bias takes precedence over slow H4
         buy_score = 0.0
         sell_score = 0.0
         for tf in ["H4", "H1"]:
             if tfa[tf]["direction"] == "BUY":
-                buy_score += 2.0 if tf == "H4" else 1.0
+                buy_score += 1.0 if tf == "H4" else 2.0  # H1 = 2.0 (primary), H4 = 1.0 (secondary)
             elif tfa[tf]["direction"] == "SELL":
-                sell_score += 2.0 if tf == "H4" else 1.0
+                sell_score += 1.0 if tf == "H4" else 2.0  # H1 = 2.0 (primary), H4 = 1.0 (secondary)
         # M15 alignment adds bonus
         if tfa["M15"]["direction"] == bias_dir:
             if bias_dir == "BUY":
@@ -170,7 +171,79 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
             cvd_conf = 0.4
         elif direction == "SELL" and cvd < -20:
             cvd_conf = 0.4
-        # 6. Rejection wick on M1 (entry trigger)
+        
+        # ===== CONTINUATION ENTRY CHECK (NEW) =====
+        # Check if all TFs aligned (H1=M15=M5=M1) - highest priority entry
+        h1_dir = tfa["H1"]["direction"]
+        m15_dir = tfa["M15"]["direction"]
+        m5_dir = tfa["M5"]["direction"]
+        m1_dir = tfa["M1"]["direction"]
+        
+        all_tf_aligned = (h1_dir == m15_dir == m5_dir == m1_dir == direction and 
+                         direction in TRADE_SIGNALS)
+        
+        if all_tf_aligned:
+            # Strong trend continuation - enter immediately without wick/Fib
+            confidence = CONFIDENCE_BASE + 20  # High boost for continuation
+            if vol_ratio < 0.5:
+                confidence -= 5.0
+            confidence = _clip(confidence, MIN_CONFIDENCE, 92)
+            final_signal = direction if confidence >= 45 else WAIT_SIGNAL
+            levels = _build_levels(direction, tfi)
+            log_debug(f"[CONTINUATION] All TFs aligned {direction} – entering without wick/Fib requirements | confidence={confidence}%")
+            return {
+                "technical_signal": final_signal,
+                "setup_direction": direction,
+                "weighted_score": net_score,
+                "max_score": MAX_SCORE,
+                "technical_confidence": int(confidence),
+                "timeframe_analysis": tfa,
+                "mixed_signals": False,
+                "risk_level": "Low",
+                "trade_levels": levels,
+                "gates": {"entry_method": "continuation", "continuation_reason": f"All TFs aligned: H1={h1_dir} M15={m15_dir} M5={m5_dir} M1={m1_dir}"},
+                "error": None,
+            }
+        
+        # ===== MOMENTUM ENTRY CHECK (NEW) =====
+        # Check M5 RSI extremes for fast entry (no wick/Fib required)
+        m5_rsi = _to_float(m5.get("rsi_14"))
+        is_momentum_entry = False
+        momentum_reason = ""
+        
+        if direction == "BUY" and m5_rsi is not None and m5_rsi > 60.0:
+            is_momentum_entry = True
+            momentum_reason = f"M5 RSI {m5_rsi:.1f} > 60 – momentum BUY setup"
+            log_debug(f"[MOMENTUM ENTRY] {momentum_reason} – entering without wick/Fib requirements")
+        elif direction == "SELL" and m5_rsi is not None and m5_rsi < 40.0:
+            is_momentum_entry = True
+            momentum_reason = f"M5 RSI {m5_rsi:.1f} < 40 – momentum SELL setup"
+            log_debug(f"[MOMENTUM ENTRY] {momentum_reason} – entering without wick/Fib requirements")
+        
+        # If momentum entry triggered, bypass wick/VWAP/Fib checks
+        if is_momentum_entry:
+            confidence = CONFIDENCE_BASE + 15  # Boost confidence for momentum entries
+            if vol_ratio < 0.5:
+                confidence -= 5.0
+            confidence = _clip(confidence, MIN_CONFIDENCE, 92)
+            final_signal = direction if confidence >= 45 else WAIT_SIGNAL
+            levels = _build_levels(direction, tfi)
+            log_debug(f"[MOMENTUM] Entry confirmed – confidence={confidence}%")
+            return {
+                "technical_signal": final_signal,
+                "setup_direction": direction,
+                "weighted_score": net_score,
+                "max_score": MAX_SCORE,
+                "technical_confidence": int(confidence),
+                "timeframe_analysis": tfa,
+                "mixed_signals": False,
+                "risk_level": "Medium",
+                "trade_levels": levels,
+                "gates": {"entry_method": "momentum", "momentum_reason": momentum_reason},
+                "error": None,
+            }
+        
+        # 6. Rejection wick on M1 (entry trigger for non-momentum entries)
         m1_candle = {
             'open': _to_float(m1.get('open')),
             'high': _to_float(m1.get('high')),

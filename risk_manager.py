@@ -41,7 +41,7 @@ def get_daily_pnl_pct(log_file: str = "signal_log.csv") -> float:
             reader = csv.DictReader(f)
             for row in reader:
                 ts = row.get("timestamp")
-                outcome = row.get("outcome", "").strip().upper()
+                outcome = (row.get("outcome") or "").strip().upper()
                 if not ts or outcome not in ("WIN","LOSS"):
                     continue
                 if datetime.fromisoformat(ts).date() != today:
@@ -65,7 +65,7 @@ def consecutive_losses(log_file: str = "signal_log.csv", max_losses: int = 3) ->
         rows = list(csv.DictReader(f))
     losses = 0
     for row in reversed(rows[-20:]):
-        outcome = row.get("outcome", "").strip().upper()
+        outcome = (row.get("outcome") or "").strip().upper()
         if outcome == "LOSS":
             losses += 1
         else:
