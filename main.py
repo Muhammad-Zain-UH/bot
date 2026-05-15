@@ -200,7 +200,7 @@ def main_loop():
                 
                 # Path 1: MOMENTUM ENTRY (fast, no M1 wick wait)
                 if entry_timing_state == "ready_momentum":
-                    log_debug(f"[MOMENTUM ENTRY] M5 RSI in momentum zone – entering without pullback wait...")
+                    log_debug(f"[MOMENTUM ENTRY] M5 RSI extreme (35/65) – entering immediately...")
                     entry_confirmed = True
                     try:
                         m1_data = get_market_data(config.SYMBOL, mt5.TIMEFRAME_M1, 1)
@@ -211,18 +211,10 @@ def main_loop():
                         log_debug(f"[MOMENTUM ENTRY] M1 data fetch error: {e}")
                         entry_confirmed_price = None
                 
-                # Path 1b: OTHER READY STATES (continuation, etc - fast entry)
-                elif entry_timing_state in ("ready", "continuation_entry"):
-                    log_debug(f"[{entry_timing_state.upper()}] All conditions met – entering immediately...")
-                    entry_confirmed = True
-                    try:
-                        m1_data = get_market_data(config.SYMBOL, mt5.TIMEFRAME_M1, 1)
-                        if not m1_data.empty:
-                            m1_current = calculate_indicators(m1_data)
-                            entry_confirmed_price = m1_current.get("close")
-                    except Exception as e:
-                        log_debug(f"[{entry_timing_state.upper()}] M1 data fetch error: {e}")
-                        entry_confirmed_price = None
+                # Path 1b: OTHER READY STATES (pullback entry - standard)
+                elif entry_timing_state in ("ready", "ready_pullback_await_wick"):
+                    # Standard pullback entry - wait for M15 pullback + M1 wick confirmation
+                    log_debug(f"[PULLBACK] Waiting for M15 pullback + M1 wick confirmation (max 60s)...")
                 
                 # Path 1c: WAIT_FOR_VOLUME (volume recovering - check if recovered)
                 elif entry_timing_state == "wait_for_volume":

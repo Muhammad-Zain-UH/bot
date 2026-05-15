@@ -131,3 +131,7 @@ timestamp,symbol,session,signal,setup_direction,entry_timing_state,confidence,we
 2026-05-15T17:18:28.690368,XAUUSD,SELL,88,-7.57,4547.69,4563.65,4515.77,0.63,pullback,normal,ready
 2026-05-15T17:20:28.900587,XAUUSD,SELL,88,-7.57,4552.51,4568.62,4520.29,0.62,pullback,normal,ready
 2026-05-15T17:25:29.393196,XAUUSD,SELL,92,-8.97,4554.55,4571.22,4521.22,0.6,pullback,normal,ready
+2026-05-15T17:31:18.214152,XAUUSD,SELL,69,-6.77,4548.61,4564.74,4516.34,0.62,standard,normal,ready
+2026-05-15T17:35:18.649699,XAUUSD,SELL,88,-7.57,4549.11,4565.26,4516.82,0.62,pullback,normal,ready
+2026-05-15T17:45:07.901563,XAUUSD,SELL,69,-6.77,4544.8,4560.38,4513.64,0.64,standard,normal,ready_momentum
+2026-05-15T18:10:26.558631,XAUUSD,SELL,92,-8.97,4540.85,4557.49,4507.56,0.6,momentum,normal,ready_momentum

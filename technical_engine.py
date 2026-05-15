@@ -184,8 +184,10 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
         elif direction == "SELL" and cvd < -20:
             cvd_conf = 0.4
         
-        # ===== CONTINUATION ENTRY CHECK (NEW) =====
-        # Check if all TFs aligned (H1=M15=M5=M1) - highest priority entry
+        # ===== CONTINUATION ENTRY CHECK (DISABLED) =====
+        # DISABLED: All TFs aligned entries were too risky with low accuracy (~50%)
+        # Now using only MOMENTUM and PULLBACK for better accuracy (~70%+)
+        # Keeping logic for reference but not executing
         h1_dir = tfa["H1"]["direction"]
         m15_dir = tfa["M15"]["direction"]
         m5_dir = tfa["M5"]["direction"]
@@ -195,48 +197,24 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
                          direction in TRADE_SIGNALS)
         
         if all_tf_aligned:
-            # Strong trend continuation - enter immediately without wick/Fib
-            # Add remaining trap statuses for transparency
-            trap_status_parts.append("Wick: OK")  # Bypassed for continuation
-            trap_status_parts.append("VWAP: OK")  # Bypassed for continuation
-            trap_status_parts.append("Fib: OK")   # Bypassed for continuation
-            
-            confidence = CONFIDENCE_BASE + 20  # High boost for continuation
-            if vol_ratio < 0.5:
-                confidence -= 5.0
-            confidence = _clip(confidence, MIN_CONFIDENCE, 92)
-            final_signal = direction if confidence >= 45 else WAIT_SIGNAL
-            levels = _build_levels(direction, tfi)
-            trap_filter_status = " | ".join(trap_status_parts)
-            log_debug(f"[CONTINUATION] All TFs aligned {direction} – entering without wick/Fib requirements | confidence={confidence}%")
-            return {
-                "technical_signal": final_signal,
-                "setup_direction": direction,
-                "weighted_score": net_score,
-                "max_score": MAX_SCORE,
-                "technical_confidence": int(confidence),
-                "timeframe_analysis": tfa,
-                "mixed_signals": False,
-                "risk_level": "Low",
-                "trade_levels": levels,
-                "gates": {"entry_method": "continuation", "continuation_reason": f"All TFs aligned: H1={h1_dir} M15={m15_dir} M5={m5_dir} M1={m1_dir}"},
-                "error": None,
-                "trap_filter_status": trap_filter_status,
-            }
+            # Log for reference but do NOT enter - fallthrough to MOMENTUM/PULLBACK
+            log_debug(f"[CONTINUATION] All TFs aligned {direction} – DISABLED (low accuracy). Checking MOMENTUM/PULLBACK instead.")
+            # Continue to next entry method checks
         
         # ===== MOMENTUM ENTRY CHECK (NEW) =====
         # Check M5 RSI extremes for fast entry (no wick/Fib required)
+        # UPDATED: Stricter thresholds (35/65 instead of 40/60) for true momentum only
         m5_rsi = _to_float(m5.get("rsi_14"))
         is_momentum_entry = False
         momentum_reason = ""
         
-        if direction == "BUY" and m5_rsi is not None and m5_rsi > 60.0:
+        if direction == "BUY" and m5_rsi is not None and m5_rsi > 65.0:
             is_momentum_entry = True
-            momentum_reason = f"M5 RSI {m5_rsi:.1f} > 60 – momentum BUY setup"
+            momentum_reason = f"M5 RSI {m5_rsi:.1f} > 65 – momentum BUY setup (overbought)"
             log_debug(f"[MOMENTUM ENTRY] {momentum_reason} – entering without wick/Fib requirements")
-        elif direction == "SELL" and m5_rsi is not None and m5_rsi < 40.0:
+        elif direction == "SELL" and m5_rsi is not None and m5_rsi < 35.0:
             is_momentum_entry = True
-            momentum_reason = f"M5 RSI {m5_rsi:.1f} < 40 – momentum SELL setup"
+            momentum_reason = f"M5 RSI {m5_rsi:.1f} < 35 – momentum SELL setup (oversold)"
             log_debug(f"[MOMENTUM ENTRY] {momentum_reason} – entering without wick/Fib requirements")
         
         # If momentum entry triggered, bypass wick/VWAP/Fib checks
@@ -246,7 +224,7 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
             trap_status_parts.append("VWAP: OK")  # Bypassed for momentum
             trap_status_parts.append("Fib: OK")   # Bypassed for momentum
             
-            confidence = CONFIDENCE_BASE + 15  # Boost confidence for momentum entries
+            confidence = CONFIDENCE_BASE + 20  # Higher boost for extreme momentum entries (35/65)
             if vol_ratio < 0.5:
                 confidence -= 5.0
             confidence = _clip(confidence, MIN_CONFIDENCE, 92)

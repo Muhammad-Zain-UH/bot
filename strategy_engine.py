@@ -868,17 +868,18 @@ def get_technical_signal(
             tech_filters = get_technical_filters(symbol, tfi)
             trap_filter_status = tech_filters.get("trap_filter_status", "")
             
-            # Check if technical engine detected CONTINUATION (all TFs aligned)
-            if tech_filters.get("technical_signal") in TRADE_SIGNALS and tech_filters.get("gates", {}).get("entry_method") == "continuation":
-                # Override entry_state for immediate entry (stronger signal than pullback)
-                entry_state_override = "ready"
-                entry_method = "continuation"
+            # DISABLED CONTINUATION: Now only checking MOMENTUM (M5 RSI extreme)
+            # Check if technical engine detected MOMENTUM (M5 RSI >60 or <40)
+            if tech_filters.get("technical_signal") in TRADE_SIGNALS and tech_filters.get("gates", {}).get("entry_method") == "momentum":
+                # Override entry_state for immediate entry (faster than pullback)
+                entry_state_override = "ready_momentum"
+                entry_method = "momentum"
                 technical_signal = setup_direction
-                log_debug(f"[STRATEGY] CONTINUATION override detected – immediate entry")
+                log_debug(f"[STRATEGY] MOMENTUM entry detected – M5 RSI extreme confirmed")
         except Exception as e:
             log_debug(f"[TRAP FILTER] Could not extract trap filters: {e}")
         
-        # Apply override if CONTINUATION was detected
+        # Apply override if MOMENTUM was detected
         if entry_state_override is not None:
             entry_state = entry_state_override
 
