@@ -315,8 +315,40 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
                 if m5_raw_data is not None and isinstance(m5_raw_data, pd.DataFrame) and not m5_raw_data.empty:
                     cvd_result = detect_cvd_divergence(m5_raw_data, lookback=20)
                     if cvd_result.get("has_divergence"):
-                        cvd_divergence_adjustment = cvd_result.get("confidence_adjustment", 0.0)
-                        log_debug(f"[CVD DIVERGENCE] M5: {cvd_result['type'].upper()} divergence detected → +{cvd_divergence_adjustment:.0f}% confidence")
+                        div_type = cvd_result.get("type")
+                        
+                        # CRITICAL FIX: Match divergence type with trade direction
+                        # SELL trades should have BEARISH divergence (weak buying = good for shorting)
+                        # BUY trades should have BULLISH divergence (weak selling = good for longing)
+                        
+                        if direction == "SELL" and div_type == "bearish":
+                            # ✅ PERFECT MATCH: Selling into confirmed weakness
+                            cvd_divergence_adjustment = +10.0
+                            log_debug(f"[CVD DIVERGENCE] ✅ SELL + BEARISH divergence = CONFIRMED MATCH")
+                            log_debug(f"    Price new HIGH but CVD NOT confirming (weak buying) → +10% confidence REWARD")
+                            
+                        elif direction == "SELL" and div_type == "bullish":
+                            # ❌ MISMATCH: Selling into bullish signal (opposite direction)
+                            cvd_divergence_adjustment = -15.0
+                            log_debug(f"[CVD DIVERGENCE] ⚠️  CONFLICT: SELL + BULLISH divergence = MISMATCH")
+                            log_debug(f"    Price new LOW but CVD SHOWING STRENGTH (weak selling)")
+                            log_debug(f"    → Price likely to BOUNCE UP (opposite of SELL) → -15% confidence PENALTY")
+                            
+                        elif direction == "BUY" and div_type == "bullish":
+                            # ✅ PERFECT MATCH: Buying into confirmed strength
+                            cvd_divergence_adjustment = +10.0
+                            log_debug(f"[CVD DIVERGENCE] ✅ BUY + BULLISH divergence = CONFIRMED MATCH")
+                            log_debug(f"    Price new LOW but CVD NOT confirming (weak selling) → +10% confidence REWARD")
+                            
+                        elif direction == "BUY" and div_type == "bearish":
+                            # ❌ MISMATCH: Buying into bearish signal (opposite direction)
+                            cvd_divergence_adjustment = -15.0
+                            log_debug(f"[CVD DIVERGENCE] ⚠️  CONFLICT: BUY + BEARISH divergence = MISMATCH")
+                            log_debug(f"    Price new HIGH but CVD NOT CONFIRMING (weak buying)")
+                            log_debug(f"    → Price likely to DROP (opposite of BUY) → -15% confidence PENALTY")
+                        else:
+                            cvd_divergence_adjustment = 0.0
+                            log_debug(f"[CVD DIVERGENCE] No divergence detected (neutral signal)")
                 else:
                     log_debug("[CVD] Raw M5 data unavailable for divergence check")
             except Exception as cvd_exc:

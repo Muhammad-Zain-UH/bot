@@ -135,3 +135,17 @@ timestamp,symbol,session,signal,setup_direction,entry_timing_state,confidence,we
 2026-05-15T17:35:18.649699,XAUUSD,SELL,88,-7.57,4549.11,4565.26,4516.82,0.62,pullback,normal,ready
 2026-05-15T17:45:07.901563,XAUUSD,SELL,69,-6.77,4544.8,4560.38,4513.64,0.64,standard,normal,ready_momentum
 2026-05-15T18:10:26.558631,XAUUSD,SELL,92,-8.97,4540.85,4557.49,4507.56,0.6,momentum,normal,ready_momentum
+2026-05-15T20:55:31.705911,XAUUSD,SELL,92,-8.37,4536.68,4556.5,4497.03,0.5,momentum,normal,ready_momentum
+2026-05-15T21:05:36.325084,XAUUSD,SELL,88,-7.57,4535.21,4554.6,4496.42,0.52,momentum,normal,ready_momentum
+2026-05-15T21:10:37.155650,XAUUSD,SELL,88,-7.57,4532.65,4552.43,4493.09,0.51,momentum,normal,ready_momentum
+2026-05-16T00:56:31.677945,XAUUSD,SELL,74,-5.57,4546.52,4559.93,4519.7,0.75,momentum,normal,ready_momentum
+2026-05-16T00:57:31.846029,XAUUSD,SELL,74,-5.57,4546.05,4559.49,4519.18,0.74,momentum,normal,ready_momentum
+2026-05-16T00:58:32.076557,XAUUSD,SELL,86,-6.37,4545.36,4558.87,4518.35,0.74,momentum,normal,ready_momentum
+2026-05-16T00:59:32.277543,XAUUSD,SELL,86,-6.37,4546.23,4559.77,4519.16,0.74,momentum,normal,ready_momentum
+2026-05-16T01:00:36.990705,XAUUSD,SELL,86,-6.37,4545.86,4559.4,4518.79,0.74,momentum,normal,ready_momentum
+2026-05-16T01:01:37.186701,XAUUSD,SELL,86,-6.37,4545.86,4559.4,4518.79,0.74,momentum,normal,ready_momentum
+2026-05-16T01:02:37.368224,XAUUSD,SELL,86,-6.37,4545.86,4559.4,4518.79,0.74,momentum,normal,ready_momentum
+2026-05-16T01:03:37.544606,XAUUSD,SELL,86,-6.37,4545.86,4559.4,4518.79,0.74,momentum,normal,ready_momentum
+2026-05-16T01:04:37.760658,XAUUSD,SELL,86,-6.37,4545.86,4559.4,4518.79,0.74,momentum,normal,ready_momentum
+2026-05-16T01:05:37.957204,XAUUSD,SELL,86,-6.37,4545.86,4559.4,4518.79,0.74,momentum,normal,ready_momentum
+2026-05-16T01:07:06.529283,XAUUSD,SELL,86,-6.37,4545.86,4559.4,4518.79,0.74,momentum,normal,ready_momentum

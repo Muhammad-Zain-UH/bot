@@ -164,16 +164,18 @@ def main_loop():
                     time.sleep(60)
                     continue
                 
-                # FIX #2: M5 RSI OSCILLATION TRAP - Only 1 entry per M5 candle
+                # FIX #2: M5 RSI OSCILLATION TRAP - DISABLED
+                # (Was: Only 1 entry per M5 candle - now allowing multiple entries per M5)
                 try:
                     m5_data = get_market_data(config.SYMBOL, mt5.TIMEFRAME_M5, 1)
                     if not m5_data.empty:
                         current_m5_time = m5_data['time'].iloc[-1]
-                        if last_m5_candle_time is not None and last_m5_candle_time == current_m5_time:
-                            log_debug(f"[M5 OSCILLATION GUARD] Same M5 candle – skipping duplicate entry")
-                            time.sleep(60)
-                            continue
+                        # DISABLED: if last_m5_candle_time is not None and last_m5_candle_time == current_m5_time:
+                        #     log_debug(f"[M5 OSCILLATION GUARD] Same M5 candle – skipping duplicate entry")
+                        #     time.sleep(60)
+                        #     continue
                         last_m5_candle_time = current_m5_time
+                        log_debug(f"[M5 OSCILLATION GUARD] DISABLED - allowing multiple entries on same M5 candle")
                 except Exception as e:
                     log_debug(f"[M5 GUARD] Error: {e}")
                 
