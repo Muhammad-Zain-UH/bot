@@ -110,6 +110,70 @@ REQUEST_TIMEOUT:     int = 15
 NEWS_LOOKAHEAD_DAYS: int = 1
 
 
+# ============================================================
+# INTRADAY OPTIMIZATION - NEW SETTINGS
+# ============================================================
+
+# Timeframes for intraday (remove D1 for swing trading)
+INTRADAY_TIMEFRAMES: list[str] = ["H4", "H1", "M15", "M5", "M1"]
+
+# Enable intraday mode
+INTRADAY_MODE: bool = True
+
+# Intraday session quality multipliers
+INTRADAY_SESSION_MULTIPLIERS: dict[str, float] = {
+    "LondonNewYork": 0.70,  # Best session (easier threshold)
+    "London": 0.75,
+    "NewYork": 0.70,
+    "Asian": 1.30,          # Avoid (harder)
+    "Dead": 2.00,           # Block (hardest)
+}
+
+# Intraday confidence thresholds
+MIN_CONFIDENCE_INTRADAY: float = 62.0  # Higher bar (vs 45%)
+WAIT_SCORE_FLOOR_INTRADAY: float = 1.8  # Pullback min score
+
+# Pullback parameters (for M15 retracement)
+PULLBACK_RATIO_MIN: float = 0.38  # Minimum 38% retracement
+PULLBACK_RATIO_MAX: float = 0.62  # Maximum 62% retracement (avoid too shallow)
+
+# M5 body filter
+M5_BODY_MIN_ATR_RATIO: float = 0.4  # Reject if candle body < 40% of ATR
+
+# M1 entry confirmation
+M1_REJECTION_WICK_MIN_RATIO: float = 0.6  # Wick must be 60%+ of range
+
+# Order execution & slippage (FIX #6 PHASE 4)
+MAX_SLIPPAGE_PIPS: float = 2.0  # Covers realistic spread (1.5pips) + latency (was 0.5)
+
+# Trailing stop settings
+TRAILING_STOP_ATR_TRIGGER: float = 1.0   # Activate at 1× risk profit
+TRAILING_STOP_ATR_TRAIL: float = 0.75    # Trail by 75% of entry ATR
+
+# Maximum daily trades (intraday only)
+MAX_INTRADAY_TRADES_PER_DAY: int = 4
+
+# Position hold time limits
+INTRADAY_MAX_HOLD_MINUTES: int = 240  # Exit by 4-hour mark
+INTRADAY_MIN_HOLD_MINUTES: int = 5    # Minimum 5 minutes before trailing
+
+# Risk management (intraday specific)
+INTRADAY_RISK_PER_TRADE: float = 0.5   # Risk 0.5% per trade
+INTRADAY_LOT_SIZE_MIN: float = 0.01
+INTRADAY_LOT_SIZE_MAX: float = 0.1
+
+# Entry filter: require CVD divergence confirmation (bot5-15 feature)
+REQUIRE_CVD_DIVERGENCE: bool = False  # Set to True to enforce
+CVD_DIVERGENCE_WEIGHT: float = 0.18   # +18% confidence if confirmed (institutional signal)
+
+# Entry filter: require institutional pattern (bot5-15 feature)
+REQUIRE_INSTITUTIONAL_PATTERN: bool = False  # Optional, not blocking
+INSTITUTIONAL_PATTERN_WEIGHT: float = 0.12   # ±12% confidence based on pattern (upthrust -15%, sweep +8%)
+
+# News filter for intraday
+HIGH_IMPACT_NEWS_BLACKOUT_MINUTES: int = 60  # Avoid trading 60 min before/after
+
+
 # ---------------------------------------------------------------------------
 # Configuration validation
 # ---------------------------------------------------------------------------

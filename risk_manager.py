@@ -79,6 +79,41 @@ def calculate_lot_size(account_balance: float, risk_pct: float, stop_distance: f
     raw_lot = risk_amount / (stop_distance * DEFAULT_XAUUSD_VALUE_PER_LOT)
     return max(MIN_LOT, min(MAX_LOT, round(raw_lot, 2)))
 
+
+def calculate_lot_size_for_symbol(
+    symbol: str,
+    account_balance: float,
+    risk_pct: float,
+    entry: float,
+    stop_loss: float,
+) -> float:
+    """Position size from broker tick value/tick size, with safe XAUUSD fallback."""
+    stop_distance = abs(entry - stop_loss) if entry and stop_loss else 0.0
+    if account_balance <= 0 or risk_pct <= 0 or stop_distance <= 0:
+        return MIN_LOT
+
+    try:
+        import MetaTrader5 as mt5
+
+        info = mt5.symbol_info(symbol)
+        if info and info.trade_tick_size and info.trade_tick_value:
+            risk_amount = account_balance * (risk_pct / 100)
+            risk_per_lot = (stop_distance / info.trade_tick_size) * info.trade_tick_value
+            if risk_per_lot <= 0:
+                return calculate_lot_size(account_balance, risk_pct, stop_distance)
+
+            raw_lot = risk_amount / risk_per_lot
+            min_lot = max(float(getattr(info, "volume_min", MIN_LOT) or MIN_LOT), MIN_LOT)
+            max_lot = min(float(getattr(info, "volume_max", MAX_LOT) or MAX_LOT), MAX_LOT)
+            step = float(getattr(info, "volume_step", 0.01) or 0.01)
+            normalized = round(raw_lot / step) * step
+            return max(min_lot, min(max_lot, round(normalized, 2)))
+    except Exception as exc:
+        log_debug(f"Broker-aware lot sizing failed: {exc}")
+
+    return calculate_lot_size(account_balance, risk_pct, stop_distance)
+
+
 def calculate_dynamic_stop(entry: float, direction: str, atr: float, multiplier: float = 1.5) -> float:
     dist = atr * multiplier
     if direction == "BUY":

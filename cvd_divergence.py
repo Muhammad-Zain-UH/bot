@@ -84,49 +84,46 @@ def detect_cvd_divergence(price_data: pd.DataFrame, lookback: int = 20) -> dict[
                 "confidence_adjustment": 0.0,
             }
         
-        # Calculate CVD
-        cvd = calculate_cvd(price_data)
-        
-        recent_price = price_data.iloc[-lookback:]
+        frame = price_data.reset_index(drop=True).copy()
+        cvd = calculate_cvd(frame).reset_index(drop=True)
+
+        recent_price = frame.iloc[-lookback:]
         recent_cvd = cvd.iloc[-lookback:]
-        
-        # Check for NEW LOWS (last 5 candles vs previous 15)
-        recent_5 = price_data.iloc[-5:]
-        prev_15 = price_data.iloc[-lookback:-5]
-        
-        recent_5_low = recent_5['low'].min()
-        prev_15_low = prev_15['low'].min() if len(prev_15) > 0 else float('inf')
-        
-        recent_5_high = recent_5['high'].max()
-        prev_15_high = prev_15['high'].max() if len(prev_15) > 0 else float('-inf')
-        
-        is_new_low = recent_5_low < prev_15_low
-        is_new_high = recent_5_high > prev_15_high
-        
-        # Get CVD at those extremes
-        price_low_idx = recent_price['low'].idxmin()
-        price_high_idx = recent_price['high'].idxmax()
-        
-        cvd_at_low = _to_float(cvd.loc[price_low_idx]) if price_low_idx in cvd.index else None
-        cvd_at_high = _to_float(cvd.loc[price_high_idx]) if price_high_idx in cvd.index else None
-        
-        # BULLISH divergence: price new low, but CVD NOT confirming (higher than expected)
+
+        recent_5 = frame.iloc[-5:]
+        prev_15 = frame.iloc[-lookback:-5]
+
+        recent_5_low = _to_float(recent_5["low"].min())
+        prev_15_low = _to_float(prev_15["low"].min()) if len(prev_15) > 0 else None
+        recent_5_high = _to_float(recent_5["high"].max())
+        prev_15_high = _to_float(prev_15["high"].max()) if len(prev_15) > 0 else None
+
+        is_new_low = prev_15_low is not None and recent_5_low is not None and recent_5_low < prev_15_low
+        is_new_high = prev_15_high is not None and recent_5_high is not None and recent_5_high > prev_15_high
+
+        price_low_idx = int(recent_price["low"].idxmin())
+        price_high_idx = int(recent_price["high"].idxmax())
+
+        cvd_at_low = _to_float(cvd.iloc[price_low_idx]) if 0 <= price_low_idx < len(cvd) else None
+        cvd_at_high = _to_float(cvd.iloc[price_high_idx]) if 0 <= price_high_idx < len(cvd) else None
+
+        recent_delta = cvd.diff().fillna(0.0)
+        bullish_confirmation = len(recent_delta) >= 2 and (recent_delta.iloc[-2:] > 0).all()
+        bearish_confirmation = len(recent_delta) >= 2 and (recent_delta.iloc[-2:] < 0).all()
+
+        # BULLISH divergence: price new low, but CVD is rising on two consecutive bars
         has_bullish_div = False
-        if is_new_low and len(recent_5) >= 2:
-            # Check if CVD at the low is higher than at the previous low
-            idx_range = max(0, len(recent_price) - 10)
-            prev_lows_cvd = cvd.iloc[idx_range:price_low_idx]
-            if len(prev_lows_cvd) > 0 and cvd_at_low is not None:
-                has_bullish_div = cvd_at_low > prev_lows_cvd.min()
-        
-        # BEARISH divergence: price new high, but CVD NOT confirming (lower than expected)
+        if is_new_low and cvd_at_low is not None and prev_15_low is not None:
+            prev_lows_cvd = cvd.iloc[max(0, price_low_idx - 10):price_low_idx]
+            if len(prev_lows_cvd) > 0:
+                has_bullish_div = cvd_at_low > prev_lows_cvd.min() and bullish_confirmation
+
+        # BEARISH divergence: price new high, but CVD is falling on two consecutive bars
         has_bearish_div = False
-        if is_new_high and len(recent_5) >= 2:
-            # Check if CVD at the high is lower than at the previous high
-            idx_range = max(0, len(recent_price) - 10)
-            prev_highs_cvd = cvd.iloc[idx_range:price_high_idx]
-            if len(prev_highs_cvd) > 0 and cvd_at_high is not None:
-                has_bearish_div = cvd_at_high < prev_highs_cvd.max()
+        if is_new_high and cvd_at_high is not None and prev_15_high is not None:
+            prev_highs_cvd = cvd.iloc[max(0, price_high_idx - 10):price_high_idx]
+            if len(prev_highs_cvd) > 0:
+                has_bearish_div = cvd_at_high < prev_highs_cvd.max() and bearish_confirmation
         
         result = {
             "has_divergence": has_bullish_div or has_bearish_div,
@@ -135,14 +132,14 @@ def detect_cvd_divergence(price_data: pd.DataFrame, lookback: int = 20) -> dict[
             "price_new_high": float(recent_5_high) if is_new_high else None,
             "cvd_at_price_low": cvd_at_low,
             "cvd_at_price_high": cvd_at_high,
-            "confidence_adjustment": 10.0 if (has_bullish_div or has_bearish_div) else 0.0,
+            "confidence_adjustment": 8.0 if (has_bullish_div or has_bearish_div) else 0.0,
         }
         
         if result["has_divergence"]:
             log_debug(
                 f"[CVD DIVERGENCE] {result['type'].upper()}: "
                 f"Price new {'low' if has_bullish_div else 'high'} but CVD showing "
-                f"{'strength' if has_bullish_div else 'weakness'} → +10% confidence"
+                f"{'strength' if has_bullish_div else 'weakness'} → +8% confidence"
             )
         
         return result

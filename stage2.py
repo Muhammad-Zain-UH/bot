@@ -9,7 +9,16 @@ from __future__ import annotations
 from typing import Any
 
 import config
-from intermarket import get_intermarket_analysis
+try:
+    from intermarket import get_intermarket_analysis
+except ImportError:
+    def get_intermarket_analysis(direction: str) -> dict[str, Any]:
+        return {
+            "intermarket_score": 0,
+            "alignment_label": "Neutral fallback",
+            "silver_trend": "Unknown",
+            "direction": direction,
+        }
 from utils import log_debug
 
 

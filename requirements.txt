@@ -1,18 +1,28 @@
-# MetaTrader 5 Integration
+# ============================================================================
+# PRODUCTION TRADING BOT - DEPENDENCIES
+# ============================================================================
+
+# MetaTrader 5 Integration (CRITICAL - main broker connection)
 MetaTrader5>=5.0.5000
 
-# Data Processing & Analysis
+# Data Processing & Analysis (CRITICAL - OHLC data handling)
 pandas>=1.5.0
 pandas-ta>=0.3.14
+numpy>=1.23.0
 
-# API Requests
+# HTTP Requests (for news feeds & external APIs)
 requests>=2.28.0
 
-# Claude API (Anthropic) — replaced OpenAI
+# Claude API (Anthropic) — for signal logging & analysis
 anthropic>=0.28.0
 
-# News Feeds
+# News Feeds (RSS feed parsing for news gate layer)
 feedparser>=6.0.10
 
-# Optional: for data visualization/backtesting
-numpy>=1.23.0
+# ============================================================================
+# NOTES:
+# - All dependencies are pure Python and cross-platform
+# - MetaTrader5 requires MT5 terminal installed on system
+# - Production components (persistence, execution, recovery) use stdlib only
+# - Install via: pip install -r requirements.txt
+# ============================================================================

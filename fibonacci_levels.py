@@ -235,3 +235,71 @@ def get_fibonacci_summary(fib_levels: dict[str, float], current_price: float) ->
         lines.append(f"  {level_name}: {level_price:.2f} (Δ {distance:+.2f})")
     
     return " | ".join(lines)
+
+
+def validate_fibonacci_hard_gate(entry_price: float, direction: str, swing_high: float | None, 
+                                 swing_low: float | None) -> tuple[bool, str, float]:
+    """Hard gate validation: Entry price MUST be within Fibonacci zones.
+    
+    For pullback entries, price MUST be in:
+    - 0.618 zone (golden): PRIMARY zone (bonus)
+    - 0.500-0.786 zone: ACCEPTABLE zone (no penalty)
+    - 0.382-0.500 zone: WEAK zone (-10% confidence)
+    - Outside zones: BLOCKED (return False)
+    
+    Args:
+        entry_price: Current/proposed entry price
+        direction: "BUY" or "SELL"
+        swing_high: Recent swing high price
+        swing_low: Recent swing low price
+    
+    Returns:
+        (is_valid, reason_message, confidence_adjustment)
+    """
+    try:
+        if swing_high is None or swing_low is None:
+            return True, "No swing data available; allowing entry", 0.0
+        
+        if swing_high <= swing_low:
+            return True, "Invalid swing data; allowing entry", 0.0
+        
+        range_size = swing_high - swing_low
+        
+        # Calculate Fibonacci levels
+        fib_0236 = swing_high - (range_size * 0.236) if direction == "BUY" else swing_low + (range_size * 0.236)
+        fib_0382 = swing_high - (range_size * 0.382) if direction == "BUY" else swing_low + (range_size * 0.382)
+        fib_0500 = swing_high - (range_size * 0.500) if direction == "BUY" else swing_low + (range_size * 0.500)
+        fib_0618 = swing_high - (range_size * 0.618) if direction == "BUY" else swing_low + (range_size * 0.618)
+        fib_0786 = swing_high - (range_size * 0.786) if direction == "BUY" else swing_low + (range_size * 0.786)
+        
+        # Distance from 0.618 (golden ratio)
+        dist_from_618 = abs(entry_price - fib_0618)
+        
+        # Zone detection
+        if dist_from_618 < 2.0:  # Within 2 pips of 0.618
+            return True, f"Entry at 0.618 golden zone (distance: {dist_from_618:.1f}pips)", 10.0
+        
+        # Check if in acceptable zones (0.500-0.786)
+        min_zone = min(fib_0500, fib_0786)
+        max_zone = max(fib_0500, fib_0786)
+        if min_zone <= entry_price <= max_zone:
+            return True, f"Entry in 0.500-0.786 zone (acceptable)", 2.0
+        
+        # Check if in weak zone (0.382-0.500)
+        min_weak = min(fib_0382, fib_0500)
+        max_weak = max(fib_0382, fib_0500)
+        if min_weak <= entry_price <= max_weak:
+            return True, f"Entry in 0.382-0.500 zone (weak, -10% confidence)", -10.0
+        
+        # Check if in very weak zone (0.236-0.382)
+        min_vweak = min(fib_0236, fib_0382)
+        max_vweak = max(fib_0236, fib_0382)
+        if min_vweak <= entry_price <= max_vweak:
+            return False, f"Entry in 0.236-0.382 zone (too shallow, BLOCKED)", 0.0
+        
+        # Outside all zones - BLOCK
+        return False, f"Entry outside Fibonacci zones (0.236-0.786) - BLOCKED", 0.0
+        
+    except Exception as exc:
+        log_debug(f"Fibonacci hard gate validation error: {exc}")
+        return True, "Fibonacci gate error; allowing entry", 0.0

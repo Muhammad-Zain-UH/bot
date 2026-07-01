@@ -78,25 +78,52 @@ def _liquidity_sweep(direction: str, current_price: float, prev_day_high: float,
         return True, "Sweep of buy stops"
     return False, ""
 
-def _rejection_wick(candle: dict, direction: str) -> bool:
-    """Check if M1 candle has a long wick rejecting the level."""
+def _rejection_wick(candle: dict, direction: str) -> tuple[bool, str]:
+    """Check if M1 candle has a long wick rejecting the level. Session-aware thresholds.
+    
+    Returns: (is_valid: bool, reason: str)
+    - BUY setup: Long lower wick (sellers rejected)
+    - SELL setup: Long upper wick (buyers rejected)
+    - Asia/Dead sessions: 35% wick threshold (more permissive for thin markets)
+    - London/NY sessions: 50% wick threshold (stricter for liquid markets)
+    """
     open_p = _to_float(candle.get('open'))
     close_p = _to_float(candle.get('close'))
     high_p = _to_float(candle.get('high'))
     low_p = _to_float(candle.get('low'))
     if any(v is None for v in [open_p, close_p, high_p, low_p]):
-        return False
+        return False, "Missing candle data"
+    
     body = abs(close_p - open_p)
     full = high_p - low_p
     if full <= 0:
-        return False
+        return False, "No price range"
+    
     wick_ratio = (full - body) / full
-    if direction == "BUY":
-        lower_wick = low_p - min(open_p, close_p)
-        return lower_wick > body and wick_ratio > 0.6
+    
+    # Session-aware threshold
+    session = get_current_session()
+    if session in ["Asian", "Dead"]:
+        threshold = 0.35  # More permissive for thin markets
     else:
-        upper_wick = max(open_p, close_p) - high_p
-        return upper_wick > body and wick_ratio > 0.6
+        threshold = 0.50  # Standard for liquid markets
+    
+    if direction == "BUY":
+        lower_wick = min(open_p, close_p) - low_p
+        if lower_wick > body and wick_ratio > threshold:
+            return True, f"Valid lower wick ({wick_ratio:.1%})"
+        elif lower_wick <= body:
+            return False, f"Lower wick too small ({lower_wick:.1f} vs body {body:.1f})"
+        else:
+            return False, f"Wick ratio too low ({wick_ratio:.1%} vs {threshold:.1%})"
+    else:  # SELL
+        upper_wick = high_p - max(open_p, close_p)
+        if upper_wick > body and wick_ratio > threshold:
+            return True, f"Valid upper wick ({wick_ratio:.1%})"
+        elif upper_wick <= body:
+            return False, f"Upper wick too small ({upper_wick:.1f} vs body {body:.1f})"
+        else:
+            return False, f"Wick ratio too low ({wick_ratio:.1%} vs {threshold:.1%})"
 
 def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
     try:
@@ -201,37 +228,67 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
             log_debug(f"[CONTINUATION] All TFs aligned {direction} – DISABLED (low accuracy). Checking MOMENTUM/PULLBACK instead.")
             # Continue to next entry method checks
         
-        # ===== MOMENTUM ENTRY CHECK (NEW) =====
-        # Check M5 RSI extremes for fast entry (no wick/Fib required)
-        # UPDATED: Stricter thresholds (35/65 instead of 40/60) for true momentum only
+        # ===== M1 BREAKOUT + VOLUME CONFIRMATION (REPLACES M5 RSI MOMENTUM) =====
+        # FIXED: Use M1 candle breakout with volume surge instead of M5 RSI extremes
+        # This prevents entries at local lows/highs with low conviction
+        
         m5_rsi = _to_float(m5.get("rsi_14"))
+        m1_volume = _to_float(m1.get("latest_volume", m1.get("volume", 0))) or 0.0
+        m1_volume_history = tfi.get("M1", {}).get("volume_history", [])
+        m1_volume_avg = sum(m1_volume_history[-20:]) / 20 if len(m1_volume_history or []) >= 20 else 0
+        
+        m5_volume = _to_float(m5.get("latest_volume", m5.get("volume", 0))) or 0.0
+        m5_volume_history = tfi.get("M5", {}).get("volume_history", [])
+        m5_volume_avg = sum(m5_volume_history[-20:]) / 20 if len(m5_volume_history or []) >= 20 else 0
+        
         is_momentum_entry = False
         momentum_reason = ""
         
-        if direction == "BUY" and m5_rsi is not None and m5_rsi > 65.0:
-            is_momentum_entry = True
-            momentum_reason = f"M5 RSI {m5_rsi:.1f} > 65 – momentum BUY setup (overbought)"
-            log_debug(f"[MOMENTUM ENTRY] {momentum_reason} – entering without wick/Fib requirements")
-        elif direction == "SELL" and m5_rsi is not None and m5_rsi < 35.0:
-            is_momentum_entry = True
-            momentum_reason = f"M5 RSI {m5_rsi:.1f} < 35 – momentum SELL setup (oversold)"
-            log_debug(f"[MOMENTUM ENTRY] {momentum_reason} – entering without wick/Fib requirements")
+        # Check for M1 breakout above/below previous candle with volume confirmation
+        m1_close = _to_float(m1.get("close", 0))
+        m1_high = _to_float(m1.get("high", 0))
+        m1_low = _to_float(m1.get("low", 0))
         
-        # If momentum entry triggered, bypass wick/VWAP/Fib checks
-        if is_momentum_entry:
-            # Add remaining trap statuses for transparency
-            trap_status_parts.append("Wick: OK")  # Bypassed for momentum
-            trap_status_parts.append("VWAP: OK")  # Bypassed for momentum
-            trap_status_parts.append("Fib: OK")   # Bypassed for momentum
+        # Get previous M1 candle data (if available)
+        prev_m1_high = tfi.get("M1", {}).get("prev_high")
+        prev_m1_low = tfi.get("M1", {}).get("prev_low")
+        
+        if direction == "BUY" and prev_m1_high is not None and m1_close is not None and m1_volume_avg > 0:
+            # BUY: M1 closes significantly above previous high + 2x volume
+            breakout = m1_close > prev_m1_high * 1.00025  # 0.5 pips above for XAUUSD
+            volume_confirmed = m1_volume >= m1_volume_avg * 2.0
             
-            confidence = CONFIDENCE_BASE + 20  # Higher boost for extreme momentum entries (35/65)
+            if breakout and volume_confirmed and m5_rsi is not None and m5_rsi > 45:
+                is_momentum_entry = True
+                momentum_reason = f"M1 Breakout (close={m1_close:.2f} > prev_high={prev_m1_high:.2f}) + Volume({m1_volume:.0f}x) + M5_RSI({m5_rsi:.1f})"
+                log_debug(f"[M1 BREAKOUT ENTRY] BUY confirmed – {momentum_reason}")
+        
+        elif direction == "SELL" and prev_m1_low is not None and m1_close is not None and m1_volume_avg > 0:
+            # SELL: M1 closes significantly below previous low + 2x volume
+            breakout = m1_close < prev_m1_low * 0.99975  # 0.5 pips below for XAUUSD
+            volume_confirmed = m1_volume >= m1_volume_avg * 2.0
+            
+            if breakout and volume_confirmed and m5_rsi is not None and m5_rsi < 55:
+                is_momentum_entry = True
+                momentum_reason = f"M1 Breakout (close={m1_close:.2f} < prev_low={prev_m1_low:.2f}) + Volume({m1_volume:.0f}x) + M5_RSI({m5_rsi:.1f})"
+                log_debug(f"[M1 BREAKOUT ENTRY] SELL confirmed – {momentum_reason}")
+        
+        # If M1 breakout + volume confirmed, proceed with entry
+        if is_momentum_entry:
+            trap_status_parts.append("M1_Breakout: ✓ VALID")
+            trap_status_parts.append("Volume_Surge: ✓ CONFIRMED")
+            trap_status_parts.append("Wick: BYPASSED (breakout confirmed)")
+            
+            confidence = CONFIDENCE_BASE + 25  # Higher boost for breakout+volume entries
             if vol_ratio < 0.5:
-                confidence -= 5.0
-            confidence = _clip(confidence, MIN_CONFIDENCE, 92)
-            final_signal = direction if confidence >= 45 else WAIT_SIGNAL
+                confidence -= 8.0
+            if m5_volume_avg > 0 and m5_volume < m5_volume_avg * 1.2:
+                confidence -= 6.0
+            confidence = _clip(confidence, MIN_CONFIDENCE, 95)
+            final_signal = direction if confidence >= 50 else WAIT_SIGNAL
             levels = _build_levels(direction, tfi)
             trap_filter_status = " | ".join(trap_status_parts)
-            log_debug(f"[MOMENTUM] Entry confirmed – confidence={confidence}%")
+            log_debug(f"[M1 BREAKOUT] Entry approved – confidence={confidence}% | {momentum_reason}")
             return {
                 "technical_signal": final_signal,
                 "setup_direction": direction,
@@ -242,10 +299,18 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
                 "mixed_signals": False,
                 "risk_level": "Medium",
                 "trade_levels": levels,
-                "gates": {"entry_method": "momentum", "momentum_reason": momentum_reason},
+                "gates": {
+                    "entry_method": "m1_breakout",
+                    "momentum_reason": momentum_reason,
+                    "m1_volume_surge": True,
+                    "m1_volume_ratio": round(m1_volume / max(m1_volume_avg, 1), 2),
+                },
                 "error": None,
                 "trap_filter_status": trap_filter_status,
             }
+        
+        # If no M1 breakout entry, continue to rejection wick check
+        log_debug(f"[M1 BREAKOUT] No breakout confirmation (BUY breakout={is_momentum_entry if direction=='BUY' else 'N/A'}, SELL breakout={is_momentum_entry if direction=='SELL' else 'N/A'})")
         
         # 6. Rejection wick on M1 (entry trigger for non-momentum entries)
         m1_candle = {
@@ -255,9 +320,12 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
             'close': _to_float(m1.get('close'))
         }
         wick_status = "OK"
-        if not _rejection_wick(m1_candle, direction):
-            log_debug("No rejection wick – waiting for entry signal")
-            wick_status = "TIMEOUT"
+        wick_is_valid, wick_reason = _rejection_wick(m1_candle, direction)
+        # FIX #3: Make rejection wick OPTIONAL (not all impulse/momentum candles have wicks, candle close direction is more important)
+        if not wick_is_valid:
+            log_debug(f"[WICK WARNING] No rejection wick ({wick_reason}) – but close direction valid, proceeding with entry")
+            wick_status = f"NOT_REQUIRED ({wick_reason})"
+            # Don't block entry, just log warning and continue
         trap_status_parts.append(f"Wick: {wick_status}")
         
         # 7. VWAP proximity check (optional)
@@ -289,17 +357,18 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
                         fib_levels = calculate_fibonacci_levels(swing_high, swing_low, direction)
                         fib_check = check_fibonacci_confirmation(current_price, fib_levels, direction, tolerance_pips=8.0)
                         
-                        # Require 0.618 level for higher-quality entries
+                        # FIX #5: Make Fibonacci 0.618 OPTIONAL (impulse waves are 0-0.382 range, not 0.618. Only pullback entries hit 0.618)
                         if not fib_check.get("is_at_fib_level"):
                             fib_618_dist = fib_check.get("fib_618_distance")
                             log_debug(
-                                f"[FIBONACCI] Price {current_price:.2f} not at 0.618 "
-                                f"(distance: {fib_618_dist:.1f} pips) – wait for retracement"
+                                f"[FIBONACCI WARNING] Price {current_price:.2f} not at 0.618 "
+                                f"(distance: {fib_618_dist:.1f} pips) – but continuing with entry (impulse mode)"
                             )
-                            fib_status = f"AWAY {fib_618_dist:.0f}p"
-                            return _empty_result(f"Not at Fibonacci 0.618 level ({fib_618_dist:.1f}pips away)")
+                            fib_status = f"AWAY {fib_618_dist:.0f}p (impulse)"
+                            # Don't block entry, just log warning
                         else:
                             log_debug(f"[FIBONACCI] ✓ Price at valid retracement level: {fib_check.get('nearest_level')}")
+                            fib_status = f"AT {fib_check.get('nearest_level')}"
                 except Exception as fib_exc:
                     log_debug(f"Fibonacci check warning: {fib_exc} — proceeding with entry")
         trap_status_parts.append(f"Fib: {fib_status}")
@@ -316,6 +385,10 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
                     cvd_result = detect_cvd_divergence(m5_raw_data, lookback=20)
                     if cvd_result.get("has_divergence"):
                         div_type = cvd_result.get("type")
+                        cvd_low = _to_float(cvd_result.get("cvd_at_price_low"))
+                        cvd_high = _to_float(cvd_result.get("cvd_at_price_high"))
+                        price_low = _to_float(cvd_result.get("price_new_low"))
+                        price_high = _to_float(cvd_result.get("price_new_high"))
                         
                         # CRITICAL FIX: Match divergence type with trade direction
                         # SELL trades should have BEARISH divergence (weak buying = good for shorting)
@@ -325,27 +398,29 @@ def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
                             # ✅ PERFECT MATCH: Selling into confirmed weakness
                             cvd_divergence_adjustment = +10.0
                             log_debug(f"[CVD DIVERGENCE] ✅ SELL + BEARISH divergence = CONFIRMED MATCH")
-                            log_debug(f"    Price new HIGH but CVD NOT confirming (weak buying) → +10% confidence REWARD")
+                            log_debug(f"    Price new HIGH ({price_high:.2f}) | CVD: {cvd_high:.0f} (weak buying)")
+                            log_debug(f"    → +10% confidence REWARD")
                             
                         elif direction == "SELL" and div_type == "bullish":
                             # ❌ MISMATCH: Selling into bullish signal (opposite direction)
                             cvd_divergence_adjustment = -15.0
                             log_debug(f"[CVD DIVERGENCE] ⚠️  CONFLICT: SELL + BULLISH divergence = MISMATCH")
-                            log_debug(f"    Price new LOW but CVD SHOWING STRENGTH (weak selling)")
-                            log_debug(f"    → Price likely to BOUNCE UP (opposite of SELL) → -15% confidence PENALTY")
+                            log_debug(f"    Price new LOW ({price_low:.2f}) | CVD: {cvd_low:.0f} (strong buying)")
+                            log_debug(f"    → -15% confidence PENALTY (price likely to bounce UP)")
                             
                         elif direction == "BUY" and div_type == "bullish":
                             # ✅ PERFECT MATCH: Buying into confirmed strength
                             cvd_divergence_adjustment = +10.0
                             log_debug(f"[CVD DIVERGENCE] ✅ BUY + BULLISH divergence = CONFIRMED MATCH")
-                            log_debug(f"    Price new LOW but CVD NOT confirming (weak selling) → +10% confidence REWARD")
+                            log_debug(f"    Price new LOW ({price_low:.2f}) | CVD: {cvd_low:.0f} (weak selling)")
+                            log_debug(f"    → +10% confidence REWARD")
                             
                         elif direction == "BUY" and div_type == "bearish":
                             # ❌ MISMATCH: Buying into bearish signal (opposite direction)
                             cvd_divergence_adjustment = -15.0
                             log_debug(f"[CVD DIVERGENCE] ⚠️  CONFLICT: BUY + BEARISH divergence = MISMATCH")
-                            log_debug(f"    Price new HIGH but CVD NOT CONFIRMING (weak buying)")
-                            log_debug(f"    → Price likely to DROP (opposite of BUY) → -15% confidence PENALTY")
+                            log_debug(f"    Price new HIGH ({price_high:.2f}) | CVD: {cvd_high:.0f} (weak buying)")
+                            log_debug(f"    → -15% confidence PENALTY (price likely to drop)")
                         else:
                             cvd_divergence_adjustment = 0.0
                             log_debug(f"[CVD DIVERGENCE] No divergence detected (neutral signal)")

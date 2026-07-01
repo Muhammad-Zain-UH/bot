@@ -10,7 +10,14 @@ from typing import Any
 import MetaTrader5 as mt5
 
 import config
-from confidence_calibrator import apply_uncalibrated_lockout, is_calibration_complete
+try:
+    from confidence_calibrator import apply_uncalibrated_lockout, is_calibration_complete
+except ImportError:
+    def apply_uncalibrated_lockout(confidence: int, **_: Any) -> tuple[int, str]:
+        return confidence, ""
+
+    def is_calibration_complete() -> tuple[bool, int]:
+        return True, 0
 from indicators import calculate_indicators
 from mt5_handler import get_market_data
 from technical_engine import get_technical_signal

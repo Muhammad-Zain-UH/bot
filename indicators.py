@@ -131,21 +131,57 @@ def calculate_indicators(data: pd.DataFrame) -> dict:
         frame["vwap"] = _compute_session_vwap(frame)
         frame["average_volume_20"] = frame["volume"].rolling(window=20, min_periods=5).mean()
         frame["atr_average_20"] = frame["atr_14"].rolling(window=20, min_periods=5).mean()
+        
+        # NEW: Calculate candle metrics for quality validation
+        frame["body"] = abs(frame["close"] - frame["open"])
+        frame["range"] = frame["high"] - frame["low"]
+        frame["wick_upper"] = frame["high"] - frame[["open", "close"]].max(axis=1)
+        frame["wick_lower"] = frame[["open", "close"]].min(axis=1) - frame["low"]
+        frame["wick_ratio"] = frame.apply(
+            lambda row: (row["range"] - row["body"]) / row["range"] if row["range"] > 0 else 0,
+            axis=1
+        )
+        
         latest = frame.iloc[-1]
+        prev_candle = frame.iloc[-2] if len(frame) >= 2 else None
+        
         # Compute volume ratio using 96‑period baseline (session aware)
         avg_vol_96 = _to_float(latest["average_volume_96"])
         latest_vol = _to_float(latest["volume"])
         vol_ratio = None
         if avg_vol_96 and avg_vol_96 > 100 and latest_vol:
             vol_ratio = min(5.0, latest_vol / avg_vol_96)
+        
+        # NEW: Volume history (last 20 candles) and volume surge ratio
+        volume_history = frame["volume"].tail(20).tolist() if len(frame) >= 20 else frame["volume"].tolist()
+        volume_surge_ratio = latest_vol / max(sum(volume_history) / len(volume_history), 1) if volume_history else 1.0
+        
+        trend_direction, trend_label, ema_strength, trend_strength_ratio = _classify_trend(
+            _to_float(latest["ema_20"]),
+            _to_float(latest["ema_50"]),
+            _to_float(latest["close"]),
+            _to_float(latest["atr_14"]),
+        )
+
         return {
             "close": _to_float(latest["close"]),
+            "open": _to_float(latest["open"]),
+            "high": _to_float(latest["high"]),
+            "low": _to_float(latest["low"]),
+            "closes_2": [_to_float(v) for v in frame["close"].tail(2).tolist()],
+            "body": _to_float(latest["body"]),  # NEW
+            "wick_ratio": _to_float(latest["wick_ratio"]),  # NEW
+            "volume": latest_vol,
+            "volume_history": volume_history,  # NEW
+            "volume_surge_ratio": round(volume_surge_ratio, 2),  # NEW
+            "prev_high": _to_float(prev_candle["high"]) if prev_candle is not None else None,  # NEW
+            "prev_low": _to_float(prev_candle["low"]) if prev_candle is not None else None,  # NEW
             "ema_20": _to_float(latest["ema_20"]),
             "ema_50": _to_float(latest["ema_50"]),
-            "ema_strength": _to_float(latest["ema_20"] - latest["ema_50"]) if _to_float(latest["ema_20"]) is not None and _to_float(latest["ema_50"]) is not None else None,
-            "trend_strength_ratio": _to_float(latest.get("trend_strength_ratio")),
-            "indicator_bias": ("Bullish" if _to_float(latest["ema_20"]) > _to_float(latest["ema_50"]) else "Bearish") if _to_float(latest["ema_20"]) is not None and _to_float(latest["ema_50"]) is not None else "Neutral",
-            "trend_classification": _classify_trend(_to_float(latest["ema_20"]), _to_float(latest["ema_50"]), _to_float(latest["close"]), _to_float(latest["atr_14"]))[1],
+            "ema_strength": ema_strength,
+            "trend_strength_ratio": trend_strength_ratio,
+            "indicator_bias": trend_direction,
+            "trend_classification": trend_label,
             "rsi_14": _to_float(latest["rsi_14"]),
             "rsi_signal": _classify_rsi(_to_float(latest["rsi_14"])),
             "atr_14": _to_float(latest["atr_14"]),
