@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-06-22T14:28:57.668131",
+  "timestamp": "2026-07-01T11:18:26.962541",
   "total_trades": 2,
   "trades": [
     {
@@ -12,7 +12,7 @@
       "status": "OPEN",
       "position_size": 0.5,
       "order_id": "XAUUSD_001_auto_1781845161",
-      "last_check": "2026-06-22T14:28:57.666030"
+      "last_check": "2026-07-01T11:18:24.081556"
     },
     {
       "trade_id": "XAUUSD_002",
@@ -24,7 +24,7 @@
       "status": "OPEN",
       "position_size": 1.0,
       "order_id": "XAUUSD_002_auto_1781845161",
-      "last_check": "2026-06-22T14:28:57.666041"
+      "last_check": "2026-07-01T11:18:24.081567"
     }
   ]
 }

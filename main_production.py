@@ -796,13 +796,16 @@ def analyze_entry(
                 structure_valid=bool(struct.get("structure_valid", False)),
                 has_fib_confluence=bool(poi_fib.get("has_fib_confluence", False)),
                 rsi_value=intraday_rsi,
+                regime=analysis.get("regime_info", {}).get("regime", "DEFAULT"),
             )
             if callable(get_confidence_engine)
             else {}
         )
         if conf.get("grade") == "REJECT":
             analysis["layer_failed"] = "L7_CONFIDENCE"
-            analysis["fail_reason"] = f"Confidence score too low ({conf.get('final_score', 0):.1f} < 70)"
+            conf_score = conf.get('final_score', 0)
+            threshold = 55 if analysis.get("regime_info", {}).get("regime") == "MICRO_SCALP" else 70
+            analysis["fail_reason"] = f"Confidence score too low ({conf_score:.1f} < {threshold})"
             analysis["signal_type"] = "PRE_ENTRY"
             return analysis
         analysis["layers_passed"].append("L7_CONFIDENCE")

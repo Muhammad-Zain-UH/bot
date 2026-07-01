@@ -587,6 +587,7 @@ def analyze_entry(
                 structure_valid=bool(struct.get("structure_valid", False)),
                 has_fib_confluence=bool(poi_fib.get("has_fib_confluence", False)),
                 rsi_value=intraday_rsi,
+                regime="DEFAULT",
             )
             if callable(get_confidence_engine)
             else {}

@@ -145,6 +145,7 @@ def calculate_confidence_score(
     sweep_quality: float,
     poi_score: float,
     session: str = "OTHER",
+    regime: str = "DEFAULT",
 ) -> dict[str, Any]:
     """
     Calculate final confidence score from component inputs.
@@ -157,6 +158,7 @@ def calculate_confidence_score(
         sweep_quality: 0-10
         poi_score: 0-100
         session: "LONDON", "NEWYORK", "ASIAN", "DEAD", "OTHER"
+        regime: "MICRO_SCALP | REGIME_SCALP | INTRADAY_SWING | DEFAULT"
     
     Returns:
         {
@@ -210,10 +212,16 @@ def calculate_confidence_score(
             session_bonus
         )
         
-        # Grade
-        if final_score >= 85:
+        # Grade (regime-aware thresholds)
+        a_plus_threshold = 85
+        if regime == "MICRO_SCALP":
+            a_threshold = 55
+        else:
+            a_threshold = 70
+
+        if final_score >= a_plus_threshold:
             grade = "A+"
-        elif final_score >= 70:
+        elif final_score >= a_threshold:
             grade = "A"
         else:
             grade = "REJECT"
@@ -361,9 +369,21 @@ def get_confidence_engine(
     structure_valid: bool = False,
     has_fib_confluence: bool = False,
     rsi_value: float | None = None,
+    regime: str = "DEFAULT",
 ) -> dict[str, Any]:
     """
     Complete confidence scoring with A+ checklist.
+    
+    Args:
+        bias_strength: 0-10
+        structure_confidence: 0-10
+        sweep_quality: 0-10
+        poi_score: 0-100
+        session: "LONDON", "NEWYORK", "ASIAN", "DEAD", "OTHER"
+        structure_valid: Whether H1 structure is intact
+        has_fib_confluence: Whether POI aligns with fib levels
+        rsi_value: Current RSI reading
+        regime: Trading regime for dynamic thresholds (MICRO_SCALP uses 55, others 70)
     
     Returns:
         {
@@ -385,6 +405,7 @@ def get_confidence_engine(
         sweep_quality,
         poi_score,
         session,
+        regime=regime,
     )
     
     # Check A+ qualifications
