@@ -251,10 +251,14 @@ def validate_h1_structure(
                     "reasoning": "H1 bullish structure broken: close below last swing low",
                 }
             
-            # Structure valid if the last 5 candles show enough consecutive HH/HL progression.
-            # With 5 candles there are 4 comparisons, so 2+ progression steps in both series
-            # is a reasonable minimum for a live trend.
-            if hh_count >= 2 and hl_count >= 2:
+            # Structure valid if the last 5 candles show HH/HL progression.
+            # FIX (STRUCTURE-1): The old rule required 2+/4 progression steps in BOTH
+            # series simultaneously, which fails on a single normal retracement candle
+            # inside a healthy trend (very common) and was returning UNKNOWN far more
+            # often than it should. Require only 1+ progression step in each series,
+            # and use the raw count for a graduated confidence score instead of an
+            # all-or-nothing gate.
+            if hh_count >= 1 and hl_count >= 1:
                 confidence = min(10.0, ((hh_count + hl_count) / 8.0) * 10.0)
                 return {
                     "structure_valid": True,
@@ -272,8 +276,8 @@ def validate_h1_structure(
                     "last_swing_high": last_high,
                     "last_swing_low": last_low,
                     "structure_confidence": 0.0,
-                    "break_reason": f"Series insufficient: HH progression={hh_count}/4, HL progression={hl_count}/4 (need 2+ each)",
-                    "reasoning": "H1 structure not consistently HH/HL across the last 5 candles",
+                    "break_reason": f"Series insufficient: HH progression={hh_count}/4, HL progression={hl_count}/4 (need 1+ each)",
+                    "reasoning": "H1 structure shows no HH or no HL progression across the last 5 candles",
                 }
         
         elif expected_bias == "BEARISH":
@@ -315,8 +319,10 @@ def validate_h1_structure(
                     "reasoning": "H1 bearish structure broken: close above last swing high",
                 }
             
-            # Structure valid if the last 5 candles show enough consecutive LH/LL progression.
-            if lh_count >= 2 and ll_count >= 2:
+            # Structure valid if the last 5 candles show LH/LL progression.
+            # FIX (STRUCTURE-1): loosened from 2+/4 in both series to 1+/4 each,
+            # for the same reason as the bullish branch above.
+            if lh_count >= 1 and ll_count >= 1:
                 confidence = min(10.0, ((lh_count + ll_count) / 8.0) * 10.0)
                 return {
                     "structure_valid": True,
@@ -334,8 +340,8 @@ def validate_h1_structure(
                     "last_swing_high": last_high,
                     "last_swing_low": last_low,
                     "structure_confidence": 0.0,
-                    "break_reason": f"Series insufficient: LH progression={lh_count}/4, LL progression={ll_count}/4 (need 2+ each)",
-                    "reasoning": "H1 structure not consistently LH/LL across the last 5 candles",
+                    "break_reason": f"Series insufficient: LH progression={lh_count}/4, LL progression={ll_count}/4 (need 1+ each)",
+                    "reasoning": "H1 structure shows no LH or no LL progression across the last 5 candles",
                 }
         
         else:  # NEUTRAL bias

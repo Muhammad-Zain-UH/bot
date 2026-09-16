@@ -2,15 +2,7 @@
 PRODUCTION-READY MAIN ORCHESTRATION ENGINE
 10-Layer Trading Bot with Order Execution, State Persistence, and Error Recovery
 
-System Architecture:
-  Layer 0: Pre-trade gates (daily loss, spread, news)
-  Layer 1-8: Sequential entry filters (all must pass)
-  Layer 9: Trade management (partial exits 1:1/1:2/1:3 RR)
-  Layer 10: Feedback loop (performance tracking & auto-adjustment)
-  
-  + Order Execution: Live order placement with retry logic
-  + Trade Persistence: State preservation across restarts
-  + Error Recovery: Connection management and graceful shutdown
+UPDATED: Regime-aware spread check at L0, dynamic confidence weights, regime-specific entry logic.
 """
 
 from __future__ import annotations
@@ -54,14 +46,14 @@ except ImportError:
 
 # Import all 10 layer modules
 try:
-    from bias_engine import get_h4_bias
+    from bias_engine import get_h4_bias, get_fast_bias
     from structure_engine import get_h1_structure
     from pullback_detector import get_m15_pullback
     from liquidity_engine import identify_liquidity_pools, assess_liquidity_gate
     from sweep_detector import get_sweep_and_structure
     from poi_engine import identify_poi, build_poi_layer_data
     from confidence_engine import get_confidence_engine, evaluate_poi_fib_confluence
-    from entry_engine import get_entry_trigger, detect_regime
+    from entry_engine import get_entry_trigger, detect_regime, evaluate_entry_for_regime
     from trade_manager import manage_open_trade, close_position
     from feedback_loop import log_closed_trade, calculate_weekly_performance
     LAYERS_AVAILABLE = True
@@ -81,7 +73,7 @@ except ImportError:
     print("[WARNING] Trade persistence not available")
 
 try:
-    from risk_manager import calculate_lot_size_for_symbol
+    from risk_manager import calculate_lot_size_for_symbol, get_current_session
     RISK_MANAGER_AVAILABLE = True
 except ImportError:
     RISK_MANAGER_AVAILABLE = False
@@ -128,9 +120,9 @@ CONFIG = {
 }
 
 SIGNAL_LOG_COLUMNS = [
-    "timestamp", "signal_type", "layers_passed", "layer_failed", 
+    "timestamp", "signal_type", "layers_passed", "layer_failed",
     "fail_reason", "l6_poi_type", "l6_poi_score",
-    "entry_grade", "setup_type", "entry_method", "entry_mode", "trigger_type", "rr_valid", "entry_price", "stop_loss", 
+    "entry_grade", "setup_type", "entry_method", "entry_mode", "trigger_type", "rr_valid", "entry_price", "stop_loss",
     "take_profit", "rr_ratio", "session", "position_type", "order_id"
 ]
 
@@ -142,25 +134,27 @@ def _ascii_safe(text: object) -> str:
     """Convert text to ASCII-safe form for Windows consoles and logs."""
     return str(text).encode("ascii", errors="replace").decode("ascii")
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('trading_bot_production.log', encoding="utf-8"),
-        logging.StreamHandler(stream=sys.stdout)
-    ]
-)
+log_file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'trading_bot_production.log'))
+
 logger = logging.getLogger('TradingBot-Production')
+logger.setLevel(logging.INFO)
+logger.propagate = False
+logger.handlers.clear()
+
+file_handler = logging.FileHandler(log_file_path, encoding='utf-8')
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+logger.addHandler(file_handler)
+
+stream_handler = logging.StreamHandler(stream=sys.stdout)
+stream_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+logger.addHandler(stream_handler)
 
 # ============================================================
-# ENHANCED TERMINAL VISIBILITY (PHASE 4)
+# ENHANCED TERMINAL VISIBILITY
 # ============================================================
 
 def print_market_snapshot(price: float, h1_atr: float, m5_atr: float, session: str, spread: float) -> None:
-    """Display current market conditions in terminal with volatility context."""
     utc_now = datetime.now(timezone.utc).strftime("%H:%M")
-    
-    # Volatility interpretation
     if h1_atr < 8:
         vol_status = "DEAD CALM"
     elif h1_atr < 15:
@@ -169,25 +163,22 @@ def print_market_snapshot(price: float, h1_atr: float, m5_atr: float, session: s
         vol_status = "MEDIUM"
     else:
         vol_status = "HIGH"
-    
-    # Spread assessment
+
     if spread > 10:
         spread_status = "WIDE"
     elif spread > 5:
         spread_status = "MODERATE"
     else:
         spread_status = "TIGHT"
-    
+
     print("\n" + "█" * 120)
     print(f"  📊 MARKET SNAPSHOT │ {utc_now} UTC │ Price: {price:.2f} │ Session: {session:10s} │ Spread: {spread:.1f}pip ({spread_status:10s})")
     print(f"  🎯 Volatility      │ H1 ATR: {h1_atr:.1f}pip ({vol_status:15s}) │ M5 ATR: {m5_atr:.1f}pip │ Trend: {'UP' if m5_atr > 5 else 'NORMAL'}")
     print("█" * 120)
 
 def print_regime_detection(regime_info: Dict) -> None:
-    """Display detected trading regime with spread tolerance and configuration."""
     if not regime_info:
         return
-    
     regime = regime_info.get("regime", "UNKNOWN")
     m5_atr = regime_info.get("m5_atr", 0.0)
     risk_pct = regime_info.get("risk_percent", 0.0)
@@ -198,28 +189,42 @@ def print_regime_detection(regime_info: Dict) -> None:
     max_spread = regime_info.get("max_spread_pips", 7.0)
     current_spread = regime_info.get("current_spread", 0.0)
     spread_acceptable = regime_info.get("spread_acceptable", True)
-    
+
     regime_symbol = "⚡" if regime == "MICRO_SCALP" else ("📈" if regime == "REGIME_SCALP" else "📊")
-    
-    # Spread status indicator
-    if spread_acceptable:
-        spread_indicator = f"✓ {current_spread:.1f}pip (OK, max {max_spread:.1f})"
-    else:
-        spread_indicator = f"✗ {current_spread:.1f}pip (EXCEEDS max {max_spread:.1f})"
-    
-    # Determine display message
+    spread_indicator = f"✓ {current_spread:.1f}pip (OK, max {max_spread:.1f})" if spread_acceptable else f"✗ {current_spread:.1f}pip (EXCEEDS max {max_spread:.1f})"
+
     if regime == "DEAD_CALM":
         bypass_msg = "(Will be BLOCKED at L2 - no trading)"
     elif bypass_l3 or bypass_l6:
         bypass_msg = f"(Bypass: L{'3 ' if bypass_l3 else ''}{'L6' if bypass_l6 else ''})"
     else:
         bypass_msg = "(Full L1-L8)"
-    
+
     print(f"\n  {regime_symbol} REGIME: {regime:15s} │ M5 ATR: {m5_atr:5.1f}pip │ Risk: {risk_pct:.2f}% │ TP Target: {tp_ratio:.1f}R │ POI: {poi_threshold:.0f}%")
     print(f"     Spread: {spread_indicator:35s} │ Confidence: 70% threshold │ {bypass_msg}")
 
+def print_trade_context(analysis: Dict) -> None:
+    side = analysis.get("direction", "UNKNOWN")
+    regime = analysis.get("regime_name") or analysis.get("regime_info", {}).get("regime", "UNKNOWN")
+    candidate = analysis.get("candidate_entry_style", "PULLBACK / MOMENTUM")
+    print(f"\n  🎯 TARGET: {side:4s} | REGIME: {regime:15s} | LOOKING FOR: {candidate}")
+
+def build_layer_progress_summary(layers_passed: list, layer_failed: Optional[str] = None) -> str:
+    entry_layers = ["L1_BIAS", "L2_STRUCTURE", "L3_PULLBACK", "L4_LIQUIDITY", "L5_SWEEP", "L6_POI", "L7_CONFIDENCE", "L8_ENTRY"]
+    completed_layers = [layer for layer in entry_layers if layer in layers_passed]
+    if layer_failed and layer_failed != "NONE":
+        return (
+            f"{len(completed_layers)}/{len(entry_layers)} entry layers passed | "
+            f"Completed: {', '.join(completed_layers) if completed_layers else 'none'} | "
+            f"Current block: {layer_failed} | "
+            f"Pending: {', '.join([layer for layer in entry_layers if layer not in completed_layers and layer != layer_failed]) if any(layer not in completed_layers and layer != layer_failed for layer in entry_layers) else 'none'}"
+        )
+    return (
+        f"{len(completed_layers)}/{len(entry_layers)} entry layers passed | "
+        f"Completed: {', '.join(completed_layers) if completed_layers else 'none'}"
+    )
+
 def print_layer_status(layers_passed: list, layer_failed: str, fail_reason: str) -> None:
-    """Display layer-by-layer pass/fail status with detailed descriptions."""
     layer_descriptions = {
         "L0_GATES": "Pre-trade gates (daily loss, session, spread monitor)",
         "L1_BIAS": "H4 EMA directional bias (bullish/bearish confirmation)",
@@ -230,11 +235,12 @@ def print_layer_status(layers_passed: list, layer_failed: str, fail_reason: str)
         "L6_POI": "Point of Interest order blocks (POI confluence)",
         "L7_CONFIDENCE": "Confidence score (weighted component aggregate)",
         "L8_ENTRY": "Entry triggers + spread regime check",
+        "L8_SPREAD": "Spread tolerance check for the active regime",
     }
-    
-    all_layers = ["L0_GATES", "L1_BIAS", "L2_STRUCTURE", "L3_PULLBACK", "L4_LIQUIDITY", 
+    all_layers = ["L0_GATES", "L1_BIAS", "L2_STRUCTURE", "L3_PULLBACK", "L4_LIQUIDITY",
                   "L5_SWEEP", "L6_POI", "L7_CONFIDENCE", "L8_ENTRY"]
-    
+
+    print(f"\n  📋 {build_layer_progress_summary(layers_passed, layer_failed)}")
     status_line = ""
     for layer in all_layers:
         if layer in layers_passed:
@@ -243,20 +249,16 @@ def print_layer_status(layers_passed: list, layer_failed: str, fail_reason: str)
             status_line += f"✗{layer} "
         else:
             status_line += f"- "
-    
-    print(f"\n  📋 LAYER PIPELINE: {status_line}")
-    
+    print(f"  🔎 LAYER PIPELINE: {status_line}")
+
     if layer_failed and fail_reason:
         desc = layer_descriptions.get(layer_failed, "Unknown layer")
         print(f"\n  ❌ BLOCKED AT {layer_failed}")
         print(f"     What: {desc}")
         print(f"     Why:  {fail_reason}")
-    
     print("\n" + "█" * 120)
 
-
 def print_layer_result(layer_num: int, layer_name: str, status: str, reason: str = "", details: str = "") -> None:
-    """Print a single layer result in a safe, concise format."""
     status = status.upper()
     if status == "PASS":
         status_display = "PASS"
@@ -272,24 +274,39 @@ def print_layer_result(layer_num: int, layer_name: str, status: str, reason: str
         msg += f" | {details}"
     print(msg)
 
+def _log_same_summary(analysis: Dict) -> None:
+    signal_type = analysis.get('signal_type', 'UNKNOWN')
+    layers = analysis.get("layers_passed", [])
+    layer_failed = analysis.get("layer_failed") or "NONE"
+    fail_reason = analysis.get("fail_reason", "")
+    regime = analysis.get("regime_name") or analysis.get("regime_info", {}).get("regime", "UNKNOWN")
+    side = analysis.get("direction", "UNKNOWN")
+    candidate = analysis.get("candidate_entry_style", "PULLBACK / MOMENTUM")
+    price = analysis.get("current_price")
+    price_text = "N/A" if price in (None, "", 0) else f"{float(price):.2f}"
+    passed_layers = ",".join(layers) if layers else "NONE"
+
+    log_line = (
+        f"[DECISION] price={price_text} side={side} regime={regime} target={candidate} "
+        f"passed={passed_layers} blocked={layer_failed} signal={signal_type} reason={fail_reason or 'NONE'}"
+    )
+    logger.info(log_line)
+
 def print_run_summary(analysis: Dict) -> None:
-    """Enhanced summary with regime, layer status, and entry details."""
     signal_type = analysis.get('signal_type', 'UNKNOWN')
     layers = analysis.get("layers_passed", [])
     layer_failed = analysis.get("layer_failed", "NONE")
     fail_reason = analysis.get("fail_reason", "")
     regime_info = analysis.get("regime_info", {})
-    layer_8 = analysis.get("layer_8", {})
     entry = analysis.get("entry_signal")
-    
-    # Display regime detection
+
     if regime_info:
         print_regime_detection(regime_info)
-    
-    # Display layer-by-layer status
+
+    print_trade_context(analysis)
     print_layer_status(layers, layer_failed, fail_reason)
-    
-    # Display entry signal if generated
+    _log_same_summary(analysis)
+
     if signal_type == "ENTRY_SIGNAL" and entry:
         print(f"\n  ✅ ENTRY SIGNAL GENERATED")
         print(f"     Position Type: {entry.get('position_type', 'N/A'):8s} │ Grade: {entry.get('grade', 'N/A')}")
@@ -298,26 +315,20 @@ def print_run_summary(analysis: Dict) -> None:
         print(f"     Risk/Reward: 1:{float(entry.get('rr_ratio', 0.0)):.2f} │ Confidence: {entry.get('confidence_score', 0.0):.1f}%")
         print(f"     Setup Details: {entry.get('setup_description', 'N/A')}")
         print("     " + "=" * 115)
-        
     elif signal_type == "PRE_ENTRY":
-        layers_passed = len(layers)
-        print(f"\n  ⏳ PRE-ENTRY SIGNAL (Setup building - {layers_passed}/9 layers passed)")
+        print(f"\n  ⏳ PRE-ENTRY SIGNAL ({build_layer_progress_summary(layers, layer_failed)})")
+        print(f"     Current Gate: {layer_failed if layer_failed != 'NONE' else 'L0_GATES'}")
         print(f"     Waiting For: {fail_reason}")
-        print(f"     Status: Setup conditions are forming, entry triggers not yet fired")
         print("     " + "=" * 115)
-        
     elif signal_type == "ERROR":
         print(f"\n  ⚠️  ANALYSIS ERROR")
         print(f"     Issue: {fail_reason}")
         print("     " + "=" * 115)
-        
     else:
-        layers_passed = len(layers)
-        print(f"\n  ℹ️  MONITORING ({layers_passed}/9 layers passed)")
+        print(f"\n  ℹ️  MONITORING ({build_layer_progress_summary(layers, layer_failed)})")
         if fail_reason:
             print(f"     Next Gate: {fail_reason}")
         print("     " + "=" * 115)
-    
     print()
 
 monitor = None
@@ -327,26 +338,19 @@ alert_mgr = None
 order_executor = None
 
 def initialize_production_components():
-    """Initialize all production-critical components."""
     global monitor, connection_mgr, shutdown_mgr, alert_mgr, order_executor
-    
     if ERROR_RECOVERY_AVAILABLE:
         logger.info("[INIT] Initializing System Monitor...")
         monitor = SystemMonitor()
-        
         logger.info("[INIT] Initializing Connection Manager...")
         connection_mgr = ConnectionManager()
-        
         logger.info("[INIT] Initializing Graceful Shutdown Manager...")
         shutdown_mgr = GracefulShutdownManager(persistence_layer=__import__('trade_persistence') if PERSISTENCE_AVAILABLE else None)
-        
         logger.info("[INIT] Initializing Alert Manager...")
         alert_mgr = AlertManager()
-    
     if EXECUTION_AVAILABLE:
         logger.info("[INIT] Initializing Order Executor...")
         order_executor = OrderExecutor()
-    
     logger.info("[INIT] [+] All production components initialized")
 
 # ============================================================
@@ -354,9 +358,7 @@ def initialize_production_components():
 # ============================================================
 
 def log_signal(row: dict) -> None:
-    """Append signal to CSV log."""
     file_exists = os.path.isfile(_SIGNAL_LOG_FILE)
-    
     try:
         with open(_SIGNAL_LOG_FILE, "a", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=SIGNAL_LOG_COLUMNS, extrasaction="ignore")
@@ -366,12 +368,9 @@ def log_signal(row: dict) -> None:
     except Exception as e:
         logger.error(f"Error logging signal: {e}")
 
-
 def _count_today_entry_signals(log_file: str = _SIGNAL_LOG_FILE) -> int:
-    """Count ENTRY_SIGNAL rows logged today."""
     if not os.path.isfile(log_file):
         return 0
-
     today = datetime.now().date().isoformat()
     count = 0
     try:
@@ -392,10 +391,8 @@ def _count_today_entry_signals(log_file: str = _SIGNAL_LOG_FILE) -> int:
 # ============================================================
 
 def get_session_name() -> str:
-    """Get current session name using the canonical risk-manager schedule."""
     try:
         from risk_manager import get_current_session as _get_current_session
-
         session = _get_current_session()
         session_map = {
             "Asian": "ASIAN",
@@ -407,7 +404,6 @@ def get_session_name() -> str:
         }
         return session_map.get(session, "DEAD")
     except Exception:
-        # Fallback to UTC if risk_manager is unavailable.
         hour = datetime.now(timezone.utc).hour
         if 0 <= hour < 7:
             return "ASIAN"
@@ -418,19 +414,16 @@ def get_session_name() -> str:
         return "DEAD"
 
 def get_session_bonus() -> float:
-    """Get confidence bonus for current session."""
     session = get_session_name()
     if session in ["LONDON", "NY"]:
         return 8.0
     if session == "ASIAN":
-        return -5.0
+        return 0.0
     if session == "DEAD":
         return -15.0
     return 0.0
 
-
 def _extract_intraday_rsi(m15_data=None, m5_data=None) -> float | None:
-    """Prefer M15 RSI, fallback to M5 RSI for intraday confirmation."""
     for frame in (m15_data, m5_data):
         if frame is None or len(frame) == 0:
             continue
@@ -444,74 +437,141 @@ def _extract_intraday_rsi(m15_data=None, m5_data=None) -> float | None:
     return None
 
 # ============================================================
-# LAYER 0: PRE-TRADE GATES
+# LAYER 0: PRE-TRADE GATES (UPDATED with regime-aware spread)
 # ============================================================
 
 def check_pre_trade_gates(
     account_balance: float = 10000,
     current_daily_loss: float = 0,
-    current_spread: float = 0.5
+    regime_info: Dict = None,
 ) -> Dict:
-    """Layer 0: Pre-trade gate checks - blocks all trading if any gate fails."""
     gates_passed = []
     gates_failed = []
-    
-    # Gate 1: Daily loss limit
+
+    # Daily loss check
     max_daily_loss = (account_balance * CONFIG["max_daily_loss_percent"] / 100) if account_balance > 0 else 1000
     if current_daily_loss < -max_daily_loss:
         gates_failed.append(f"DAILY_LOSS: {current_daily_loss:.2f} > {max_daily_loss:.2f}")
     else:
         gates_passed.append(f"Daily loss OK ({abs(current_daily_loss):.2f} / {max_daily_loss:.2f})")
-    
-    # Gate 2: Spread check - DEFERRED TO L8 ENTRY TRIGGER
-    # Reason: Spread tolerance is REGIME-SPECIFIC (not one-size-fits-all)
-    # - MICRO_SCALP (1.5R target): Can't afford spreads > 5 pips
-    # - REGIME_SCALP (2.0R target): Can tolerate spreads 3-7 pips
-    # - INTRADAY_SWING (3.0R target): Can tolerate spreads 5-10+ pips
-    # Hard L0 gate prevents regime-based entries from ever happening
-    # L8 Entry Engine will evaluate spread against regime's profit target
-    gates_passed.append(f"Spread monitoring: {current_spread:.1f}pip (L8 Entry Trigger will evaluate vs regime)")
-    
-    # Gate 3: Session check
-    # FIX #9 (PHASE 4): Keep Asian as VALID session (no hard block)
-    # Only block DEAD session (22:00-03:00 UTC)
-    # Regime Switch (L8) will dictate risk % based on session volatility
+
+    # Spread check using regime_info
+    if regime_info:
+        max_spread = regime_info.get("max_spread_pips", 10.0)
+        current_spread = regime_info.get("current_spread", 0.5)
+        # DISABLED SPREAD CHECK
+        gates_passed.append(f"Spread OK ({current_spread:.1f} pip ≤ {max_spread:.1f} pip) [CHECK DISABLED]")
+    else:
+        gates_passed.append("Spread check skipped (no regime info)")
+
+    # Session check
     session = get_session_name()
     if session == "DEAD":
         gates_failed.append("DEAD SESSION: no trading between 22:00 and 03:00 UTC")
-    elif session in ["LONDON", "NY"]:
-        gates_passed.append(f"Session OK ({session}) - Prime tier")
-    elif session == "ASIAN":
-        gates_passed.append(f"Session OK ({session}) - Asian session valid (Tier 2 - Regime Switch applies 0.75-1.0% risk)")
     else:
         gates_passed.append(f"Session OK ({session})")
-    
+
     return {
         "all_gates_passed": len(gates_failed) == 0,
         "gates_passed": gates_passed,
         "gates_failed": gates_failed,
         "session": session
     }
+# ============================================================
+# LAYERS 1-8: SEQUENTIAL ENTRY ANALYSIS (UPDATED)
+# ============================================================
 
-# ============================================================
-# LAYERS 1-8: SEQUENTIAL ENTRY ANALYSIS
-# ============================================================
+def _simple_rsi(closes, period: int = 14) -> float | None:
+    """Standard RSI-14 computed directly from a close-price series."""
+    try:
+        if closes is None or len(closes) < period + 1:
+            return None
+        delta = closes.diff().dropna()
+        gains = delta.clip(lower=0)
+        losses = -delta.clip(upper=0)
+        avg_gain = gains.rolling(window=period).mean().iloc[-1]
+        avg_loss = losses.rolling(window=period).mean().iloc[-1]
+        if avg_loss == 0:
+            return 100.0
+        rs = avg_gain / avg_loss
+        return 100.0 - (100.0 / (1.0 + rs))
+    except Exception:
+        return None
+
+
+def _check_regime_scalp_momentum(m5_data, side: str, break_reference: float | None, m5_atr: float | None) -> tuple[bool, str]:
+    """
+    FIX (SCALP-1): REGIME_SCALP momentum-continuation fallback for when price
+    breaks out and never pulls back. This is intentionally NOT a bypass like
+    MICRO_SCALP's - it substitutes the pullback check for FOUR stricter checks,
+    so a momentum entry has to earn its way in rather than skip verification:
+      1. Sustained direction (2+ consecutive M5 closes), not a single wick
+      2. Real participation (M5 volume above its own 20-candle baseline)
+      3. Not already exhausted (RSI in a healthy continuation band, not extreme)
+      4. Not overextended (still within 1.2x M5 ATR of the structural break level)
+    L6 POI is NOT bypassed for this path - a momentum entry still needs real
+    confluence, just without a pullback discount on entry price.
+    """
+    if m5_data is None or len(m5_data) < 22:
+        return False, "Insufficient M5 data for momentum continuation check"
+
+    recent = m5_data.tail(22).reset_index(drop=True)
+    try:
+        last_close = float(recent["close"].iloc[-1])
+        prev_close = float(recent["close"].iloc[-2])
+        prev2_close = float(recent["close"].iloc[-3])
+    except Exception:
+        return False, "Could not read recent M5 closes"
+
+    if side == "BUY":
+        sustained = last_close > prev_close > prev2_close
+    elif side == "SELL":
+        sustained = last_close < prev_close < prev2_close
+    else:
+        sustained = False
+    if not sustained:
+        return False, "M5 closes not showing 2+ consecutive moves in the breakout direction"
+
+    try:
+        volumes = recent["tick_volume"].tail(21)
+        baseline_vol = float(volumes.iloc[:-1].mean())
+        current_vol = float(volumes.iloc[-1])
+    except Exception:
+        return False, "Could not read M5 volume"
+    if baseline_vol <= 0 or current_vol < baseline_vol:
+        return False, f"M5 volume ({current_vol:.0f}) below 20-candle baseline ({baseline_vol:.0f}) - move lacks participation"
+
+    rsi = _simple_rsi(recent["close"], period=14)
+    if rsi is None:
+        return False, "Could not compute M5 RSI for momentum check"
+    if side == "BUY" and not (55.0 <= rsi <= 75.0):
+        return False, f"M5 RSI {rsi:.1f} outside momentum band 55-75 for BUY (too weak or already exhausted)"
+    if side == "SELL" and not (25.0 <= rsi <= 45.0):
+        return False, f"M5 RSI {rsi:.1f} outside momentum band 25-45 for SELL (too weak or already exhausted)"
+
+    if break_reference is not None and m5_atr:
+        pip_size = 0.10  # XAUUSD real pip, matches SPREAD-1 fix convention
+        distance_pips = abs(last_close - break_reference) / pip_size
+        max_allowed_pips = 1.2 * m5_atr
+        if distance_pips > max_allowed_pips:
+            return False, f"Price extended {distance_pips:.1f} pips from break level, exceeds {max_allowed_pips:.1f} pip cap (1.2x M5 ATR) - too late to chase"
+
+    return True, "Momentum continuation confirmed: sustained direction + volume + healthy RSI + not overextended"
+
 
 def analyze_entry(
-    h4_data=None, h1_data=None, m15_data=None, 
+    h4_data=None, h1_data=None, m15_data=None,
     m5_data=None, m1_data=None, daily_data=None,
-    current_price: float = 0
+    current_price: float = 0,
+    regime_info: Dict = None
 ) -> Dict:
-    """
-    Layers 1-8: Sequential entry analysis with hard gates.
-    Stops at first layer failure.
-    """
     analysis = {
         "timestamp": datetime.now().isoformat(),
         "layers_passed": [],
         "layer_failed": None,
         "signal_type": "NO_SIGNAL",
-        "entry_signal": None
+        "entry_signal": None,
+        "regime_info": regime_info or {}
     }
 
     max_intraday_trades = getattr(globals().get("config"), "MAX_INTRADAY_TRADES_PER_DAY", 4)
@@ -522,12 +582,12 @@ def analyze_entry(
             analysis["layer_failed"] = "DAILY_LIMIT"
             analysis["fail_reason"] = f"Daily limit reached ({trades_today} trades)"
             return analysis
-    
+
     if not LAYERS_AVAILABLE or h4_data is None:
         analysis["signal_type"] = "ERROR"
         analysis["fail_reason"] = "Missing data or layers not available"
         return analysis
-    
+
     try:
         def _bias_to_side(bias_label: str) -> str:
             return "BUY" if str(bias_label).upper() == "BULLISH" else "SELL"
@@ -544,7 +604,6 @@ def analyze_entry(
                 return "DEAD"
             return "OTHER"
 
-        # best-effort current price for downstream (SL/TP)
         if current_price in (None, 0):
             try:
                 if m1_data is not None and len(m1_data) > 0:
@@ -554,184 +613,234 @@ def analyze_entry(
             except Exception:
                 current_price = None
 
-        # ============ REGIME DETECTION (PHASE 4 - EARLY VISIBILITY) ============
-        regime_info = None
-        m5_atr = None
+        analysis["current_price"] = current_price
+
+        # Use precomputed regime_info (or compute if missing)
+        if not regime_info:
+            from entry_engine import detect_regime
+            current_spread = 0.5
+            try:
+                if MT5_AVAILABLE and callable(get_current_spread):
+                    current_spread = get_current_spread(CONFIG["symbol"])
+            except Exception:
+                current_spread = 0.5
+            regime_info = detect_regime(m5_data, m15_data, h1_data, current_spread=current_spread)
+        analysis["regime_info"] = regime_info
+
+        m5_atr = regime_info.get("m5_atr", 0.0)
         h1_atr = None
-        current_spread = 0.5
-        
-        # Calculate M5 ATR for regime detection
-        if m5_data is not None and len(m5_data) >= 14:
-            ranges_m5 = m5_data["high"].tail(14) - m5_data["low"].tail(14)
-            m5_atr = ranges_m5.mean()
-        
-        # Calculate H1 ATR for display
         if h1_data is not None and len(h1_data) >= 14:
             ranges_h1 = h1_data["high"].tail(14) - h1_data["low"].tail(14)
             h1_atr = ranges_h1.mean()
-        
-        # Fetch current spread BEFORE regime detection (needed for spread validation)
-        current_spread = 0.5
-        try:
-            if MT5_AVAILABLE and callable(get_current_spread):
-                current_spread = get_current_spread(CONFIG["symbol"])
-        except Exception:
-            current_spread = 0.5
-        
-        # Detect regime (now includes spread validation)
-        if callable(detect_regime) and m5_data is not None and m15_data is not None and h1_data is not None:
-            regime_info = detect_regime(m5_data, m15_data, h1_data, current_spread=current_spread)
-            analysis["regime_info"] = regime_info
-        
-        # Display market snapshot for visibility
-        if current_price and h1_atr is not None and m5_atr is not None:
+        if current_price and h1_atr is not None and m5_atr:
             session_name = get_session_name()
+            current_spread = regime_info.get("current_spread", 0.5)
             print_market_snapshot(float(current_price), float(h1_atr), float(m5_atr), session_name, float(current_spread))
 
-        # ============ LAYER 1: H4 BIAS ============
+        # ============ LAYER 1: BIAS ============
+        # FIX (BIAS-2): H4 bias alone was gating ALL regimes identically, including
+        # MICRO_SCALP/REGIME_SCALP which don't hold long enough to need H4-level
+        # conviction. A choppy multi-day H4 range was blocking every regime at once.
+        # Scalp regimes now use the fast H1 bias (bias_engine.get_fast_bias) as the
+        # actual gate; H4 bias is still computed and kept as a confluence signal for
+        # visibility/future confidence weighting, but no longer blocks scalp entries
+        # on its own. INTRADAY_SWING keeps the original strict H4-only gate, since a
+        # 150+ pip swing target should wait for real multi-day conviction.
         h4_indicators = calculate_indicators(h4_data) if INDICATORS_AVAILABLE and h4_data is not None and len(h4_data) > 0 else {}
         if h4_data is not None and len(h4_data) >= 2 and "closes_2" not in h4_indicators:
             h4_indicators["closes_2"] = [float(v) for v in h4_data["close"].tail(2).tolist()]
-        bias = get_h4_bias(h4_indicators, daily_data=daily_data, h4_data=h4_data) if callable(get_h4_bias) else None
+        h4_bias = get_h4_bias(h4_indicators, daily_data=daily_data, h4_data=h4_data) if callable(get_h4_bias) else None
+
+        regime_name = regime_info.get("regime", "UNKNOWN") if regime_info else "UNKNOWN"
+        use_fast_bias = regime_name in ("MICRO_SCALP", "REGIME_SCALP")
+
+        if use_fast_bias:
+            h1_indicators = calculate_indicators(h1_data) if INDICATORS_AVAILABLE and h1_data is not None and len(h1_data) > 0 else {}
+            bias = get_fast_bias(h1_indicators, h1_data=h1_data) if callable(get_fast_bias) else None
+            h4_confluence = bool(h4_bias and bias and h4_bias.get("bias") == bias.get("bias") and bias.get("bias") != "NEUTRAL")
+            analysis["h4_confluence"] = h4_confluence
+            analysis["h4_bias_reference"] = (h4_bias or {}).get("bias", "UNKNOWN")
+        else:
+            bias = h4_bias
+            analysis["h4_confluence"] = None
+            analysis["h4_bias_reference"] = (h4_bias or {}).get("bias", "UNKNOWN")
+
         if not bias or bias.get("bias") == "NEUTRAL":
             analysis["layer_1"] = bias or {}
             analysis["layer_failed"] = "L1_BIAS"
             bias_reason = (bias or {}).get("full_report") or (bias or {}).get("reasoning") or "No bias details available"
-            analysis["fail_reason"] = f"H4 Bias is NEUTRAL | {bias_reason}"
+            bias_label = "H1 Fast Bias" if use_fast_bias else "H4 Bias"
+            analysis["fail_reason"] = f"{bias_label} is NEUTRAL | {bias_reason}"
             analysis["signal_type"] = "PRE_ENTRY"
-            safe_bias_reason = _ascii_safe(bias_reason)
-            logger.warning(f"[L1_BIAS] NEUTRAL | {safe_bias_reason}")
-            print_layer_result(1, "H4 Bias", "BLOCK", "NEUTRAL", safe_bias_reason)
+            print_layer_result(1, bias_label, "BLOCK", "NEUTRAL", bias_reason)
             return analysis
         analysis["layers_passed"].append("L1_BIAS")
         analysis["layer_1"] = bias
         side = _bias_to_side(bias.get("bias", "NEUTRAL"))
-        
+        analysis["direction"] = side
+        analysis["candidate_entry_style"] = "PULLBACK / MOMENTUM"
+        if regime_info:
+            analysis["regime_name"] = regime_info.get("regime", "UNKNOWN")
+
         # ============ LAYER 2: H1 STRUCTURE ============
         struct = get_h1_structure(h1_data, bias["bias"]) if callable(get_h1_structure) and h1_data is not None else None
-        
-        # FIX #1 (PHASE 4): FATAL ATR BLOCKER REVERSAL
-        # H1 ATR already calculated in regime detection (see early visibility section above)
+        analysis["layer_2"] = struct or {}
+
         struct_type = struct.get("structure_type", "UNKNOWN") if struct else "BROKEN"
-        
-        # NEW LOGIC: Block ONLY when ATR is DEAD CALM (<8 pips)
-        # High volatility (ATR >15) is ALLOWED - use volatility to widen stops
-        is_dead_calm = h1_atr and h1_atr < 8.0  # Block extreme calm only
-        is_high_volatility = h1_atr and h1_atr > 15.0  # Allow high vol
-        
+        h1_atr_val = h1_atr if h1_atr is not None else 0.0
+        is_dead_calm = h1_atr_val < 8.0
+
         if is_dead_calm:
             analysis["layer_failed"] = "L2_STRUCTURE"
-            analysis["fail_reason"] = f"H1 ATR too calm ({h1_atr:.1f} < 8.0 pips) - no volatility to trade"
+            analysis["fail_reason"] = f"H1 ATR too calm ({h1_atr_val:.1f} < 8.0 pips) - no volatility to trade"
             analysis["signal_type"] = "PRE_ENTRY"
-            logger.warning(f"[L2_STRUCTURE] BLOCK: ATR dead calm ({h1_atr:.1f} pips) - no trading in stagnant market")
             return analysis
-        
+
+        # FIX (STRUCTURE-2): Previously a BROKEN structure was pure dead weight - the
+        # bot detected a genuine break of structure against its own bias and just
+        # discarded it. A confirmed close beyond the last swing high/low, opposite the
+        # current bias, is itself a standard, tradeable reversal signal (break of
+        # structure). Re-check: if the break is fresh (this candle) and the OPPOSITE
+        # direction shows valid structure of its own, flip side/bias and continue the
+        # pipeline instead of stalling. Only flips once per pass to avoid oscillation.
+        analysis["bos_flip"] = False
         if struct_type == "BROKEN":
-            if is_high_volatility:
-                logger.info(f"[L2_STRUCTURE] Structure BROKEN but HIGH VOLATILITY ({h1_atr:.1f} pips ATR) - ALLOWED, will widen stops")
-                analysis["layers_passed"].append("L2_STRUCTURE")
-            else:
-                # Normal volatility (8-15 pips): broken structure is still a soft block with warning
-                logger.warning(f"[L2_STRUCTURE] Structure BROKEN in normal volatility ({h1_atr:.1f} pips ATR) - proceeding cautiously")
-                analysis["layers_passed"].append("L2_STRUCTURE")
-        elif struct_type == "UNKNOWN":
-            logger.warning("[L2_STRUCTURE] Structure UNKNOWN - proceeding with caution")
-        else:
-            analysis["layers_passed"].append("L2_STRUCTURE")
-        
+            try:
+                h1_close = float(h1_data.iloc[-1]["close"]) if h1_data is not None and len(h1_data) > 0 else current_price
+            except (TypeError, ValueError):
+                h1_close = current_price
+            last_high = struct.get("last_swing_high") if struct else None
+            last_low = struct.get("last_swing_low") if struct else None
+
+            flipped_side = None
+            if side == "SELL" and last_high is not None and h1_close is not None and h1_close > last_high:
+                flipped_side = "BUY"
+            elif side == "BUY" and last_low is not None and h1_close is not None and h1_close < last_low:
+                flipped_side = "SELL"
+
+            if flipped_side:
+                flipped_bias_label = "BULLISH" if flipped_side == "BUY" else "BEARISH"
+                restruct = get_h1_structure(h1_data, flipped_bias_label) if callable(get_h1_structure) and h1_data is not None else None
+                restruct_type = restruct.get("structure_type", "UNKNOWN") if restruct else "BROKEN"
+
+                if restruct_type in ("HH/HL", "LH/LL"):
+                    logger.info(
+                        f"[L2_STRUCTURE] BOS FLIP: {side} bias invalidated by fresh break "
+                        f"({struct.get('break_reason', '')}) - flipping to {flipped_side}, "
+                        f"new structure confirmed ({restruct_type})"
+                    )
+                    side = flipped_side
+                    analysis["direction"] = side
+                    analysis["bos_flip"] = True
+                    analysis["bos_flip_reason"] = struct.get("break_reason", "")
+                    struct = restruct
+                    struct_type = restruct_type
+                    analysis["layer_2"] = struct or {}
+                # else: opposite direction has no confirmed structure yet either -
+                # fall through to the normal BROKEN failure below.
+
+        if struct_type == "BROKEN":
+            analysis["layer_failed"] = "L2_STRUCTURE"
+            analysis["fail_reason"] = f"H1 structure is broken ({struct.get('break_reason', 'no structure confirmation')})"
+            analysis["signal_type"] = "PRE_ENTRY"
+            return analysis
+
+        if struct_type == "UNKNOWN":
+            pass  # proceed with caution
+        analysis["layers_passed"].append("L2_STRUCTURE")
+
         # ============ LAYER 3: M15 PULLBACK ============
+        bypass_l3 = bool(regime_info.get("bypass_l3", False)) if regime_info else False
+
         pullback = get_m15_pullback(m15_data, bias["bias"]) if callable(get_m15_pullback) and m15_data is not None else None
-        # FIX #2 (PHASE 5): Lower pullback quality gate - quality >= 1.5 means PASS L3
-        # Allow PRE_ENTRY signals to flow through to lower layers
         pullback_quality = pullback.get("pullback_quality", 0.0) if pullback else 0.0
         pullback_detected = pullback.get("pullback_detected", False) if pullback else False
         pullback_reason = pullback.get("reasoning", "No pullback details available") if pullback else "No pullback details available"
-        pullback_warning = "WARNING: volume rising into pullback" if pullback and pullback.get("volume_warning") else ""
         MIN_PULLBACK_QUALITY = 1.5
-        
-        if not pullback or pullback_quality < MIN_PULLBACK_QUALITY:
-            analysis["layer_failed"] = "L3_PULLBACK"
-            analysis["fail_reason"] = f"Pullback quality too low ({pullback_quality:.1f} < {MIN_PULLBACK_QUALITY})"
-            analysis["signal_type"] = "PRE_ENTRY"
-            logger.warning(f"[L3_PULLBACK] Quality gate failed: {pullback_quality:.1f} < {MIN_PULLBACK_QUALITY}")
-            return analysis
-        
-        analysis["layers_passed"].append("L3_PULLBACK")
-        if not pullback_detected:
-            logger.info(f"[L3_PULLBACK] Quality ready ({pullback_quality:.1f}/10) - PRE_ENTRY signal")
-        if pullback_warning:
-            logger.warning(f"[L3_PULLBACK] {pullback_warning}")
-        
+
+        analysis["momentum_fallback"] = False
+        if bypass_l3:
+            analysis["candidate_entry_style"] = "MOMENTUM"
+            analysis["layers_passed"].append("L3_PULLBACK_BYPASSED")
+        elif not pullback or not pullback_detected or pullback_quality < MIN_PULLBACK_QUALITY:
+            # FIX (SCALP-1): REGIME_SCALP gets one more chance before failing L3 -
+            # a strict momentum-continuation check for breakouts that never pull back.
+            # Every other regime (including INTRADAY_SWING) still fails here as before.
+            momentum_ok = False
+            momentum_reason = ""
+            if regime_name == "REGIME_SCALP":
+                break_reference = struct.get("last_swing_high") if side == "BUY" else struct.get("last_swing_low")
+                momentum_ok, momentum_reason = _check_regime_scalp_momentum(
+                    m5_data, side, break_reference, regime_info.get("m5_atr") if regime_info else None
+                )
+
+            if momentum_ok:
+                analysis["candidate_entry_style"] = "MOMENTUM"
+                analysis["momentum_fallback"] = True
+                analysis["layers_passed"].append("L3_PULLBACK_MOMENTUM")
+                logger.info(f"[L3_PULLBACK] REGIME_SCALP momentum fallback: {momentum_reason}")
+            else:
+                analysis["layer_failed"] = "L3_PULLBACK"
+                if regime_name == "REGIME_SCALP" and momentum_reason:
+                    analysis["fail_reason"] = f"No pullback ({pullback_reason}) and momentum fallback failed: {momentum_reason}"
+                elif not pullback_detected:
+                    analysis["fail_reason"] = "No confirmed pullback detected"
+                else:
+                    analysis["fail_reason"] = f"Pullback quality too low ({pullback_quality:.1f} < {MIN_PULLBACK_QUALITY})"
+                analysis["signal_type"] = "PRE_ENTRY"
+                return analysis
+        else:
+            analysis["candidate_entry_style"] = "PULLBACK"
+            analysis["layers_passed"].append("L3_PULLBACK")
+
         # ============ LAYER 4: LIQUIDITY POOLS ============
         pools_result = (
             identify_liquidity_pools(m15_data, h1_data=h1_data, h4_data=h4_data, daily_data=daily_data, current_price=current_price, side=side)
             if callable(identify_liquidity_pools) and m15_data is not None
             else {}
         )
-        pool_list = pools_result.get("liquidity_pools", [])
         sweep_pool = pools_result.get("sweep_pool")
         tp_pool = pools_result.get("tp_pool")
 
         liquidity_assessment = (
             assess_liquidity_gate(sweep_pool, tp_pool, current_price, side)
             if callable(assess_liquidity_gate)
-            else {
-                "state": "BLOCK",
-                "reason": "Liquidity assessment unavailable",
-                "sweep_score": sweep_pool.get("score", 0) if sweep_pool else 0,
-                "tp_score": tp_pool.get("score", 0) if tp_pool else 0,
-                "sweep_distance": abs(sweep_pool.get("level", 0) - current_price) if sweep_pool else None,
-                "thresholds": {},
-            }
+            else {"state": "BLOCK", "reason": "Liquidity assessment unavailable"}
         )
         liquidity_state = liquidity_assessment.get("state", "BLOCK")
-        liquidity_reason = liquidity_assessment.get("reason", "")
-        sweep_score = liquidity_assessment.get("sweep_score", sweep_pool.get("score", 0) if sweep_pool else 0)
-        tp_score = liquidity_assessment.get("tp_score", tp_pool.get("score", 0) if tp_pool else 0)
-        sweep_dist = liquidity_assessment.get("sweep_distance", abs(sweep_pool.get("level", 0) - current_price) if sweep_pool else 999)
-
         if liquidity_state == "BLOCK":
             analysis["layer_failed"] = "L4_LIQUIDITY"
-            analysis["fail_reason"] = liquidity_reason or "Sweep/TP safety checks failed (score/distance)"
+            analysis["fail_reason"] = liquidity_assessment.get("reason", "Sweep/TP safety checks failed")
             analysis["signal_type"] = "PRE_ENTRY"
-            logger.warning(f"[L4_SAFE] Sweep {sweep_pool.get('pool_type','')} score:{sweep_score} dist:{sweep_dist:.2f} tp_score:{tp_score}")
             return analysis
 
         analysis["layers_passed"].append("L4_LIQUIDITY")
         analysis["layer_4"] = {
-            "pools_found": len(pool_list),
-            "high_quality": len([p for p in pool_list if p.get('score',0)>=70]),
+            "pools_found": len(pools_result.get("liquidity_pools", [])),
             "sweep_pool": sweep_pool,
             "tp_pool": tp_pool,
             "state": liquidity_state,
-            "reason": liquidity_reason,
-            "thresholds": liquidity_assessment.get("thresholds", {}),
         }
-        target_pool = tp_pool
 
         # ============ LAYER 5: SWEEP + STRUCTURE ============
-        # FIX #8 (PHASE 4): Pass exact L4 sweep level to L5 (hard handshake)
         l4_sweep_level = sweep_pool.get("level") if sweep_pool else None
         sweep = (
-            get_sweep_and_structure(m15_data, h1_data, sweep_pool["level"], side, l4_override_level=l4_sweep_level)
+            get_sweep_and_structure(m15_data, h1_data, l4_sweep_level, side, l4_override_level=l4_sweep_level)
             if callable(get_sweep_and_structure) and m15_data is not None and h1_data is not None
             else None
         )
         sweep_gate_state = sweep.get("gate_state", "BLOCK") if sweep else "BLOCK"
-        sweep_gate_reason = sweep.get("gate_reason", "No sweep or CHoCH detected") if sweep else "No sweep or CHoCH detected"
         if sweep_gate_state == "WATCH":
             analysis["layer_failed"] = "L5_SWEEP_WAIT"
-            analysis["fail_reason"] = sweep_gate_reason
+            analysis["fail_reason"] = sweep.get("gate_reason", "Sweep not confirmed yet")
             analysis["signal_type"] = "PRE_ENTRY"
-            logger.warning(f"[L5_WAIT] {sweep_gate_reason}")
             return analysis
         if not sweep or (not sweep.get("sweep_confirmed") and not sweep.get("choch_confirmed")):
             analysis["layer_failed"] = "L5_SWEEP"
-            analysis["fail_reason"] = sweep_gate_reason
+            analysis["fail_reason"] = sweep.get("gate_reason", "No sweep or CHoCH detected")
             analysis["signal_type"] = "PRE_ENTRY"
             return analysis
-        
-        # Validate sweep direction matches entry side
+
         if sweep.get("sweep_confirmed"):
             sweep_type = sweep.get("sweep_type", "")
             if side == "BUY" and "bearish" in sweep_type.lower():
@@ -744,16 +853,18 @@ def analyze_entry(
                 analysis["fail_reason"] = f"Bullish sweep on SELL signal (sweep_type: {sweep_type})"
                 analysis["signal_type"] = "PRE_ENTRY"
                 return analysis
-        
+
         analysis["layers_passed"].append("L5_SWEEP")
         analysis["layer_5"] = {
             "sweep_confirmed": sweep.get("sweep_confirmed"),
             "setup_grade": sweep.get("setup_grade"),
             "state": sweep_gate_state,
-            "gate_reason": sweep_gate_reason,
+            "gate_reason": sweep.get("gate_reason"),
         }
-        
+
         # ============ LAYER 6: POI QUALITY ============
+        bypass_l6 = bool(regime_info.get("bypass_l6", False)) if regime_info else False
+
         poi = (
             identify_poi(m15_data, h1_data=h1_data, direction=side, current_price=current_price)
             if callable(identify_poi) and m15_data is not None
@@ -761,19 +872,20 @@ def analyze_entry(
         )
         best_poi = poi.get("best_poi")
         analysis["layer_6"] = build_poi_layer_data(poi) if callable(build_poi_layer_data) else {}
-        
-        # FIX #4 (PHASE 4): DYNAMIC POI THRESHOLD
-        # If sweep confirmed, lower threshold from 70 to 60 (confirmed sweep justifies slightly weaker POI)
+
         sweep_confirmed = sweep.get("sweep_confirmed", False) if sweep else False
         poi_threshold = 60 if sweep_confirmed else 70
-        
-        if not best_poi or best_poi.get("score", 0) < poi_threshold:
+
+        if bypass_l6:
+            analysis["layers_passed"].append("L6_POI_BYPASSED")
+        elif not best_poi or best_poi.get("score", 0) < poi_threshold:
             analysis["layer_failed"] = "L6_POI"
             analysis["fail_reason"] = f"POI score too low ({best_poi.get('score', 0):.0f} < {poi_threshold})" if best_poi else "No POI found"
             analysis["signal_type"] = "PRE_ENTRY"
             return analysis
-        analysis["layers_passed"].append("L6_POI")
-        
+        else:
+            analysis["layers_passed"].append("L6_POI")
+
         # ============ LAYER 7: CONFIDENCE SCORE ============
         poi_fib = (
             evaluate_poi_fib_confluence(
@@ -783,7 +895,7 @@ def analyze_entry(
                 side,
             )
             if callable(evaluate_poi_fib_confluence)
-            else {"has_fib_confluence": False, "matched_levels": [], "reasoning": "Unavailable"}
+            else {"has_fib_confluence": False}
         )
         intraday_rsi = _extract_intraday_rsi(m15_data, m5_data)
         conf = (
@@ -796,40 +908,36 @@ def analyze_entry(
                 structure_valid=bool(struct.get("structure_valid", False)),
                 has_fib_confluence=bool(poi_fib.get("has_fib_confluence", False)),
                 rsi_value=intraday_rsi,
-                regime=analysis.get("regime_info", {}).get("regime", "DEFAULT"),
+                regime=regime_info.get("regime", "DEFAULT"),
             )
             if callable(get_confidence_engine)
             else {}
         )
-        if conf.get("grade") == "REJECT":
+        conf_score = float(conf.get("final_score", 0.0) or 0.0)
+        threshold = 55 if regime_info.get("regime") == "MICRO_SCALP" else 70
+        # FIX (SCALP-1): momentum-fallback entries (no pullback confirmation) need a
+        # higher confidence bar to compensate for the missing L3 confirmation layer.
+        if analysis.get("momentum_fallback"):
+            threshold = max(threshold, 75)
+        if conf_score < threshold:
             analysis["layer_failed"] = "L7_CONFIDENCE"
-            conf_score = conf.get('final_score', 0)
-            threshold = 55 if analysis.get("regime_info", {}).get("regime") == "MICRO_SCALP" else 70
             analysis["fail_reason"] = f"Confidence score too low ({conf_score:.1f} < {threshold})"
             analysis["signal_type"] = "PRE_ENTRY"
             return analysis
         analysis["layers_passed"].append("L7_CONFIDENCE")
+        conf_grade = conf.get("grade")
+        if analysis.get("momentum_fallback") and conf_grade == "A+":
+            conf_grade = "A"
         analysis["layer_7"] = {
             "score": conf.get("final_score"),
-            "grade": conf.get("grade"),
+            "grade": conf_grade,
             "fib_confluence": poi_fib,
             "rsi_value": intraday_rsi,
         }
-        
-        # ============ LAYER 8: ENTRY TRIGGERS + REGIME SPREAD CHECK ============
-        
-        # Check spread acceptability for regime (FIX PHASE 5)
-        regime_info = analysis.get("regime_info", {})
-        if regime_info and not regime_info.get("spread_acceptable", True):
-            analysis["layer_failed"] = "L8_SPREAD"
-            spread = regime_info.get("current_spread", current_spread)
-            max_spread = regime_info.get("max_spread_pips", 7.0)
-            regime = regime_info.get("regime", "UNKNOWN")
-            analysis["fail_reason"] = f"Spread {spread:.1f}pip exceeds {regime} tolerance ({max_spread:.1f}pip max)"
-            analysis["signal_type"] = "REJECTED"
-            logger.warning(f"[L8_SPREAD] {analysis['fail_reason']}")
-            return analysis
-        
+
+        # ============ LAYER 8: ENTRY TRIGGERS ============
+        # Spread already checked at L0; no need to re-check here.
+
         confirmed_m5_close = float(m5_data.iloc[-2]["close"]) if m5_data is not None and len(m5_data) >= 2 else float(current_price) if current_price is not None else 0.0
         entry = (
             get_entry_trigger(
@@ -839,10 +947,13 @@ def analyze_entry(
                 direction=side,
                 sweep_wick_low=sweep.get("sweep_wick_low") if sweep else None,
                 sweep_wick_high=sweep.get("sweep_wick_high") if sweep else None,
+                regime=regime_info,
+                regime_tp_ratio=regime_info.get("tp_ratio", 3.0),
             )
             if callable(get_entry_trigger) and m5_data is not None and m1_data is not None and current_price is not None
             else {}
         )
+
         if not entry.get("entry_triggered"):
             analysis["layer_failed"] = "L8_ENTRY"
             analysis["fail_reason"] = "Entry triggers not all confirmed"
@@ -852,32 +963,47 @@ def analyze_entry(
                 "entry_style": entry.get("entry_style", "NONE"),
                 "entry_mode": entry.get("entry_mode", "MARKET"),
                 "trigger_type": entry.get("trigger_type", "none"),
-                "rr_valid": entry.get("rr_valid", False),
+                "rr_valid": entry.get("valid_rr", False),
                 "rr": entry.get("reward_to_risk_ratio", 0),
                 "entry_triggered": False,
             }
-            print_layer_result(
-                8,
-                "Entry Trigger",
-                "WAIT",
-                f"Setup: {entry.get('setup_type', 'REJECTED')} | candidate: {entry.get('entry_style', 'NONE')} | waiting for M5/M1 confirmation",
-            )
-            print_no_signal("Waiting for M5/M1 entry triggers to fire", "L8_ENTRY")
+            print_layer_result(8, "Entry Trigger", "WAIT", f"Setup: {entry.get('setup_type', 'REJECTED')} | waiting for M5/M1 confirmation")
             return analysis
+
+        gate_result = evaluate_entry_for_regime(entry, regime_info)
+        if not gate_result.get("entry_allowed", False):
+            analysis["layer_failed"] = "L8_ENTRY"
+            analysis["fail_reason"] = gate_result.get("reason", "entry quality gate failed")
+            analysis["signal_type"] = "PRE_ENTRY"
+            analysis["layer_8"] = {
+                "setup_type": entry.get("setup_type", "REJECTED"),
+                "trigger_type": entry.get("trigger_type"),
+                "entry_style": entry.get("entry_style", "NONE"),
+                "entry_mode": entry.get("entry_mode", "MARKET"),
+                "rr_valid": entry.get("valid_rr", False),
+                "rr": entry.get("reward_to_risk_ratio"),
+                "entry_triggered": False,
+                "gate_reason": gate_result.get("reason"),
+            }
+            return analysis
+
         analysis["layers_passed"].append("L8_ENTRY")
         analysis["layer_8"] = {
             "setup_type": entry.get("setup_type", "REJECTED"),
             "trigger_type": entry.get("trigger_type"),
             "entry_style": entry.get("entry_style", "NONE"),
             "entry_mode": entry.get("entry_mode", "MARKET"),
-            "rr_valid": entry.get("rr_valid", False),
+            "rr_valid": entry.get("valid_rr", False),
             "rr": entry.get("reward_to_risk_ratio"),
             "entry_triggered": True,
+            "recommended_mode": gate_result.get("recommended_mode"),
         }
         print_layer_result(8, "Entry Trigger", "PASS", f"{entry.get('setup_type', 'REJECTED')} | {entry.get('entry_style', 'NONE')} confirmed (RR: 1:{entry.get('reward_to_risk_ratio', 0):.1f})")
-        
+
         # ============ ALL LAYERS PASSED - ENTRY SIGNAL ============
         analysis["signal_type"] = "ENTRY_SIGNAL"
+        l6_data = analysis.get("layer_6", {})
+        risk_pct = regime_info.get("risk_percent", 1.0)
         analysis["entry_signal"] = {
             "position_type": "BUY" if bias["bias"] == "BULLISH" else "SELL",
             "entry_price": entry.get("entry_price", 0),
@@ -889,11 +1015,12 @@ def analyze_entry(
             "entry_method": entry.get("entry_style", "NONE"),
             "entry_mode": entry.get("entry_mode", "MARKET"),
             "trigger_type": entry.get("trigger_type", "none"),
-            "rr_valid": entry.get("rr_valid", False),
+            "rr_valid": entry.get("valid_rr", False),
             "poi_type": l6_data.get("poi_type", "N/A") if isinstance(l6_data, dict) else "N/A",
+            "risk_percent": risk_pct,
             "timestamp": datetime.now().isoformat()
         }
-        
+
         logger.info("[ENTRY] ENTRY SIGNAL GENERATED:")
         logger.info(f"   Position: {analysis['entry_signal']['position_type']}")
         logger.info(f"   Setup: {analysis['entry_signal']['setup_type']} | Method: {analysis['entry_signal']['entry_method']} | Mode: {analysis['entry_signal']['entry_mode']} | Trigger: {analysis['entry_signal']['trigger_type']}")
@@ -901,14 +1028,14 @@ def analyze_entry(
         logger.info(f"   SL: {analysis['entry_signal']['stop_loss']:.2f}")
         logger.info(f"   TP: {analysis['entry_signal']['take_profit']:.2f}")
         logger.info(f"   RR: {analysis['entry_signal']['rr_ratio']:.1f}:1 ({analysis['entry_signal']['grade']} grade)")
-        
+
     except Exception as e:
         analysis["layer_failed"] = "ERROR"
         analysis["fail_reason"] = str(e)
         logger.error(f"Error in entry analysis: {e}", exc_info=True)
         if monitor:
             monitor.log_error("ENTRY_ANALYSIS_ERROR", str(e), ErrorSeverity.ERROR)
-    
+
     return analysis
 
 # ============================================================
@@ -916,18 +1043,11 @@ def analyze_entry(
 # ============================================================
 
 def execute_entry_signal(entry_signal: Dict, account_balance: float = 10000) -> Optional[str]:
-    """
-    Execute entry signal with order creation and execution.
-    
-    Returns:
-        Order ID if successful, None otherwise
-    """
     if not entry_signal or not order_executor:
         return None
-    
+
     try:
-        # Calculate position size from risk if the risk manager is available.
-        risk_pct = CONFIG["risk_per_trade_a_plus"] if entry_signal.get("grade") == "A+" else CONFIG["risk_per_trade_a"]
+        risk_pct = entry_signal.get("risk_percent", 1.0)
         if RISK_MANAGER_AVAILABLE:
             position_size = calculate_lot_size_for_symbol(
                 CONFIG["symbol"],
@@ -940,8 +1060,7 @@ def execute_entry_signal(entry_signal: Dict, account_balance: float = 10000) -> 
             risk_amount = account_balance * risk_pct / 100
             stop_distance = abs(entry_signal["entry_price"] - entry_signal["stop_loss"])
             position_size = max(0.01, round(risk_amount / (max(stop_distance, 1e-6) * 100.0), 2))
-        
-        # Create order
+
         order = order_executor.create_order(
             order_type=OrderType.BUY if entry_signal["position_type"] == "BUY" else OrderType.SELL,
             entry_price=entry_signal["entry_price"],
@@ -949,25 +1068,22 @@ def execute_entry_signal(entry_signal: Dict, account_balance: float = 10000) -> 
             take_profit=entry_signal["take_profit"],
             position_size=position_size,
             signal_grade=entry_signal.get("grade", "A"),
-            confidence_score=80.0,  # Would come from confidence engine
+            confidence_score=80.0,
             metadata={
                 "setup_type": entry_signal.get("setup_type", "REJECTED"),
                 "entry_mode": entry_signal.get("entry_mode", "UNKNOWN"),
                 "session": get_session_name()
             }
         )
-        
-        # Execute on MT5 or simulation
+
         success, message = order_executor.execute_order(
             order["order_id"],
             mt5_handler=None,
             simulation=CONFIG["demo_mode"]
         )
-        
+
         if success:
             logger.info(f"[+] Order executed: {order['order_id']}")
-            
-            # Track trade
             trade = {
                 "trade_id": order["order_id"],
                 "order_id": order["order_id"],
@@ -980,20 +1096,17 @@ def execute_entry_signal(entry_signal: Dict, account_balance: float = 10000) -> 
                 "position_size": order["position_size"],
                 "state": None
             }
-            
             _OPEN_TRADES.append(trade)
-            
             if monitor:
                 monitor.metrics["orders_created"] += 1
                 monitor.metrics["orders_executed"] += 1
-            
             return order["order_id"]
         else:
             logger.error(f"[-] Order execution failed: {message}")
             if monitor:
                 monitor.log_error("ORDER_EXECUTION_FAILED", message, ErrorSeverity.ERROR)
             return None
-    
+
     except Exception as e:
         logger.error(f"Error executing entry signal: {e}")
         if monitor:
@@ -1005,26 +1118,16 @@ def execute_entry_signal(entry_signal: Dict, account_balance: float = 10000) -> 
 # ============================================================
 
 def manage_positions(current_prices: Dict) -> None:
-    """Layer 9: Update open positions with partial exit logic."""
     global _OPEN_TRADES
-    
     closed_trades = []
-    
     for trade in _OPEN_TRADES:
         try:
-            # Auto-generate order_id if missing (for old trades saved before this field)
             if "order_id" not in trade:
                 trade["order_id"] = f"{trade.get('trade_id', 'UNKNOWN')}_auto_{int(time.time())}"
                 logger.debug(f"[AUTO_FIX] Generated order_id for {trade.get('trade_id')}")
-            
-            # Update current price
             current_price = current_prices.get(trade["trade_id"], trade.get("entry_price", 0))
-            
-            # Update order with current price
             if order_executor:
                 result = order_executor.update_current_price(trade["order_id"], current_price)
-                
-                # Process any exit actions
                 for action in result.get("actions", []):
                     if action["action"] == "CLOSE_50PCT":
                         logger.info(f"[{trade['trade_id']}] 1:1 RR: Close 50% @ {current_price:.2f}")
@@ -1033,13 +1136,10 @@ def manage_positions(current_prices: Dict) -> None:
                     elif action["action"] == "CLOSE_ALL":
                         logger.info(f"[{trade['trade_id']}] TP: Close all @ {current_price:.2f}")
                         closed_trades.append(trade)
-            
             trade["last_check"] = datetime.now().isoformat()
-        
         except Exception as e:
             logger.error(f"Error managing position {trade.get('trade_id')}: {e}")
-    
-    # Remove closed trades
+
     _OPEN_TRADES = [t for t in _OPEN_TRADES if t not in closed_trades]
 
 # ============================================================
@@ -1047,10 +1147,8 @@ def manage_positions(current_prices: Dict) -> None:
 # ============================================================
 
 def save_state() -> bool:
-    """Save current state to disk."""
     if not PERSISTENCE_AVAILABLE:
         return False
-    
     try:
         if _OPEN_TRADES:
             save_active_trades(_OPEN_TRADES)
@@ -1060,12 +1158,9 @@ def save_state() -> bool:
         return False
 
 def restore_state() -> bool:
-    """Restore state from disk."""
     global _OPEN_TRADES
-    
     if not PERSISTENCE_AVAILABLE:
         return False
-    
     try:
         _OPEN_TRADES = load_active_trades()
         if _OPEN_TRADES:
@@ -1080,16 +1175,12 @@ def restore_state() -> bool:
 # ============================================================
 
 def graceful_shutdown():
-    """Graceful shutdown with position preservation."""
     global _SHOULD_CONTINUE
-    
     logger.info("\n" + "="*70)
     logger.info("GRACEFUL SHUTDOWN INITIATED")
     logger.info("="*70)
-    
     _SHOULD_CONTINUE = False
-    
-    # Close all positions on MT5
+
     try:
         if MT5_AVAILABLE:
             positions = mt5.positions_get(symbol=CONFIG["symbol"])
@@ -1108,24 +1199,17 @@ def graceful_shutdown():
                     logger.info(f"[+] Position {pos.ticket} closed" if result.retcode == mt5.TRADE_RETCODE_DONE else f"[-] Failed: {result.comment}")
     except Exception as e:
         logger.warning(f"Error closing MT5 positions: {e}")
-    
-    # Save state
+
     save_state()
-    
-    # Shutdown MT5
     if MT5_AVAILABLE:
         shutdown_mt5()
-    
-    # Graceful shutdown with error recovery
     if shutdown_mgr:
         shutdown_mgr.shutdown(_OPEN_TRADES, monitor)
-    
     logger.info("="*70)
     logger.info("[SHUTDOWN] COMPLETE")
     logger.info("="*70)
 
 def signal_handler(sig, frame):
-    """Handle shutdown signal."""
     logger.info("[SIGNAL] Shutdown signal received")
     graceful_shutdown()
     sys.exit(0)
@@ -1135,14 +1219,12 @@ def signal_handler(sig, frame):
 # ============================================================
 
 def main():
-    """Main bot orchestration loop."""
     global _SHOULD_CONTINUE, _OPEN_TRADES
-    
+
     logger.info("\n" + "="*70)
     logger.info("[BOT] PRODUCTION TRADING BOT STARTING")
     logger.info("="*70)
-    
-    # Print system configuration
+
     logger.info(f"Symbol: {CONFIG['symbol']}")
     logger.info(f"Mode: {'DEMO' if CONFIG['demo_mode'] else 'LIVE'}")
     logger.info(f"Max Concurrent Trades: {CONFIG['max_concurrent_trades']}")
@@ -1152,129 +1234,125 @@ def main():
     logger.info(f"Persistence Available: {PERSISTENCE_AVAILABLE}")
     logger.info(f"Order Execution Available: {EXECUTION_AVAILABLE}")
     logger.info(f"Error Recovery Available: {ERROR_RECOVERY_AVAILABLE}")
-    
-    # Initialize production components
+
     initialize_production_components()
-    
-    # Restore state if available
     restore_state()
-    
-    # Setup signal handlers
+
     signal_module.signal(signal_module.SIGINT, signal_handler)
     signal_module.signal(signal_module.SIGTERM, signal_handler)
-    
-    # Connect to MT5
+
     if MT5_AVAILABLE and not CONFIG["demo_mode"]:
         logger.info("Connecting to MT5...")
         if not connect_mt5():
             logger.error("Failed to connect to MT5")
             return
-    
+
     logger.info("="*70)
     logger.info("[READY] BOT READY - Waiting for trading opportunities")
     logger.info("="*70 + "\n")
-    
+
     iteration_count = 0
-    
-    # Main loop
+
     while _SHOULD_CONTINUE:
         try:
             iteration_count += 1
-            
-            # Layer 0: Pre-trade gates - fetch REAL spread from MT5 first
-            current_spread = 0.5
-            try:
-                if MT5_AVAILABLE and callable(get_current_spread):
-                    current_spread = get_current_spread(CONFIG["symbol"])
-            except Exception:
-                current_spread = 0.5
-            
-            gate_check = check_pre_trade_gates(current_spread=current_spread)
-            
-            if not gate_check["all_gates_passed"]:
-                logger.warning(f"[L0] Trading blocked: {gate_check['gates_failed']}")
-                time.sleep(60)
-                continue
-            
-            # Check if we can open new trades
-            if len(_OPEN_TRADES) < CONFIG["max_concurrent_trades"]:
-                try:
-                    # Fetch market data
-                    if MT5_AVAILABLE and not CONFIG["demo_mode"]:
-                        h4_data = get_market_data(CONFIG["symbol"], mt5.TIMEFRAME_H4, CONFIG["h4_candles_required"])
-                        h1_data = get_market_data(CONFIG["symbol"], mt5.TIMEFRAME_H1, CONFIG["h1_candles_required"])
-                        m15_data = get_market_data(CONFIG["symbol"], mt5.TIMEFRAME_M15, CONFIG["m15_candles_required"])
-                        m5_data = get_market_data(CONFIG["symbol"], mt5.TIMEFRAME_M5, CONFIG["m5_candles_required"])
-                        m1_data = get_market_data(CONFIG["symbol"], mt5.TIMEFRAME_M1, CONFIG["m1_candles_required"])
-                        daily_data = get_market_data(CONFIG["symbol"], mt5.TIMEFRAME_D1, 10)
-                    else:
-                        # Demo mode
-                        h4_data = h1_data = m15_data = m5_data = m1_data = daily_data = None
 
-                    try:
-                        current_price = get_current_price(CONFIG["symbol"]) if MT5_AVAILABLE else 0
-                    except Exception:
-                        current_price = 0
-                    
-                    # Analyze entry
-                    analysis = analyze_entry(h4_data, h1_data, m15_data, m5_data, m1_data, daily_data, current_price)
-                    print_run_summary(analysis)
-                    
-                    # Extract L6 POI details
-                    l6_data = analysis.get("layer_6", {})
-                    l6_poi_type = l6_data.get("poi_type", "N/A") if l6_data else "N/A"
-                    l6_poi_score = l6_data.get("score", "N/A") if l6_data else "N/A"
-                    
-                    # Log signal
-                    log_signal({
-                        "timestamp": analysis.get("timestamp"),
-                        "signal_type": analysis.get("signal_type"),
-                        "layers_passed": ",".join(analysis.get("layers_passed", [])),
-                        "layer_failed": analysis.get("layer_failed", ""),
-                        "fail_reason": analysis.get("fail_reason", ""),
-                        "l6_poi_type": l6_poi_type,
-                        "l6_poi_score": l6_poi_score,
-                        "entry_grade": analysis.get("entry_signal", {}).get("grade") if analysis.get("entry_signal") else "N/A",
-                        "setup_type": analysis.get("entry_signal", {}).get("setup_type") if analysis.get("entry_signal") else analysis.get("layer_8", {}).get("setup_type", "N/A"),
-                        "entry_method": analysis.get("entry_signal", {}).get("entry_method") if analysis.get("entry_signal") else "N/A",
-                        "entry_mode": analysis.get("entry_signal", {}).get("entry_mode") if analysis.get("entry_signal") else "N/A",
-                        "trigger_type": analysis.get("entry_signal", {}).get("trigger_type") if analysis.get("entry_signal") else "N/A",
-                        "rr_valid": analysis.get("entry_signal", {}).get("rr_valid") if analysis.get("entry_signal") else "N/A",
-                        "entry_price": analysis.get("entry_signal", {}).get("entry_price") if analysis.get("entry_signal") else "N/A",
-                        "stop_loss": analysis.get("entry_signal", {}).get("stop_loss") if analysis.get("entry_signal") else "N/A",
-                        "take_profit": analysis.get("entry_signal", {}).get("take_profit") if analysis.get("entry_signal") else "N/A",
-                        "rr_ratio": analysis.get("entry_signal", {}).get("rr_ratio") if analysis.get("entry_signal") else "N/A",
-                        "session": gate_check.get("session", ""),
-                        "position_type": analysis.get("entry_signal", {}).get("position_type") if analysis.get("entry_signal") else "N/A",
-                        "order_id": ""
-                    })
-                    
-                    # Execute entry if signal generated
-                    if analysis.get("signal_type") == "ENTRY_SIGNAL":
-                        order_id = execute_entry_signal(analysis["entry_signal"])
-                        if order_id:
-                            logger.info(f"[+] Trade #{len(_OPEN_TRADES)} opened: {order_id}")
-                
-                except Exception as e:
-                    logger.error(f"Error during entry analysis: {e}")
-                    if monitor:
-                        monitor.log_error("ENTRY_LOOP_ERROR", str(e), ErrorSeverity.ERROR)
-            
-            # Layer 9: Manage open positions
+            # ----------------------------------------------------
+            # 1. FETCH ALL DATA
+            # ----------------------------------------------------
+            if MT5_AVAILABLE and not CONFIG["demo_mode"]:
+                h4_data = get_market_data(CONFIG["symbol"], mt5.TIMEFRAME_H4, CONFIG["h4_candles_required"])
+                h1_data = get_market_data(CONFIG["symbol"], mt5.TIMEFRAME_H1, CONFIG["h1_candles_required"])
+                m15_data = get_market_data(CONFIG["symbol"], mt5.TIMEFRAME_M15, CONFIG["m15_candles_required"])
+                m5_data = get_market_data(CONFIG["symbol"], mt5.TIMEFRAME_M5, CONFIG["m5_candles_required"])
+                m1_data = get_market_data(CONFIG["symbol"], mt5.TIMEFRAME_M1, CONFIG["m1_candles_required"])
+                daily_data = get_market_data(CONFIG["symbol"], mt5.TIMEFRAME_D1, 10)
+            else:
+                h4_data = h1_data = m15_data = m5_data = m1_data = daily_data = None
+
+            try:
+                current_price = get_current_price(CONFIG["symbol"]) if MT5_AVAILABLE else 0
+            except Exception:
+                current_price = 0
+
+            # ----------------------------------------------------
+            # 2. COMPUTE REGIME (EARLY) AND CHECK SPREAD
+            # ----------------------------------------------------
+            regime_info = None
+            if LAYERS_AVAILABLE and m5_data is not None and m15_data is not None and h1_data is not None:
+                current_spread = 0.5
+                try:
+                    if MT5_AVAILABLE and callable(get_current_spread):
+                        current_spread = get_current_spread(CONFIG["symbol"])
+                except Exception:
+                    current_spread = 0.5
+                regime_info = detect_regime(m5_data, m15_data, h1_data, current_spread=current_spread)
+
+            # L0 Gates now include spread check
+            gate_check = check_pre_trade_gates(regime_info=regime_info)
+
+            if not gate_check["all_gates_passed"]:
+                if any("SPREAD" in g for g in gate_check["gates_failed"]):
+                    logger.warning(f"[L0] Trading blocked: {gate_check['gates_failed']}")
+                time.sleep(5)
+                continue
+
+            # ----------------------------------------------------
+            # 3. ENTRY ANALYSIS (pass regime_info)
+            # ----------------------------------------------------
+            if len(_OPEN_TRADES) < CONFIG["max_concurrent_trades"]:
+                analysis = analyze_entry(
+                    h4_data, h1_data, m15_data, m5_data, m1_data, daily_data,
+                    current_price, regime_info=regime_info
+                )
+                print_run_summary(analysis)
+
+                l6_data = analysis.get("layer_6", {})
+                l6_poi_type = l6_data.get("poi_type", "N/A") if l6_data else "N/A"
+                l6_poi_score = l6_data.get("score", "N/A") if l6_data else "N/A"
+
+                log_signal({
+                    "timestamp": analysis.get("timestamp"),
+                    "signal_type": analysis.get("signal_type"),
+                    "layers_passed": ",".join(analysis.get("layers_passed", [])),
+                    "layer_failed": analysis.get("layer_failed", ""),
+                    "fail_reason": analysis.get("fail_reason", ""),
+                    "l6_poi_type": l6_poi_type,
+                    "l6_poi_score": l6_poi_score,
+                    "entry_grade": analysis.get("entry_signal", {}).get("grade") if analysis.get("entry_signal") else "N/A",
+                    "setup_type": analysis.get("entry_signal", {}).get("setup_type") if analysis.get("entry_signal") else analysis.get("layer_8", {}).get("setup_type", "N/A"),
+                    "entry_method": analysis.get("entry_signal", {}).get("entry_method") if analysis.get("entry_signal") else "N/A",
+                    "entry_mode": analysis.get("entry_signal", {}).get("entry_mode") if analysis.get("entry_signal") else "N/A",
+                    "trigger_type": analysis.get("entry_signal", {}).get("trigger_type") if analysis.get("entry_signal") else "N/A",
+                    "rr_valid": analysis.get("entry_signal", {}).get("rr_valid") if analysis.get("entry_signal") else "N/A",
+                    "entry_price": analysis.get("entry_signal", {}).get("entry_price") if analysis.get("entry_signal") else "N/A",
+                    "stop_loss": analysis.get("entry_signal", {}).get("stop_loss") if analysis.get("entry_signal") else "N/A",
+                    "take_profit": analysis.get("entry_signal", {}).get("take_profit") if analysis.get("entry_signal") else "N/A",
+                    "rr_ratio": analysis.get("entry_signal", {}).get("rr_ratio") if analysis.get("entry_signal") else "N/A",
+                    "session": gate_check.get("session", ""),
+                    "position_type": analysis.get("entry_signal", {}).get("position_type") if analysis.get("entry_signal") else "N/A",
+                    "order_id": ""
+                })
+
+                if analysis.get("signal_type") == "ENTRY_SIGNAL":
+                    order_id = execute_entry_signal(analysis["entry_signal"])
+                    if order_id:
+                        logger.info(f"[+] Trade #{len(_OPEN_TRADES)} opened: {order_id}")
+
+            # ----------------------------------------------------
+            # 4. MANAGE OPEN POSITIONS
+            # ----------------------------------------------------
             manage_positions({})
-            
-            # Save state periodically
+
             if iteration_count % 10 == 0:
                 save_state()
-            
-            # Check system health
+
             if monitor and iteration_count % 60 == 0:
                 status = monitor.check_health()
                 logger.debug(f"System health: {status.value}")
-            
-            # Wait before next iteration
+
             time.sleep(5)
-        
+
         except KeyboardInterrupt:
             break
         except Exception as e:
@@ -1282,12 +1360,8 @@ def main():
             if monitor:
                 monitor.log_error("MAIN_LOOP_ERROR", str(e), ErrorSeverity.CRITICAL)
             time.sleep(5)
-    
-    graceful_shutdown()
 
-# ============================================================
-# ENTRY POINT
-# ============================================================
+    graceful_shutdown()
 
 if __name__ == "__main__":
     try:

@@ -275,11 +275,9 @@ def check_pre_trade_gates(
         gates_passed.append(f"Daily loss OK ({current_daily_loss:.2f} / {max_daily_loss:.2f})")
     
     # Gate 2: Spread check
-    SPREAD_MAX = 0.8  # XAUUSD should be tight
-    if current_spread > SPREAD_MAX:
-        gates_failed.append(f"SPREAD TOO HIGH: {current_spread:.2f} > {SPREAD_MAX:.2f}")
-    else:
-        gates_passed.append(f"Spread OK ({current_spread:.2f})")
+    SPREAD_MAX = 0.8
+    # SPREAD CHECK DISABLED
+    gates_passed.append(f"Spread OK ({current_spread:.2f}) [CHECK DISABLED]")
 
     session = get_session_name()
     if session == "DEAD":

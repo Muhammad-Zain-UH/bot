@@ -194,6 +194,18 @@ def calculate_h4_ema_bias(
                         two_candle_reason = f" [WARNING] Bearish bias but closes [{close_1:.2f}, {close_2:.2f}] not below EMA20 {ema20:.2f}"
                         strength = max(0.0, strength - 1.5)
         
+        # FIX (BIAS-1): Previously, midpoint conflict (-2.0) and two-candle conflict
+        # (-1.5) only ever cost a combined -3.5 off a 0-10 scale, so a bias could have
+        # TWO independent price-action signals disagreeing with the EMA call and still
+        # survive with strength ~5-6, continuing to drive the entire pipeline direction.
+        # If both independent checks contradict the bias at the same time, that's
+        # strong enough evidence to distrust the EMA read entirely - force NEUTRAL
+        # rather than let a doubly-contradicted bias keep trading.
+        if not midpoint_confirmed and not two_candle_confirmed:
+            reason += " [BLOCKED] Both daily midpoint and 2-candle close contradict EMA bias - forcing NEUTRAL"
+            bias = "NEUTRAL"
+            strength = 0.0
+        
         # Find recent swing high/low (last 50 H4 candles; fallback to last candle)
         swings = _find_h4_swings(h4_data, lookback=50)
         swing_high = swings["swing_high"] if swings["swing_high"] is not None else (h4_high if h4_high else ema20 + 20)
@@ -300,6 +312,86 @@ def validate_bias_with_daily_close(
             "invalidated": False,
             "flip_reason": f"Validation error: {str(exc)}",
             "daily_close": None,
+        }
+
+
+def get_fast_bias(
+    h1_indicators: dict[str, Any],
+    h1_data: pd.DataFrame | None = None,
+) -> dict[str, Any]:
+    """
+    FIX (BIAS-2): Fast, scalp-appropriate bias using H1 EMA20/EMA50.
+
+    H4 bias uses an ATR-scaled threshold (20% of H4 ATR) plus a daily-close
+    invalidation check. That's appropriate for INTRADAY_SWING (150+ pip targets,
+    should wait for real multi-day conviction) but it's the wrong tool for
+    MICRO_SCALP/REGIME_SCALP: those regimes hold for minutes to a couple hours,
+    yet were being gated by the same H4 threshold — meaning a choppy multi-day H4
+    range (normal, frequent market behavior) blocked every regime simultaneously,
+    including ones that don't need H4-level conviction to be a valid scalp.
+
+    This function reuses the same EMA-crossover logic but:
+    - Runs on H1 instead of H4 (reacts on the timescale the trade actually holds for)
+    - Uses a lower, fixed ATR ratio (0.12 instead of 0.20) and lower floor (2.0),
+      since scalps don't need as wide a separation to be tradeable
+    - Skips the daily-close invalidation entirely (that's a multi-day-horizon
+      concept that doesn't apply to a trade held for under a couple hours)
+
+    Returns the same shape as get_h4_bias() so it's a drop-in replacement at the
+    call site: {"bias", "bias_strength", "swing_high", "swing_low", "ema_distance",
+    "ema_threshold", "ema20", "ema50", "invalidated", "flip_reason", "full_report"}
+    """
+    try:
+        ema20 = _to_float(h1_indicators.get("ema_20") or h1_indicators.get("ema20"))
+        ema50 = _to_float(h1_indicators.get("ema_50") or h1_indicators.get("ema50"))
+        h1_close = _to_float(h1_indicators.get("close"))
+        h1_high = _to_float(h1_indicators.get("high"))
+        h1_low = _to_float(h1_indicators.get("low"))
+        atr_14 = _to_float(h1_indicators.get("atr_14") or h1_indicators.get("atr14"))
+        ema_threshold = _calculate_ema_threshold(atr_14, floor=2.0, atr_ratio=0.12)
+
+        if any(v is None for v in [ema20, ema50, h1_close]):
+            return {
+                "bias": "NEUTRAL", "bias_strength": 0.0, "swing_high": h1_high,
+                "swing_low": h1_low, "ema_distance": 0.0, "ema_threshold": ema_threshold,
+                "ema20": ema20, "ema50": ema50, "invalidated": False, "flip_reason": "",
+                "full_report": "[FAST_BIAS] Missing H1 EMA or close data",
+            }
+
+        ema_distance = ema20 - ema50
+        ema_distance_abs = abs(ema_distance)
+
+        if ema_distance_abs < ema_threshold:
+            bias = "NEUTRAL"
+            strength = 0.0
+            reason = f"H1 EMAs too close: distance = {ema_distance_abs:.2f} (need >={ema_threshold:.2f})"
+        elif ema_distance > ema_threshold:
+            bias = "BULLISH"
+            strength = min(10.0, ema_distance_abs / ema_threshold)
+            reason = f"H1 EMA20 ({ema20:.2f}) > EMA50 ({ema50:.2f}), distance = {ema_distance:.2f} (threshold >={ema_threshold:.2f})"
+        else:
+            bias = "BEARISH"
+            strength = min(10.0, ema_distance_abs / ema_threshold)
+            reason = f"H1 EMA20 ({ema20:.2f}) < EMA50 ({ema50:.2f}), distance = {abs(ema_distance):.2f} (threshold >={ema_threshold:.2f})"
+
+        swings = _find_h4_swings(h1_data, lookback=50)
+        swing_high = swings["swing_high"] if swings["swing_high"] is not None else (h1_high if h1_high else ema20 + 10)
+        swing_low = swings["swing_low"] if swings["swing_low"] is not None else (h1_low if h1_low else ema50 - 10)
+
+        full_report = f"[FAST_BIAS] H1 EMA-based bias: {bias} (strength: {strength:.1f}/10) | {reason}"
+
+        return {
+            "bias": bias, "bias_strength": strength, "swing_high": swing_high,
+            "swing_low": swing_low, "ema_distance": ema_distance, "ema_threshold": ema_threshold,
+            "ema20": ema20, "ema50": ema50, "invalidated": False, "flip_reason": "",
+            "full_report": full_report,
+        }
+    except Exception as exc:
+        log_debug(f"Fast H1 bias calculation error: {exc}")
+        return {
+            "bias": "NEUTRAL", "bias_strength": 0.0, "swing_high": None, "swing_low": None,
+            "ema_distance": 0.0, "ema_threshold": None, "ema20": None, "ema50": None,
+            "invalidated": False, "flip_reason": "", "full_report": f"[FAST_BIAS] Error: {exc}",
         }
 
 

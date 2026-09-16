@@ -413,11 +413,18 @@ def detect_m15_pullback(
         
         quality = min(10.0, quality)
         
-        # Pullback is considered detected once the retracement exists and the
-        # counter-trend structure is confirmed.
+        # Pullback is considered detected once the retracement exists AND either
+        # the counter-trend fractal structure is confirmed OR the composite quality
+        # score is already high enough to stand on its own.
+        # FIX (PULLBACK-1): previously this required is_making_lh_ll strictly, even
+        # though quality (above) only treats it as a +3.0 bonus rather than a hard
+        # requirement. That mismatch let genuinely good pullbacks (high quality from
+        # retracement depth + volume + RSI) get marked detected=False, and the
+        # downstream gate in main_production.py requires both detected AND quality,
+        # so those setups were being blocked for a reason the score itself disagreed with.
         pullback_detected = (
             0.236 <= pullback_percent <= 0.786 and
-            is_making_lh_ll
+            (is_making_lh_ll or quality >= 5.0)
         )
         
         # Safe formatting with None checks

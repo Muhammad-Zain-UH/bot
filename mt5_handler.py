@@ -152,11 +152,27 @@ def shutdown_mt5() -> None:
         log_debug(f"MT5 shutdown error: {exc}")
 
 def get_current_spread(symbol: str) -> float:
-    """Return spread in points (e.g., 30 for 0.30 USD)."""
+    """Return spread in real pips for XAUUSD.
+
+    FIX (SPREAD-1): This previously returned raw MT5 *points*
+    ((ask-bid)/info.point), not pips. For XAUUSD quoted to 2 decimals,
+    info.point = 0.01, but gold's real pip convention is $0.10 (10 points).
+    Every downstream threshold (entry_engine.py's max_spread_pips of
+    5.0/7.0/10.0) was written assuming real pips, so spread was reading
+    ~10x too high across every session (e.g. a real 2.3 pip London spread
+    was logging as "23.0pip" and getting rejected as WIDE). This has been
+    silently blocking most trades regardless of how correct the rest of
+    the pipeline is. XAUUSD_PIP_SIZE below assumes the standard 2-decimal
+    gold quote (info.digits == 2) used by this broker - if the broker ever
+    changes quote precision, this constant needs to be revisited.
+    """
     info = mt5.symbol_info(symbol)
-    if info:
-        return (info.ask - info.bid) / info.point
-    return 999.0
+    if not info:
+        return 999.0
+
+    XAUUSD_PIP_SIZE = 0.10  # 1 gold pip = $0.10 = 10 points at 2-decimal quoting
+    spread_price = info.ask - info.bid
+    return spread_price / XAUUSD_PIP_SIZE
 
 
 def get_current_price(symbol: str, direction: str | None = None) -> float | None:
