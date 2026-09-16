@@ -19,6 +19,11 @@ import os
 import logging
 from typing import Dict, List, Optional, Tuple
 
+# Core foundations (Phase 1). Imported unguarded on purpose -- schema
+# enforcement must not be silently absent.
+from core.signal_log import SIGNAL_LOG_COLUMNS as CORE_SIGNAL_LOG_COLUMNS
+from core.signal_log import append_signal_row
+
 # Try to import MT5 handler (optional for live trading)
 try:
     import config
@@ -66,22 +71,29 @@ CONFIG = {
     "m1_candles_required": 200,
 }
 
-SIGNAL_LOG_COLUMNS = [
-    "timestamp", "signal_type", "layers_passed", "layer_failed", 
-    "fail_reason", "l6_poi_type", "l6_poi_score", 
-    "entry_grade", "setup_type", "entry_method", "entry_mode", "trigger_type", "rr_valid", "entry_price", "stop_loss", 
-    "take_profit", "rr_ratio", "session", "position_type"
-]
+# PHASE 0.2: schema now defined once, in core/signal_log.py.
+SIGNAL_LOG_COLUMNS = list(CORE_SIGNAL_LOG_COLUMNS)
 
 # ============================================================
 # LOGGING
 # ============================================================
 
+# PHASE 0.4: environment-overridable so tests never append to production logs.
+# Defaults are unchanged.
+_MAIN_LOG_FILE = os.getenv("TRADING_BOT_MAIN_LOG_FILE", "trading_bot_main.log")
+
+# PHASE 0.2: the legacy "signal_log.csv" is archived, not reused -- its 77-column
+# header never matched the rows written into it. See core/signal_log.py and
+# archive/README.md. NOTE: main.py and main_production.py both wrote to that one
+# file with DIFFERENT column sets, which compounded the corruption; they now
+# write to separate, schema-versioned files.
+_SIGNAL_LOG_FILE = os.getenv("MAIN_SIGNAL_LOG_FILE", "signal_log_main_v2.csv")
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('trading_bot_main.log'),
+        logging.FileHandler(_MAIN_LOG_FILE),
         logging.StreamHandler()
     ]
 )
@@ -92,17 +104,16 @@ logger = logging.getLogger('TradingBot')
 # ============================================================
 
 def _append_signal_log(log_file: str, row: dict) -> None:
-    """Append signal to CSV log."""
-    file_exists = os.path.isfile(log_file)
-    
-    with open(log_file, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=SIGNAL_LOG_COLUMNS, extrasaction="ignore")
-        if not file_exists:
-            writer.writeheader()
-        writer.writerow(row)
+    """Append signal to the schema-versioned CSV log.
+
+    PHASE 0.2: delegates to core.signal_log, which verifies the header before
+    every append instead of only when creating the file. Row content is
+    unchanged; a leading schema_version column is added.
+    """
+    append_signal_row(log_file, row)
 
 
-def _count_today_entry_signals(log_file: str = "signal_log.csv") -> int:
+def _count_today_entry_signals(log_file: str = _SIGNAL_LOG_FILE) -> int:
     """Count ENTRY_SIGNAL rows logged today."""
     if not os.path.isfile(log_file):
         return 0
@@ -860,7 +871,7 @@ def main():
                 l6_poi_type = l6_data.get("poi_type", "N/A") if l6_data else "N/A"
                 l6_poi_score = l6_data.get("score", "N/A") if l6_data else "N/A"
                 
-                _append_signal_log("signal_log.csv", {
+                _append_signal_log(_SIGNAL_LOG_FILE, {
                     "timestamp": analysis.get("timestamp"),
                     "signal_type": analysis.get("signal_type"),
                     "layers_passed": ",".join(analysis.get("layers_passed", [])),

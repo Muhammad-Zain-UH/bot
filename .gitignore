@@ -17,3 +17,13 @@ trading_bot.log*
 # IDE
 .vscode/
 .idea/
+
+# Signal logs (data, not source). The archived legacy log and archive/README.md
+# ARE tracked deliberately - see archive/README.md for provenance.
+signal_log_v2.csv
+signal_log_main_v2.csv
+*.schema-mismatch.csv
+*.schema-mismatch.*.csv
+
+# Test artifacts
+.pytest_cache/

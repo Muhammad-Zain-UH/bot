@@ -24,6 +24,26 @@ try:
 except Exception:
     pass
 
+# ============================================================
+# CORE FOUNDATIONS (Phase 1)
+#
+# Imported unguarded, on purpose. Every other import in this module is wrapped
+# in try/except so the bot degrades rather than crashes -- that is appropriate
+# for optional analysis layers, but NOT for the execution safety lock. If
+# core.safety cannot be imported, the process must fail immediately rather than
+# continue with the lock silently absent.
+# ============================================================
+from core.safety import (
+    ExecutionMode,
+    UnsafeExecutionStateError,
+    assert_live_trading_disabled,
+    describe_execution_state,
+    resolve_execution_mode,
+    validate_execution_environment,
+)
+from core.signal_log import SIGNAL_LOG_COLUMNS as CORE_SIGNAL_LOG_COLUMNS
+from core.signal_log import append_signal_row
+
 # Indicators (required for bias engine contract)
 try:
     from indicators import calculate_indicators
@@ -99,7 +119,18 @@ except ImportError:
 
 _SHOULD_CONTINUE = True
 _OPEN_TRADES: List[Dict] = []
-_SIGNAL_LOG_FILE = "signal_log.csv"
+
+# PHASE 0.2 / 0.4: paths are environment-overridable so that tests can redirect
+# them to a temporary directory instead of writing into production trading data.
+# The defaults are the production paths, so normal operation is unchanged.
+#
+# The legacy "signal_log.csv" is NOT reused. It accumulated 39,709 rows under a
+# 77-column header from an abandoned pipeline while this module wrote 20 columns,
+# leaving every field mislabelled. It is archived unmodified at
+# archive/2026-09-16_signal_log_legacy_mixed_schema.csv and was not repaired --
+# realigning it would mean fabricating data. New records go to a schema-versioned
+# file whose header is verified before every append (see core/signal_log.py).
+_SIGNAL_LOG_FILE = os.getenv("SIGNAL_LOG_FILE", "signal_log_v2.csv")
 
 # ============================================================
 # CONFIGURATION
@@ -119,12 +150,12 @@ CONFIG = {
     "demo_mode": False,  # Set to False for live trading
 }
 
-SIGNAL_LOG_COLUMNS = [
-    "timestamp", "signal_type", "layers_passed", "layer_failed",
-    "fail_reason", "l6_poi_type", "l6_poi_score",
-    "entry_grade", "setup_type", "entry_method", "entry_mode", "trigger_type", "rr_valid", "entry_price", "stop_loss",
-    "take_profit", "rr_ratio", "session", "position_type", "order_id"
-]
+# PHASE 0.2: single source of truth for the signal-log schema now lives in
+# core/signal_log.py. This alias is kept so any external reader importing
+# main_production.SIGNAL_LOG_COLUMNS still resolves, but the definition is no
+# longer duplicated here -- the duplication is how the file's header and its
+# rows came to disagree.
+SIGNAL_LOG_COLUMNS = list(CORE_SIGNAL_LOG_COLUMNS)
 
 # ============================================================
 # LOGGING SETUP
@@ -134,7 +165,16 @@ def _ascii_safe(text: object) -> str:
     """Convert text to ASCII-safe form for Windows consoles and logs."""
     return str(text).encode("ascii", errors="replace").decode("ascii")
 
-log_file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'trading_bot_production.log'))
+# PHASE 0.4: environment-overridable so importing this module under test does not
+# append to the production log. Previously the path was hardcoded and built at
+# import time, so merely importing main_production wrote to it -- which is how
+# four synthetic "ENTRY SIGNAL GENERATED" entries (Entry 101.00 / SL 99.00 /
+# TP 104.00) from tests/test_layer_gate_logic.py ended up in the permanent
+# production record. The default is unchanged.
+log_file_path = os.getenv(
+    "TRADING_BOT_LOG_FILE",
+    os.path.abspath(os.path.join(os.path.dirname(__file__), 'trading_bot_production.log')),
+)
 
 logger = logging.getLogger('TradingBot-Production')
 logger.setLevel(logging.INFO)
@@ -358,13 +398,15 @@ def initialize_production_components():
 # ============================================================
 
 def log_signal(row: dict) -> None:
-    file_exists = os.path.isfile(_SIGNAL_LOG_FILE)
+    """Append one decision row to the schema-versioned signal log.
+
+    PHASE 0.2: delegates to core.signal_log, which verifies the header before
+    every append and rotates a mismatched file aside rather than appending
+    values that do not correspond to it. Row content is unchanged from the
+    legacy writer; only a leading schema_version column is added.
+    """
     try:
-        with open(_SIGNAL_LOG_FILE, "a", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=SIGNAL_LOG_COLUMNS, extrasaction="ignore")
-            if not file_exists:
-                writer.writeheader()
-            writer.writerow(row)
+        append_signal_row(_SIGNAL_LOG_FILE, row)
     except Exception as e:
         logger.error(f"Error logging signal: {e}")
 
@@ -1236,6 +1278,45 @@ def main():
     logger.info(f"Error Recovery Available: {ERROR_RECOVERY_AVAILABLE}")
 
     initialize_production_components()
+
+    # ----------------------------------------------------------------
+    # PHASE 0.3: EXECUTION SAFETY GATE
+    #
+    # Runs before any state is restored, before MT5 is contacted, and before
+    # the decision loop starts. It either returns a validated execution state
+    # or raises -- there is no boolean for the caller to ignore.
+    #
+    # This is the check whose absence let the bot run 39,709 decision cycles
+    # reporting "Mode: LIVE" while being structurally incapable of placing an
+    # order. Refusing to start is the correct behaviour: a trading process that
+    # believes it is live must either be able to trade or stop.
+    #
+    # Live trading is disabled unconditionally for Phase 0/1. There is no
+    # environment variable, config key, or flag that re-enables it; see
+    # core/safety.py for why that is deliberate.
+    # ----------------------------------------------------------------
+    assert_live_trading_disabled()
+    execution_mode = resolve_execution_mode(
+        demo_mode=CONFIG["demo_mode"],
+        execution_available=EXECUTION_AVAILABLE,
+    )
+    try:
+        execution_state = validate_execution_environment(
+            mode=execution_mode,
+            order_executor=order_executor,
+            broker_handler=None,  # No broker adapter exists yet; Phase 2 work.
+        )
+    except UnsafeExecutionStateError as exc:
+        logger.critical("=" * 70)
+        logger.critical("STARTUP REFUSED - UNSAFE EXECUTION STATE")
+        logger.critical("=" * 70)
+        for line in str(exc).splitlines():
+            logger.critical(line)
+        logger.critical("=" * 70)
+        raise
+
+    logger.info(f"[SAFETY] {describe_execution_state(execution_state)}")
+
     restore_state()
 
     signal_module.signal(signal_module.SIGINT, signal_handler)

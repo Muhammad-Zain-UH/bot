@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-05-27T16:21:36.999525",
+  "total_closed": 1,
+  "trades": [
+    {
+      "trade_id": "XAUUSD_001",
+      "entry_price": 2450.0,
+      "exit_price": 2540.0,
+      "pnl": 90.0,
+      "pnl_pct": 0.36,
+      "reward_to_risk": 3.0,
+      "closed_at": "2026-05-27T16:21:36.999500"
+    }
+  ]
+}

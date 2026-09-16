@@ -26,3 +26,17 @@ feedparser>=6.0.10
 # - Production components (persistence, execution, recovery) use stdlib only
 # - Install via: pip install -r requirements.txt
 # ============================================================================
+
+# ============================================================================
+# TESTING
+# ============================================================================
+# The test suite uses the STANDARD LIBRARY `unittest` only - no pytest, no
+# additional packages. Run it with:
+#
+#     python -m unittest discover -s tests -t .
+#
+# `core/` deliberately imports nothing beyond the stdlib plus pandas/numpy
+# above. Note that `pydantic` is present in some virtualenvs but is NOT declared
+# here, so it is not used - relying on it would create a dependency that does
+# not survive a clean install. Enforced by tests/core/test_core_constraints.py.
+# ============================================================================
