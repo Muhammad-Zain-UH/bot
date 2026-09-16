@@ -224,6 +224,45 @@ synthetic fixture is not market data and none of this is a performance statement
 | P5 | Replay throughput is ~18 decisions/sec with the real strategy, dominated by uncached `calculate_indicators` calls. A year of M5 replay would take roughly 1.6 hours. | X3 | P2 |
 | P6 | `get_market_data` returns an **empty** frame when history is short, never a partial one. The replay feed mirrors this. Worth knowing: production therefore makes no decisions at all until ~17 days of H4 history exists. | — | — |
 
+### Controlled price-level comparison (evidence for P2 / U9 / U10)
+
+Same seed, same bar shapes, same *relative* volatility; only the absolute dollar
+scale differs (`base_price` and `volatility_scale` moved together). Any
+difference in behaviour is therefore attributable solely to thresholds expressed
+in absolute USD.
+
+| | gold@2400 (H1 ATR ~$5.4) | gold@4000 (H1 ATR ~$9.0) |
+|---|---|---|
+| Decisions | 3,201 | 3,201 |
+| Signals | 0 | 0 |
+| Errors | 0 | 0 |
+| Regime | `DEAD_CALM` 3,201 | `DEAD_CALM` 3,201 |
+| `L1_BIAS` | 2,016 | **2,016** |
+| `L2_STRUCTURE` | 1,185 | **453** |
+| `L3_PULLBACK` | 0 | **651** |
+| `L5_SWEEP_WAIT` | 0 | **59** |
+| `L5_SWEEP` | 0 | **22** |
+
+Observations, stated without inference beyond the measurement:
+
+* **The L2 ATR gate is price-level dependent.** `h1_atr < 8.0` blocked 1,185
+  decisions at $2,400 and 453 at $4,000. 732 decisions that the gate rejected at
+  one price level passed at the other, on identical relative price action. This
+  is U9 measured directly.
+* **L1_BIAS blocked an identical 2,016 decisions at both scales.** The H4 bias
+  threshold is ATR-scaled (`_calculate_ema_threshold`, ratio 0.20), so it is
+  scale-invariant here. Its `floor=3.0` was not the binding constraint at either
+  level.
+* **Regime did not change.** Both runs classified every decision `DEAD_CALM`:
+  M5 ATR was ~$1.2 and ~$2.0, both below the `m5_atr >= 2.5` MICRO_SCALP floor.
+  U10 is not contradicted by this -- the bands are still absolute USD -- but this
+  comparison does not exercise a regime transition, and no claim is made that it
+  does.
+* Once past L2, decisions reached L3 and L5, so the deeper layers are reachable
+  in replay. Neither run produced an entry signal.
+
+Nothing was changed in response to any of this.
+
 ### Data acquisition blocker (not a code defect)
 
 `mt5.initialize()` fails with `(-6, 'Authorization failed')`. The terminal log
