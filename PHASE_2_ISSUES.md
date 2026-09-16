@@ -207,6 +207,40 @@ doing so changes behaviour on any non-UTC machine.
 
 ---
 
+---
+
+## 11. OBSERVED DURING PHASE 2A (replay build) -- catalogued, NOT fixed
+
+Phase 2A ran the unmodified strategy over a deterministic synthetic fixture.
+These are observations from that run. **Nothing below was changed.** The
+synthetic fixture is not market data and none of this is a performance statement.
+
+| # | Observation | Relates to | Priority |
+|---|---|---|---|
+| P1 | Over 3,201 decisions the strategy produced **0 entry signals** and **0 errors**. All decisions blocked at L1_BIAS (2,016) or L2_STRUCTURE (1,185). Consistent with the live record: 39,709 production decisions also produced zero entry signals. | E10, S2, U9 | — |
+| P2 | Every decision classified as **DEAD_CALM**. The fixture's H1 ATR is ~$5.0 against the `h1_atr < 8.0` gate, and its M5 ATR ~$1.2 against the `m5_atr >= 2.5` MICRO_SCALP floor. Those thresholds are absolute USD, so regime classification depends on the **price level**, not on relative volatility. | **U10, U9, G2** | **P0** |
+| P3 | The L2 block message reads `H1 ATR too calm (5.0 < 8.0 pips)` while the compared values are quote-currency dollars. The unit mislabelling is visible in the operator-facing output. | U9 | P1 |
+| P4 | `main_production.analyze_entry` reads the wall clock in four places (N1-N4), so it is not replayable without intervention. Phase 2A neutralises this with a scoped patch; it is not a fix. | T1-T4 | P1 |
+| P5 | Replay throughput is ~18 decisions/sec with the real strategy, dominated by uncached `calculate_indicators` calls. A year of M5 replay would take roughly 1.6 hours. | X3 | P2 |
+| P6 | `get_market_data` returns an **empty** frame when history is short, never a partial one. The replay feed mirrors this. Worth knowing: production therefore makes no decisions at all until ~17 days of H4 history exists. | — | — |
+
+### Data acquisition blocker (not a code defect)
+
+`mt5.initialize()` fails with `(-6, 'Authorization failed')`. The terminal log
+reports `authorization on MetaQuotes-Demo failed (Invalid account)`. The terminal
+holds cached XAUUSD history for 2004-2026 (~413 MB of `.hcc`), which becomes
+readable via `tools/export_mt5_history.py` once the terminal is logged into a
+valid account. The `.hcc` format is **not** parsed -- an undocumented parser
+could mis-read silently, and a corrupted baseline is worse than none.
+
+### Test defect found and fixed within Phase 2A scope
+
+A determinism test stub gated on `datetime.now().minute % 2`. Because
+`frozen_clock` patches only the strategy modules, the stub read the real wall
+clock and emitted zero signals on odd minutes -- passing or failing depending on
+when the suite ran. Fixed by routing the read through `risk_manager`, which the
+replay clock does patch. No strategy code was involved.
+
 ## RECOMMENDED SEQUENCE
 
 Ordered so that **safety precedes correctness, and measurement precedes tuning**.

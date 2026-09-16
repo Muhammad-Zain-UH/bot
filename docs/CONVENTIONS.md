@@ -271,3 +271,64 @@ another. Never optimise for trade count. Never claim profitability without
 out-of-sample evidence.
 
 Found something obviously wrong? Record it in `PHASE_2_ISSUES.md`. Do not tune it.
+
+---
+
+## 11. Replay and bar availability
+
+**Rule:** a bar is visible at replay time `T` if and only if
+
+```
+bar.open_time + timeframe.duration <= T
+```
+
+MetaTrader stamps a bar by its **open** time. An M5 bar stamped `10:35` covers
+10:35:00–10:39:59 and only becomes known at `10:40`.
+
+```
+At T = 10:37:00
+  M1   10:36  closed 10:37   visible
+  M5   10:30  closed 10:35   visible
+  M5   10:35  closed 10:40   NOT visible
+  M15  10:15  closed 10:30   visible
+  H1   09:00  closed 10:00   visible
+  H4   04:00  closed 08:00   visible   (the 08:00 bar closes at 12:00)
+```
+
+The boundary is inclusive: a bar closing exactly at `T` is visible.
+
+Treating the stamp as a close time is the classic silent look-ahead. It never
+raises, it looks right on a chart, and it makes every backtest optimistic
+because the strategy sees the outcome of the bar it is deciding on.
+
+Future bars are **not materialised** into the frame the strategy receives — they
+are absent, not filtered. `ReplayFeed.bars()` returns a defensive copy, so a
+retained reference cannot later grow.
+
+**Short history returns an EMPTY frame, not a partial one.** That mirrors
+`mt5_handler.get_market_data`, which refuses any request it cannot fill
+completely. Returning a short frame would feed the strategy something
+production never sees.
+
+**Entries fill on the next bar's open.** A decision is taken after a bar closes,
+so filling at that same close would trade at a price only knowable once the
+opportunity had passed. Gaps fill at the open — worse than the level.
+
+**Ambiguous bars follow an explicit policy.** When one bar contains both stop
+and target, OHLC cannot say which came first. The baseline is `CONSERVATIVE`
+(stop first), chosen before any result was seen. Every ambiguous resolution is
+counted and reported; changing the policy to improve a headline figure would be
+curve-fitting the simulator, which is harder to detect than curve-fitting the
+strategy.
+
+**The replay clock is temporary Phase 2A infrastructure.** `backtest.clock_patch`
+scopes a frozen `datetime` into `risk_manager`, `entry_engine` and
+`main_production` for the duration of one decision, then restores it in a
+`finally`. It exists because those modules read the wall clock directly (N1–N4)
+and Phase 2A may not edit strategy files. Phase 3 should replace it with real
+injection per §3.
+
+A test stub that reads `datetime.now()` in its **own** module is *not* covered by
+that patch and will be wall-clock dependent. This bit us once: a determinism
+stub gated on `now.minute % 2` and passed or failed depending on when the suite
+ran. Route clock reads through a patched module.

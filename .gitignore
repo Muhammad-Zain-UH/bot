@@ -27,3 +27,8 @@ signal_log_main_v2.csv
 
 # Test artifacts
 .pytest_cache/
+
+# Backtest artifacts and raw market data (data, not source).
+# Generated per run and potentially large; regenerate with backtest.runner.
+backtest_results/
+data/raw/
