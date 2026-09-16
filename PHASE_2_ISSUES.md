@@ -280,6 +280,36 @@ clock and emitted zero signals on odd minutes -- passing or failing depending on
 when the suite ran. Fixed by routing the read through `risk_manager`, which the
 replay clock does patch. No strategy code was involved.
 
+---
+
+## 12. OBSERVED DURING PHASE 2A.1 (real-strategy integration) -- catalogued, NOT fixed
+
+Phase 2A.1 drove the unmodified strategy end to end on a purpose-built
+deterministic fixture. It reached an entry signal on both sides, which let
+several defects be observed in operation rather than only by reading the source.
+**Nothing below was changed.** The fixture is not market data and none of this is
+a performance statement.
+
+| # | Observation | Relates to | Priority |
+|---|---|---|---|
+| Q1 | **Realised R != the strategy's reported RR.** The strategy reports RR 3.0 but the simulated fill produced R 4.33 (long) and 6.57 (short). It computes risk and reward against an entry price it is not filled at: the fill is the next bar's open, while the strategy assumes a stale M5 close. On the long trade intended risk was $12.24 and realised risk $9.15. | **B3, B4, E9** | **P0** |
+| Q2 | The reported `rr_ratio` was exactly `3.0` on every signal, because the target is derived as `risk x tp_ratio`. It re-states the regime constant and measures nothing about the trade. | E9 | **P0** |
+| Q3 | Only `INTRADAY_SWING` could produce a signal. `MICRO_SCALP` and `DEAD_CALM` both carry `tp_ratio = 1.5`, so `valid_rr = rr >= 2.0` is false by construction and `entry_triggered` can never be true. Reaching a tradeable regime required M5 ATR above $7.00. | **E10, U10** | **P0** |
+| Q4 | Reaching L6 required a **confirmed sweep**, purely because that drops the POI threshold from 70 to 60. The Fib POI scored 68 -- above 60, below 70 -- so a CHoCH-only setup blocks at L6 while an otherwise identical swept setup passes. The 2-point margin is arbitrary. | S1, U5, U6 | P1 |
+| Q5 | The Fib POI is capped near 68 in this shape: it is mid-range by construction, so `_zone_touched` is always true (no +30 untested) and `_calc_htf_confluence` returns 0 because H1 extremes cluster at turning points, not mid-range. The POI that most often wins selection is the one least able to score well. | S1 | P1 |
+| Q6 | The stop came from `sweep_wick_low - 3.0`, i.e. a **$3.00** buffer where 3 pips was intended -- confirmed in the live values: sweep wick $2511.73, stop $2508.73. | **U1** | **P0** |
+| Q7 | `detect_sweep` passed on 2 of 4 quality checks (volume + close position). The wick/body check failed because the sweep candle's body was large, so a decisive reclaim candle scores *worse* on wick ratio than a feeble one. | A3, U8 | P1 |
+| Q8 | L7 scored 80.35 with `sweep_quality` contributing only 4.0/10 and `has_fib_confluence` false. Fib confluence and RSI are computed and passed in, but reach only the cosmetic A+ checklist -- they cannot affect the score the gate reads. | S6 | P2 |
+
+### What this phase demonstrated works
+
+The replay -> strategy -> PaperBroker -> ledger chain connects correctly. The real
+L1-L8 path produced a BUY and a SELL signal; both filled on the next bar, resolved
+against SL and TP, and reached the ledger with correct R-multiples. No look-ahead
+was detected at integration level, and the run is deterministic across repeats and
+machine timezones.
+
+
 ## RECOMMENDED SEQUENCE
 
 Ordered so that **safety precedes correctness, and measurement precedes tuning**.

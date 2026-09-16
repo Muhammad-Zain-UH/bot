@@ -332,3 +332,62 @@ A test stub that reads `datetime.now()` in its **own** module is *not* covered b
 that patch and will be wall-clock dependent. This bit us once: a determinism
 stub gated on `now.minute % 2` and passed or failed depending on when the suite
 ran. Route clock reads through a patched module.
+
+---
+
+## 12. Integration fixtures (Phase 2A.1)
+
+**Rule:** an integration fixture may be *shaped* to meet the strategy's existing
+conditions. It may never be used to *change* them.
+
+Phase 2A showed a random walk blocks at L1/L2 essentially always — the strategy
+looks for trend, impulse, retracement, a sweep of equal lows, then a reclaim, and
+a walk produces that only by accident. So
+`tests/fixtures/integration_market.py` scripts that sequence explicitly.
+
+What that is allowed to mean:
+
+- arranging price action the gate is written to detect (equal lows, a sweep wick,
+  a rejection candle)
+- positioning the path so real liquidity exists where the strategy looks for it
+  (the start price is solved so a round number sits within $2 of the close, which
+  is what lifts L4's take-profit pool to a passing score)
+- choosing a decision instant on a weekday in the London session, because
+  `get_current_session` returns `"Closed"` at weekends and costs −15 on L7
+
+What it must never mean:
+
+- lowering a threshold, weight, period or ratio
+- mocking `analyze_entry`, stubbing a layer, or hand-writing a signal dict
+- inserting a trade into the ledger directly
+
+**If the strategy declines to signal, report the blocking layer. Do not force
+it.** A zero-signal integration result is a valid finding.
+
+### Alignment is load-bearing
+
+Phase boundaries are chosen so the M15 grid lands correctly:
+
+```
+warmup (multiple of 15) | impulse 240 | retrace 90 | basing 45 | reclaim 15 | trigger 10
+```
+
+The reclaim must be **exactly one M15 candle**. L3 reads `closed.iloc[-1]` (it
+drops an extra bar) while L5's CHoCH reads `iloc[-1]`, so only a single-candle
+sweep lets L3 still see the retracement low while L5 already sees the reclaim.
+
+### Clamp the extreme you are not pooling
+
+Each basing candle pins the pooled extreme (lows for a long) *and* clamps the
+opposite one. Without the clamp, noise forms a fractal on the other side and
+`pullback_detector._find_recent_fractal_swing` anchors to it instead of the
+impulse swing — observed as `retracement_ratio=0.071` and
+`"Swing too recent (2 bars)"`. Derive the clamp from the **preceding** candle, or
+it will sit outside the natural range and silently do nothing.
+
+### Realised R will not equal the strategy's nominal RR
+
+The strategy computes RR against an entry price it never gets filled at: the fill
+is the next bar's open plus spread. In the reference long trade the nominal ratio
+is 3.0 and realised R is 4.33. That gap is the practical effect of
+`PHASE_2_ISSUES` B3/B4 and E9 — not a simulator defect.
