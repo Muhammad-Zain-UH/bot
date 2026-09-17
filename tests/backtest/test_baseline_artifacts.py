@@ -41,6 +41,7 @@ def _artifacts(baseline_id: str = "baseline_test") -> BaselineArtifacts:
         layer_funnel={"reached": {}, "blocked_at": {}},
         regime_statistics={"decisions_by_regime": {}},
         exit_statistics={"by_outcome": {}},
+        pending_statistics={"pending_created": 0},
         defect_observations={},
         decisions_fingerprint="a" * 64,
         run_fingerprint="b" * 64,

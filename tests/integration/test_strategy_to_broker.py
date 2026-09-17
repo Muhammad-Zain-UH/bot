@@ -31,8 +31,25 @@ class ChainReachesTheLedgerTests(unittest.TestCase):
         )
 
     def test_the_strategy_signalled(self) -> None:
-        self.assertEqual(self.result.signals, 1)
+        """Two signals since Step 4, one of which rests rather than filling.
+
+        This asserted 1 before `price_in_fvg` was removed from the momentum
+        trigger. Removing it lets the momentum path fire where it previously
+        could not, and on this fixture it fires once more. That second signal is
+        a LIMIT_FVG order resting at 2536.04, formed at 08:05; the fixture runs
+        up to its target and never returns to that level, so the order stays
+        PENDING, opens no position, and the ledger is untouched -- which is why
+        the pinned fingerprint in test_r1_same_bar_regression still holds.
+        """
+        self.assertEqual(self.result.signals, 2)
         self.assertEqual(self.result.errors, 0)
+
+    def test_the_second_signal_rested_and_never_filled(self) -> None:
+        """The extra signal must not have become a trade."""
+        pending = list(self.result.pending_orders)
+        self.assertEqual(len(pending), 1)
+        self.assertIsNone(pending[0].fill_time)
+        self.assertIsNone(pending[0].first_reached_time)
 
     def test_the_broker_received_and_filled_it(self) -> None:
         positions = self.broker.closed_positions() + self.broker.open_positions()

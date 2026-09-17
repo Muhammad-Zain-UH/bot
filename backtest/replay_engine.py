@@ -36,7 +36,7 @@ import pandas as pd
 from backtest.clock_patch import frozen_clock
 from backtest.ledger import TradeLedger, TradeOutcome, trade_from_position
 from core.symbols import SymbolSpecification
-from core.types import Side, Timeframe
+from core.types import DomainInvariantError, PendingOrderIntent, Side, Timeframe
 from data.replay_feed import BarAvailability, ReplayFeed
 from execution.broker import FillStatus
 from execution.paper_broker import DEFAULT_SIMULATED_VOLUME, PaperBroker
@@ -151,12 +151,17 @@ class ReplayResult:
         errors: Decisions whose strategy call raised.
         first_decision_time: First decision instant.
         last_decision_time: Last decision instant.
+        pending_orders: Every pending order created, in creation order,
+            including those that never filled. Populated at the end of a run so
+            the research layer can distinguish created / still-waiting /
+            reached / filled without reaching into the broker.
     """
 
     ledger: TradeLedger
     snapshots: list[DecisionSnapshot] = field(default_factory=list)
     decisions: int = 0
     signals: int = 0
+    pending_orders: list = field(default_factory=list)
     errors: int = 0
     first_decision_time: datetime | None = None
     last_decision_time: datetime | None = None
@@ -303,6 +308,12 @@ class ReplayEngine:
         # been taken; that value could never actually be used (the guard below
         # requires a decision to exist), but a wall-clock read inside a
         # deterministic engine is a hazard waiting for a future edit to reach.
+        # Snapshot pending state before the end-of-data sweep, so orders that
+        # never filled are still visible as PENDING rather than lost.
+        collect = getattr(self._broker, "all_pending_orders", None)
+        if callable(collect):
+            result.pending_orders = collect()
+
         if result.last_decision_time is not None:
             final_price = self._feed.price_at(result.last_decision_time)
             for position in (
@@ -439,6 +450,50 @@ class ReplayEngine:
             "strategy_take_profit": entry_signal.get("take_profit"),
             "layers_passed": list(snapshot.layers_passed),
         }
+
+        # LIMIT_FVG: rest an order at the FVG midpoint instead of filling at
+        # the next bar's open. Execution decides whether and when it fills; the
+        # strategy only described where it should wait.
+        if str(entry_signal.get("entry_mode", "")).upper() == "LIMIT_FVG":
+            zone_low = entry_signal.get("fvg_zone_low")
+            zone_high = entry_signal.get("fvg_zone_high")
+            limit_price = entry_signal.get("limit_price")
+            if zone_low is None or zone_high is None or limit_price is None:
+                ledger.record_rejection(
+                    decision_time=replay_time, side=side.value,
+                    outcome=TradeOutcome.REJECTED,
+                    reason="LIMIT_FVG signal carried no zone or limit price",
+                    metadata=metadata,
+                )
+                return 1
+            try:
+                intent = PendingOrderIntent(
+                    side=side,
+                    limit_price=float(limit_price),
+                    stop_loss=float(stop_loss),
+                    take_profit=float(take_profit) if take_profit else None,
+                    zone_low=float(zone_low),
+                    zone_high=float(zone_high),
+                    formation_bar_time=(
+                        pd.Timestamp(decision_bar_time).to_pydatetime()
+                        if decision_bar_time is not None
+                        else replay_time
+                    ),
+                    decision_time=replay_time,
+                    metadata=metadata,
+                )
+            except DomainInvariantError as error:
+                ledger.record_rejection(
+                    decision_time=replay_time, side=side.value,
+                    outcome=TradeOutcome.REJECTED,
+                    reason=f"LIMIT_FVG intent rejected: {error}",
+                    metadata=metadata,
+                )
+                return 1
+            self._broker.submit_limit_order(
+                intent, volume=self._config.volume, metadata=metadata
+            )
+            return 0
 
         fill = self._broker.submit_market_order(
             side=side,

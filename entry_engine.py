@@ -579,8 +579,14 @@ def _evaluate_momentum_entry(
     confirmed_entry_price = confirmed_m5_price
     if fvg.get("midpoint") is not None:
         confirmed_entry_price = float(fvg["midpoint"])
-    if m1_data is not None and len(m1_data) >= 2 and m1_choch["m1_choch_confirmed"]:
-        confirmed_entry_price = _to_float(m1_data.iloc[-1]["close"]) or confirmed_entry_price
+    # STRATEGY-SEMANTIC CHANGE (Phase 4A, Step 4). The CHoCH override that
+    # replaced this price with m1[-1].close is removed from the LIMIT_FVG path.
+    # That value is the close of the candle that BROKE the swing -- a breakout
+    # price -- and measurement found it outside the gap on 13 of 13 occurrences,
+    # always on the far side (BUY above, SELL below). A limit cannot rest there.
+    # This changes entry prices and therefore outcomes; it is not a bug fix.
+    # The pullback path keeps its own, separate m1[-2] override, untouched.
+    # See docs/PHASE_4A_STEP4_DECISION_EVIDENCE.md section C.
 
     price_in_fvg = False
     if fvg.get("zone_low") is not None and fvg.get("zone_high") is not None and current_price is not None:
@@ -602,11 +608,15 @@ def _evaluate_momentum_entry(
         tp_ratio=tp_ratio,
     )
 
+    # price_in_fvg is deliberately NOT a term here. Under a resting-limit design
+    # it has no purpose at signal time: asserting price is already in the zone
+    # contradicts the reason for resting an order, and asserting the zone is
+    # unfilled is vacuous for a gap formed on the last three bars. It is still
+    # computed and returned as a diagnostic. See the momentum entry spec.
     core_trigger = bool(
         kill_zone
         and displacement.get("displacement_found")
         and fvg.get("fvg_found")
-        and price_in_fvg
         and m1_choch["m1_choch_confirmed"]
     )
 
@@ -653,6 +663,11 @@ def _evaluate_momentum_entry(
         "fvg": fvg,
         "kill_zone": kill_zone,
         "price_in_fvg": price_in_fvg,
+        # Carried so the execution layer can build a pending-order intent
+        # without reaching back into the strategy.
+        "limit_price": confirmed_entry_price,
+        "fvg_zone_low": fvg.get("zone_low") if fvg.get("fvg_found") else None,
+        "fvg_zone_high": fvg.get("zone_high") if fvg.get("fvg_found") else None,
     }
 
 # ============================================================
@@ -733,6 +748,9 @@ def get_entry_trigger(
         "reward_to_risk_ratio": best_entry.get("reward_to_risk_ratio", 0.0),
         "trigger_quality": best_entry.get("trigger_quality", 0.0),
         "valid_rr": best_entry.get("valid_rr", False),
+        "limit_price": best_entry.get("limit_price"),
+        "fvg_zone_low": best_entry.get("fvg_zone_low"),
+        "fvg_zone_high": best_entry.get("fvg_zone_high"),
         "recommendation": best_entry.get("recommendation", "ENTRY CONDITIONS NOT MET"),
         "pullback_entry": pullback_entry,
         "momentum_entry": momentum_entry,

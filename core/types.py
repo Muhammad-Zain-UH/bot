@@ -61,6 +61,7 @@ __all__ = [
     "OrderRequest",
     "OrderResult",
     "OrderResultStatus",
+    "PendingOrderIntent",
     "Position",
     "PositionStatus",
     "RiskParameters",
@@ -1319,3 +1320,90 @@ def bar_from_mapping(row: Any, timeframe: Timeframe | None = None) -> MarketBar:
         volume=float(raw_volume) if raw_volume is not None else 0.0,
         timeframe=timeframe,
     )
+
+
+# ---------------------------------------------------------------------------
+# Pending order intent
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class PendingOrderIntent:
+    """A strategy's request that an order rest at a price until price returns.
+
+    This is the boundary object between the strategy and execution. It
+    **describes** -- "rest a BUY limit at X, stop at Y, inside the gap
+    [low, high] formed on bar Z" -- and knows nothing about bars, brokers,
+    fills, or how any of that is simulated. Execution decides whether and when
+    it becomes a position; the strategy is never asked.
+
+    ``formation_bar_time`` is the anchor for the no-look-ahead invariant: a
+    pending order may only fill on a bar that opened strictly after it. The
+    guard is enforced by the execution-side entity, not by callers.
+
+    Attributes:
+        side: Trade direction.
+        limit_price: Where the order rests. Under the current specification this
+            is the FVG midpoint.
+        stop_loss: Stop price nominated by the strategy.
+        take_profit: Target price, or ``None``.
+        zone_low: Lower bound of the fair value gap that produced the order.
+        zone_high: Upper bound of that gap.
+        formation_bar_time: Open time of the bar the gap completed on.
+        decision_time: Replay instant the intent was produced at.
+        metadata: Strategy context, carried through to the ledger.
+
+    Raises:
+        DomainInvariantError: If the zone is inverted, the limit lies outside
+            the zone, or the stop sits on the wrong side of the limit.
+    """
+
+    side: Side
+    limit_price: float
+    stop_loss: float
+    take_profit: float | None
+    zone_low: float
+    zone_high: float
+    formation_bar_time: datetime
+    decision_time: datetime
+    metadata: dict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate the geometry the strategy asked for."""
+        if self.zone_high <= self.zone_low:
+            raise DomainInvariantError(
+                f"inverted or empty FVG zone: [{self.zone_low}, {self.zone_high}]"
+            )
+        if not self.zone_low <= self.limit_price <= self.zone_high:
+            raise DomainInvariantError(
+                f"limit {self.limit_price} lies outside its zone "
+                f"[{self.zone_low}, {self.zone_high}]"
+            )
+        if self.side is Side.BUY and self.stop_loss >= self.limit_price:
+            raise DomainInvariantError(
+                f"BUY stop {self.stop_loss} is not below the limit {self.limit_price}"
+            )
+        if self.side is Side.SELL and self.stop_loss <= self.limit_price:
+            raise DomainInvariantError(
+                f"SELL stop {self.stop_loss} is not above the limit {self.limit_price}"
+            )
+
+    def is_reached_by(self, bar_high: float, bar_low: float) -> bool:
+        """Whether a bar's range reaches the resting price.
+
+        Direction-aware and inclusive, mirroring the comparison
+        :func:`execution.intrabar.resolve_intrabar` already applies to a stop: a
+        level below the market is reached by the bar's low, one above it by the
+        bar's high. A bar that gaps straight through therefore counts, which a
+        zone-overlap test would miss.
+
+        Args:
+            bar_high: Bar high.
+            bar_low: Bar low.
+
+        Returns:
+            Whether the limit price was reached.
+        """
+        if self.side is Side.BUY:
+            return bar_low <= self.limit_price
+        return bar_high >= self.limit_price

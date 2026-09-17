@@ -1058,6 +1058,11 @@ def analyze_entry(
             "entry_mode": entry.get("entry_mode", "MARKET"),
             "trigger_type": entry.get("trigger_type", "none"),
             "rr_valid": entry.get("valid_rr", False),
+            # Carried so execution can rest a LIMIT_FVG order without the
+            # strategy knowing anything about how orders are filled.
+            "limit_price": entry.get("limit_price"),
+            "fvg_zone_low": entry.get("fvg_zone_low"),
+            "fvg_zone_high": entry.get("fvg_zone_high"),
             "poi_type": l6_data.get("poi_type", "N/A") if isinstance(l6_data, dict) else "N/A",
             "risk_percent": risk_pct,
             "timestamp": datetime.now().isoformat()

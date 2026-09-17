@@ -87,6 +87,7 @@ class BaselineArtifacts:
     layer_funnel: dict[str, Any]
     regime_statistics: dict[str, Any]
     exit_statistics: dict[str, Any]
+    pending_statistics: dict[str, Any]
     defect_observations: dict[str, Any]
     decisions_fingerprint: str
     run_fingerprint: str
@@ -367,6 +368,97 @@ def _session_of(decision_time_iso: str) -> str:
             return str(risk_manager.get_current_session())
     except Exception:
         return "UNKNOWN"
+
+
+def _pending_statistics(result) -> dict[str, Any]:
+    """Summarise the LIMIT_FVG pending-order lifecycle.
+
+    Distinguishes created / still-waiting / reached-but-unfilled / filled, and
+    records per-order provenance so the research layer can answer later
+    questions -- time to reach, time to fill, whether the fill crossed a
+    session, a daily break or a weekend -- without re-running the replay.
+
+    Expiry, zone invalidation and cross-session cancellation are **disabled**
+    for this experiment, so their counts are structurally zero. That is an
+    EXPERIMENTAL CONTROL, not a policy: see
+    ``docs/PHASE_4A_STEP4_DECISION_EVIDENCE.md``.
+
+    Args:
+        result: The replay result.
+
+    Returns:
+        Counts, lifecycle breakdown and per-order records.
+    """
+    orders = list(getattr(result, "pending_orders", []) or [])
+    by_state = Counter(order.state.value for order in orders)
+    filled = [o for o in orders if o.fill_time is not None]
+    reached_unfilled = [
+        o for o in orders if o.fill_time is None and o.first_reached_time is not None
+    ]
+
+    records = []
+    for order in orders:
+        intent = order.intent
+        formation = pd.Timestamp(intent.formation_bar_time)
+        fill = pd.Timestamp(order.fill_time) if order.fill_time else None
+        reached = pd.Timestamp(order.first_reached_time) if order.first_reached_time else None
+        records.append({
+            "order_id": order.order_id,
+            "state": order.state.value,
+            "side": intent.side.value,
+            "formation_time": str(formation),
+            "decision_time": str(pd.Timestamp(intent.decision_time)),
+            "zone_low": intent.zone_low,
+            "zone_high": intent.zone_high,
+            "limit_price": intent.limit_price,
+            "stop_loss": intent.stop_loss,
+            "take_profit": intent.take_profit,
+            "first_reached_time": str(reached) if reached is not None else None,
+            "fill_time": str(fill) if fill is not None else None,
+            "fill_price": order.fill_price,
+            "minutes_to_reach": (
+                int((reached - formation).total_seconds() // 60) if reached is not None else None
+            ),
+            "minutes_to_fill": (
+                int((fill - formation).total_seconds() // 60) if fill is not None else None
+            ),
+            "session_at_formation": _session_of(str(formation)),
+            "session_at_fill": _session_of(str(fill)) if fill is not None else None,
+            "crossed_session": (
+                None if fill is None
+                else _session_of(str(formation)) != _session_of(str(fill))
+            ),
+            "crossed_daily_boundary": (
+                None if fill is None else formation.date() != fill.date()
+            ),
+            "crossed_weekend": (
+                None if fill is None else (fill - formation) >= pd.Timedelta(days=2)
+            ),
+            "regime": (order.metadata or {}).get("regime"),
+        })
+
+    return {
+        "pending_created": len(orders),
+        "by_state": dict(by_state),
+        "filled": len(filled),
+        "still_waiting": by_state.get("PENDING", 0),
+        "reached_but_unfilled": len(reached_unfilled),
+        "fill_rate": round(len(filled) / len(orders), 6) if orders else None,
+        "expired": by_state.get("EXPIRED", 0),
+        "invalidated": by_state.get("INVALIDATED", 0),
+        "cancelled": by_state.get("CANCELLED", 0),
+        "control_conditions": {
+            "expiry": "DISABLED [EXPERIMENTAL CONTROL]",
+            "zone_invalidation": "DISABLED [EXPERIMENTAL CONTROL]",
+            "cross_session_cancellation": "DISABLED [EXPERIMENTAL CONTROL]",
+            "note": (
+                "Research condition only. NOT a live-trading policy: an order "
+                "with no expiry and no invalidation must not rest indefinitely "
+                "against a real broker."
+            ),
+        },
+        "orders": records,
+    }
 
 
 def _defect_observations(snapshots: list, ledger: TradeLedger) -> dict[str, Any]:
@@ -778,6 +870,7 @@ def run_baseline(
         layer_funnel=_funnel(result.snapshots),
         regime_statistics=_regime_statistics(result.snapshots),
         exit_statistics=_exit_statistics(result.ledger),
+        pending_statistics=_pending_statistics(result),
         defect_observations=_defect_observations(result.snapshots, result.ledger),
         decisions_fingerprint=decisions_hash,
         run_fingerprint=run_fingerprint,
@@ -820,6 +913,7 @@ def write_artifacts(artifacts: BaselineArtifacts, root: Path) -> Path:
     _dump("layer_funnel.json", artifacts.layer_funnel)
     _dump("regime_statistics.json", artifacts.regime_statistics)
     _dump("exit_statistics.json", artifacts.exit_statistics)
+    _dump("pending_statistics.json", artifacts.pending_statistics)
     _dump("defect_observations.json", artifacts.defect_observations)
     _dump("trade_ledger.json", [trade.to_dict() for trade in artifacts.ledger.trades])
     _dump("side_performance.json", {

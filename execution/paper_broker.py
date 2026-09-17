@@ -31,8 +31,10 @@ from datetime import datetime
 import pandas as pd
 
 from core.symbols import SymbolSpecification
-from core.types import DomainInvariantError, Side
+from core.types import DomainInvariantError, PendingOrderIntent, Side
 from execution.broker import (
+    PendingOrder,
+    PendingState,
     FillStatus,
     PositionState,
     SimulatedFill,
@@ -219,6 +221,46 @@ class PaperBroker:
             volume=volume,
         )
 
+        self._open_position(
+            side=side, volume=volume, entry_price=entry_price,
+            stop_loss=stop_loss, take_profit=take_profit,
+            entry_time=bar_time, fill=fill, metadata=metadata,
+        )
+        return fill
+
+    def _open_position(
+        self,
+        *,
+        side: Side,
+        volume: float,
+        entry_price: float,
+        stop_loss: float,
+        take_profit: float | None,
+        entry_time: datetime,
+        fill: SimulatedFill,
+        metadata: dict | None,
+    ) -> SimulatedPosition:
+        """Create and register an open position.
+
+        Shared by the market and limit paths so both produce identical position
+        objects; only the fill price and the bar differ.
+
+        Args:
+            side: Trade direction.
+            volume: Size in lots.
+            entry_price: Price actually filled at.
+            stop_loss: Stop price.
+            take_profit: Target price, or ``None``.
+            entry_time: Open time of the filling bar.
+            fill: The fill record to attach.
+            metadata: Strategy context.
+
+        Returns:
+            The registered position.
+
+        Raises:
+            DomainInvariantError: If the stop coincides with the entry.
+        """
         self._counter += 1
         position = SimulatedPosition(
             position_id=f"SIM-{self._counter:06d}",
@@ -228,7 +270,7 @@ class PaperBroker:
             entry_price=entry_price,
             stop_loss=stop_loss,
             take_profit=take_profit,
-            entry_time=bar_time,
+            entry_time=entry_time,
             fill=fill,
             metadata=dict(metadata or {}),
         )
@@ -238,7 +280,113 @@ class PaperBroker:
                 f"(entry {entry_price}, stop {stop_loss})"
             )
         self._open.append(position)
-        return fill
+        return position
+
+    # ------------------------------------------------------------------
+    # Pending orders
+    # ------------------------------------------------------------------
+
+    def pending_orders(self) -> list[PendingOrder]:
+        """Return the orders still resting, in creation order."""
+        return [order for order in self._pending if order.is_pending]
+
+    def all_pending_orders(self) -> list[PendingOrder]:
+        """Return every pending order ever created, including terminal ones."""
+        return list(self._pending)
+
+    def submit_limit_order(
+        self,
+        intent: PendingOrderIntent,
+        *,
+        volume: float = DEFAULT_SIMULATED_VOLUME,
+        metadata: dict | None = None,
+    ) -> PendingOrder:
+        """Rest an order at the intent's limit price.
+
+        Nothing is filled here. The order waits for a later bar to reach it;
+        whether that ever happens is decided in :meth:`on_bar`.
+
+        Args:
+            intent: What the strategy asked for.
+            volume: Size in lots.
+            metadata: Strategy context, carried to the ledger.
+
+        Returns:
+            The resting :class:`~execution.broker.PendingOrder`.
+        """
+        self._counter += 1
+        order = PendingOrder(
+            intent=intent,
+            order_id=f"PEND-{self._counter:06d}",
+            sequence=self._counter,
+            volume=volume,
+            metadata=dict(metadata or {}),
+        )
+        self._pending.append(order)
+        return order
+
+    def _fill_pending(self, bar: pd.Series, bar_time: datetime) -> list[SimulatedPosition]:
+        """Fill any resting order this bar reaches, in creation order.
+
+        Ordering is by ``sequence`` so the outcome does not depend on list
+        mutation or dict iteration. The formation bar is excluded by
+        :meth:`PendingOrder.may_fill_on`, which raises rather than relying on
+        this method to have checked.
+
+        A bar that opens beyond the limit fills at the open, mirroring the gap
+        rule already applied to stops: the realistic fill is the first price
+        available, which is better than the limit for a limit order.
+
+        Args:
+            bar: OHLC bar.
+            bar_time: The bar's open time.
+
+        Returns:
+            Positions opened on this bar.
+        """
+        opened: list[SimulatedPosition] = []
+        high, low, bar_open = float(bar["high"]), float(bar["low"]), float(bar["open"])
+
+        for order in sorted(self._pending, key=lambda o: o.sequence):
+            if not order.is_pending or not order.may_fill_on(bar_time):
+                continue
+            if not order.intent.is_reached_by(high, low):
+                continue
+
+            order.first_reached_time = order.first_reached_time or bar_time
+            if not self.has_capacity():
+                # Recorded, not filled: capacity is a broker constraint, and the
+                # order stays pending rather than being silently dropped.
+                continue
+
+            intent = order.intent
+            gapped = (
+                bar_open < intent.limit_price
+                if intent.side is Side.BUY
+                else bar_open > intent.limit_price
+            )
+            raw_fill = bar_open if gapped else intent.limit_price
+            entry_price = self._fill_model.entry_price(intent.side, raw_fill, self._spec)
+
+            order.mark_filled(bar_time, entry_price)
+            position = self._open_position(
+                side=intent.side, volume=order.volume, entry_price=entry_price,
+                stop_loss=intent.stop_loss, take_profit=intent.take_profit,
+                entry_time=bar_time,
+                fill=SimulatedFill(
+                    status=FillStatus.FILLED, side=intent.side,
+                    decision_time=intent.decision_time,
+                    decision_bar_time=intent.formation_bar_time,
+                    signal_time=intent.decision_time,
+                    entry_available_time=bar_time, entry_bar_time=bar_time,
+                    entry_price=entry_price, reference_price=raw_fill,
+                    volume=order.volume,
+                    reason="limit reached" + (" | GAPPED through limit, filled at bar open" if gapped else ""),
+                ),
+                metadata={**order.metadata, "pending_order_id": order.order_id},
+            )
+            opened.append(position)
+        return opened
 
     # ------------------------------------------------------------------
     # Bar processing
@@ -280,6 +428,18 @@ class PaperBroker:
         high, low = float(bar["high"]), float(bar["low"])
         bar_open, bar_close = float(bar["open"]), float(bar["close"])
 
+        # Phase A -- pending maintenance (expiry / invalidation / cancellation).
+        # Intentionally empty: all three are unresolved research questions and
+        # the first LIMIT_FVG experiment runs with them disabled. This is an
+        # EXPERIMENTAL CONTROL, not a policy. See
+        # docs/PHASE_4A_STEP4_DECISION_EVIDENCE.md.
+        #
+        # Phase B -- fill any resting order this bar reaches. Runs before exits
+        # so a position filled on this bar is eligible for its own stop or
+        # target on the same bar, per R1.
+        self._fill_pending(bar, bar_time)
+
+        # Phase C -- advance positions, including any just filled above.
         for position in list(self._open):
             # R1: strictly-before, not at-or-before. The fill bar is evaluated.
             if bar_time < position.entry_time:

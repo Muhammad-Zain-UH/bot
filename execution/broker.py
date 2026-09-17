@@ -31,11 +31,13 @@ from typing import Protocol, runtime_checkable
 
 import pandas as pd
 
-from core.types import DomainInvariantError, Side
+from core.types import DomainInvariantError, PendingOrderIntent, Side
 
 __all__ = [
     "Broker",
     "FillStatus",
+    "PendingOrder",
+    "PendingState",
     "PositionState",
     "SimulatedFill",
     "SimulatedPosition",
@@ -60,6 +62,108 @@ class PositionState(Enum):
     CLOSED_TIME = "CLOSED_TIME"
     CLOSED_END_OF_DATA = "CLOSED_END_OF_DATA"
     CLOSED_MANUAL = "CLOSED_MANUAL"
+
+
+class PendingState(Enum):
+    """Lifecycle of a resting order.
+
+    Kept separate from :class:`FillStatus` (the outcome of one submission
+    attempt) and :class:`PositionState` (the life of an open position), because
+    other code already switches on those and overloading them would conflate
+    three different questions.
+
+    ``EXPIRED``, ``INVALIDATED`` and ``CANCELLED`` are defined here because the
+    lifecycle is incomplete without them, but **no rule currently produces
+    them**: expiry, zone invalidation and cross-session cancellation are
+    unresolved research questions, and the first experiment runs with all three
+    disabled. See ``docs/PHASE_4A_STEP4_DECISION_EVIDENCE.md``.
+    """
+
+    PENDING = "PENDING"
+    FILLED = "FILLED"
+    EXPIRED = "EXPIRED"
+    INVALIDATED = "INVALIDATED"
+    CANCELLED = "CANCELLED"
+
+
+@dataclass(slots=True)
+class PendingOrder:
+    """A resting order owned by the execution layer.
+
+    The strategy produced the :class:`~core.types.PendingOrderIntent`; this
+    object owns everything about its life afterwards. It enforces the
+    no-look-ahead invariant itself rather than trusting whoever calls it.
+
+    Attributes:
+        intent: What the strategy asked for.
+        order_id: Simulator identifier.
+        sequence: Monotonic creation counter, so several resting orders are
+            always processed in a defined order.
+        volume: Size in lots.
+        state: Current lifecycle state.
+        first_reached_time: Bar on which the limit was first reached, if ever.
+        fill_time: Bar it filled on.
+        fill_price: Price it filled at.
+        terminal_reason: Why it left ``PENDING``.
+        metadata: Carried through to the ledger.
+    """
+
+    intent: PendingOrderIntent
+    order_id: str
+    sequence: int
+    volume: float
+    state: PendingState = PendingState.PENDING
+    first_reached_time: datetime | None = None
+    fill_time: datetime | None = None
+    fill_price: float | None = None
+    terminal_reason: str = ""
+    metadata: dict = field(default_factory=dict)
+
+    @property
+    def is_pending(self) -> bool:
+        """Whether the order is still waiting."""
+        return self.state is PendingState.PENDING
+
+    def may_fill_on(self, bar_time: datetime) -> bool:
+        """Whether a bar is eligible to fill this order at all.
+
+        The formation bar is never eligible. A pending order created from a gap
+        that completed on bar N can fill no earlier than N+1.
+
+        Args:
+            bar_time: Open time of the bar being offered.
+
+        Returns:
+            Whether the bar is strictly after formation.
+        """
+        return bar_time > self.intent.formation_bar_time
+
+    def mark_filled(self, bar_time: datetime, price: float) -> None:
+        """Record a fill, refusing one that would violate the timing invariant.
+
+        Args:
+            bar_time: Open time of the filling bar.
+            price: Price the order filled at.
+
+        Raises:
+            DomainInvariantError: If the order is not pending, or the bar is the
+                formation bar or earlier -- which would mean the simulator filled
+                using a bar the strategy had already seen.
+        """
+        if not self.is_pending:
+            raise DomainInvariantError(
+                f"pending order {self.order_id} is {self.state.value}, not PENDING"
+            )
+        if not self.may_fill_on(bar_time):
+            raise DomainInvariantError(
+                f"LOOK-AHEAD: pending order {self.order_id} would fill on {bar_time}, "
+                f"which is not after its formation bar "
+                f"{self.intent.formation_bar_time}."
+            )
+        self.state = PendingState.FILLED
+        self.fill_time = bar_time
+        self.fill_price = price
+        self.terminal_reason = "limit reached"
 
 
 @dataclass(frozen=True, slots=True)
