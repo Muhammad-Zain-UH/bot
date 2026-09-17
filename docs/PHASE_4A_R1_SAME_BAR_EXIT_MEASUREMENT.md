@@ -71,11 +71,22 @@ correct, not double-counting.
 
 ### Existing test coverage
 
-`[MEASURED]` **No test covers the skip.** A repo-wide search for `entry_time`,
-`same_bar` or fill-bar assertions in `tests/` returns only a hand-constructed
-trade (`test_ledger_and_metrics.py:55`) and `test_time_stop`
-(`test_paper_broker.py:250`), neither of which passes the fill bar to `on_bar`.
-The behaviour is entirely unprotected.
+> **CORRECTION (made during implementation).** This section originally said
+> "No test covers the skip." **That was wrong.**
+> `tests/execution/test_paper_broker.py::test_entry_bar_is_not_re_evaluated`
+> asserted the old behaviour directly — it presented a fill bar whose low was
+> through the stop and required the position to stay open. My search missed it
+> because I grepped for `entry_time`, `same_bar` and `bars_held`, and the test
+> is named after `entry_bar`. It failed immediately when R1 was applied, which
+> is how it was found. It has been rewritten to assert the corrected behaviour
+> and renamed `test_entry_bar_is_evaluated`.
+
+`[MEASURED]` One existing test pinned the skip: `test_entry_bar_is_not_re_evaluated`
+(`tests/execution/test_paper_broker.py`). Two others mention adjacent concepts
+but never pass the fill bar to `on_bar` — a hand-constructed trade
+(`test_ledger_and_metrics.py:55`) and `test_time_stop` (`test_paper_broker.py:250`)
+— so they were unaffected. Beyond that single test the behaviour was
+unprotected.
 
 ---
 
@@ -220,6 +231,10 @@ None exists today; all are new. **None touches strategy behaviour.**
 **Guard test**
 
 13. Nothing in the diff touches `entry_engine.py`, `main_production.py` or any L1–L8 logic — assertable by the same AST/hash approach already used in `tests/integration/test_strategy_to_broker.py`.
+
+**Also required, discovered during implementation:** update
+`test_entry_bar_is_not_re_evaluated`, which asserts the pre-R1 behaviour and
+fails as soon as the change lands.
 
 ---
 

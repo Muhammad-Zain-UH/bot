@@ -222,16 +222,27 @@ class ExitTests(unittest.TestCase):
         )
         self.assertEqual(len(broker.open_positions()), 1)
 
-    def test_entry_bar_is_not_re_evaluated(self) -> None:
-        """The fill happened at that bar's open; resolving its range double-counts."""
+    def test_entry_bar_is_evaluated(self) -> None:
+        """R1: the fill bar counts.
+
+        This test previously asserted the opposite, on the reasoning that
+        resolving the fill bar's range would double-count it. That was wrong: a
+        market fill happens at the bar's open, so the position is exposed to the
+        rest of that bar. Here the fill bar's low (2380) is through the stop
+        (2390), so the position closes on the bar it opened on.
+        """
         broker = PaperBroker(XAUUSD_2DIGIT, NO_COST)
         entry_bar = bar(T0 + timedelta(minutes=5), 2400.0, 2402.0, 2380.0, 2401.0)
         broker.submit_market_order(
             side=Side.BUY, volume=0.01, stop_loss=2390.0, take_profit=2420.0,
             decision_time=T0, decision_bar_time=None, execution_bar=entry_bar,
         )
-        self.assertEqual(broker.on_bar(entry_bar, T0 + timedelta(minutes=5)), [])
-        self.assertEqual(len(broker.open_positions()), 1)
+        closed = broker.on_bar(entry_bar, T0 + timedelta(minutes=5))
+        self.assertEqual(len(closed), 1)
+        self.assertIs(closed[0].state, PositionState.CLOSED_STOP)
+        self.assertAlmostEqual(closed[0].exit_price, 2390.0)
+        self.assertEqual(closed[0].bars_held, 1)
+        self.assertEqual(len(broker.open_positions()), 0)
 
     def test_sell_stop_and_target(self) -> None:
         broker = PaperBroker(XAUUSD_2DIGIT, NO_COST)
@@ -334,3 +345,112 @@ class AmbiguousBarTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SameBarExitTests(unittest.TestCase):
+    """R1: a position is evaluated for exits on the bar it filled on.
+
+    A market fill happens at the execution bar's open, so the position exists
+    for the whole of that bar. Phase 2A skipped it on the grounds that
+    evaluating the fill bar would "double-count" it, which was wrong -- the
+    position is exposed to that bar's range from the open onward.
+
+    The fill bar here is always ``T0 + 5min``, the bar ``submit_market_order``
+    was given, and it is passed straight back to ``on_bar``.
+    """
+
+    FILL = T0 + timedelta(minutes=5)
+
+    def _broker(self, **kwargs) -> PaperBroker:
+        broker = PaperBroker(XAUUSD_2DIGIT, NO_COST, **kwargs)
+        broker.submit_market_order(
+            side=Side.BUY, volume=0.01, stop_loss=2390.0, take_profit=2420.0,
+            decision_time=T0, decision_bar_time=T0 - timedelta(minutes=5),
+            execution_bar=bar(self.FILL, 2400.0, 2402.0, 2399.0, 2401.0),
+        )
+        return broker
+
+    def test_fill_bar_covering_the_stop_closes_on_that_bar(self) -> None:
+        broker = self._broker()
+        closed = broker.on_bar(bar(self.FILL, 2400.0, 2402.0, 2385.0, 2392.0), self.FILL)
+        self.assertEqual(len(closed), 1)
+        self.assertIs(closed[0].state, PositionState.CLOSED_STOP)
+        self.assertAlmostEqual(closed[0].exit_price, 2390.0)
+        self.assertEqual(closed[0].exit_time, self.FILL)
+
+    def test_fill_bar_covering_the_target_closes_on_that_bar(self) -> None:
+        broker = self._broker()
+        closed = broker.on_bar(bar(self.FILL, 2400.0, 2425.0, 2399.0, 2421.0), self.FILL)
+        self.assertEqual(len(closed), 1)
+        self.assertIs(closed[0].state, PositionState.CLOSED_TARGET)
+        self.assertAlmostEqual(closed[0].exit_price, 2420.0)
+
+    def test_fill_bar_covering_both_uses_the_existing_policy(self) -> None:
+        """No new ambiguity class: the existing resolution decides it."""
+        broker = self._broker()
+        closed = broker.on_bar(bar(self.FILL, 2400.0, 2425.0, 2385.0, 2405.0), self.FILL)
+        self.assertEqual(len(closed), 1)
+        self.assertIs(closed[0].state, PositionState.CLOSED_STOP)
+        self.assertTrue(closed[0].was_ambiguous_exit)
+
+    def test_fill_bar_covering_neither_leaves_the_position_open(self) -> None:
+        broker = self._broker()
+        closed = broker.on_bar(bar(self.FILL, 2400.0, 2402.0, 2399.0, 2401.0), self.FILL)
+        self.assertEqual(closed, [])
+        self.assertEqual(len(broker.open_positions()), 1)
+        self.assertEqual(broker.open_positions()[0].bars_held, 1)
+
+    def test_fill_bar_gapping_through_the_stop_exits_at_the_open(self) -> None:
+        """The existing gap rule applies unchanged on the fill bar."""
+        broker = PaperBroker(XAUUSD_2DIGIT, NO_COST)
+        broker.submit_market_order(
+            side=Side.BUY, volume=0.01, stop_loss=2399.5, take_profit=2420.0,
+            decision_time=T0, decision_bar_time=T0 - timedelta(minutes=5),
+            execution_bar=bar(self.FILL, 2400.0, 2402.0, 2399.0, 2401.0),
+        )
+        # Same bar, re-presented with a low that gaps under the stop.
+        closed = broker.on_bar(bar(self.FILL, 2399.0, 2400.0, 2385.0, 2390.0), self.FILL)
+        self.assertEqual(len(closed), 1)
+        self.assertIs(closed[0].state, PositionState.CLOSED_STOP)
+        self.assertAlmostEqual(closed[0].exit_price, 2399.0)
+        self.assertIn("GAPPED", closed[0].exit_reason)
+
+    def test_bars_held_counts_the_fill_bar(self) -> None:
+        """N bars presented, starting with the fill bar, gives bars_held == N."""
+        broker = self._broker()
+        quiet = (2400.0, 2402.0, 2399.0, 2401.0)
+        for step in range(0, 4):
+            moment = self.FILL + timedelta(minutes=5 * step)
+            broker.on_bar(bar(moment, *quiet), moment)
+            self.assertEqual(broker.open_positions()[0].bars_held, step + 1)
+
+    def test_a_bar_before_the_fill_is_still_never_applied(self) -> None:
+        """The guard is narrowed to `<`, not removed."""
+        broker = self._broker()
+        earlier = T0 - timedelta(minutes=10)
+        closed = broker.on_bar(bar(earlier, 2400.0, 2425.0, 2385.0, 2405.0), earlier)
+        self.assertEqual(closed, [])
+        self.assertEqual(broker.open_positions()[0].bars_held, 0)
+
+    def test_timing_invariant_still_raises(self) -> None:
+        """R1 must not weaken the no-look-ahead guard."""
+        with self.assertRaises(DomainInvariantError):
+            SimulatedFill(
+                status=FillStatus.FILLED, side=Side.BUY,
+                decision_time=T0, decision_bar_time=T0,
+                signal_time=T0, entry_available_time=T0,
+                entry_bar_time=T0, entry_price=2400.0,
+                reference_price=2400.0, volume=0.01,
+            )
+
+    def test_max_bars_held_fires_at_the_configured_count(self) -> None:
+        """Still N bars -- but the fill bar is now one of them."""
+        broker = self._broker(max_bars_held=2)
+        quiet = (2400.0, 2402.0, 2399.0, 2401.0)
+        first = broker.on_bar(bar(self.FILL, *quiet), self.FILL)
+        self.assertEqual(first, [])
+        second = self.FILL + timedelta(minutes=5)
+        closed = broker.on_bar(bar(second, *quiet), second)
+        self.assertEqual(len(closed), 1)
+        self.assertIs(closed[0].state, PositionState.CLOSED_TIME)
+        self.assertEqual(closed[0].bars_held, 2)

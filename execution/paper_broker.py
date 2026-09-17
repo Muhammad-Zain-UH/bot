@@ -247,9 +247,27 @@ class PaperBroker:
     def on_bar(self, bar: pd.Series, bar_time: datetime) -> list[SimulatedPosition]:
         """Advance every open position against one bar.
 
-        A position is never evaluated against the bar it was filled on: the fill
-        happened at that bar's open and resolving the same bar's range against
-        it would double-count the bar.
+        A position **is** evaluated against the bar it was filled on. A market
+        fill happens at that bar's open, so the position genuinely exists for
+        the whole of that bar and its range can legitimately reach the stop or
+        the target.
+
+        This corrects a Phase 2A defect (R1). The original guard skipped the
+        fill bar on the grounds that evaluating it would "double-count the bar",
+        which was wrong: the position is exposed to the bar's range from its
+        open onward. The guard is retained as ``<`` so a bar that precedes the
+        fill is still never applied.
+
+        ``bars_held`` counts the fill bar, so a position closed on the bar it
+        opened on has ``bars_held == 1``. Measured effect of this correction on
+        the existing fixtures: no exit outcome changed, but every position's
+        ``bars_held`` increased by exactly one. See
+        ``docs/PHASE_4A_R1_SAME_BAR_EXIT_MEASUREMENT.md``.
+
+        Resolution itself is unchanged: :func:`resolve_intrabar` is called with
+        the same arguments and the same policy as before. No new ambiguity
+        class is introduced -- for a market fill the position exists from the
+        bar's open, so the existing two-level resolution applies exactly.
 
         Args:
             bar: OHLC bar with ``open``, ``high``, ``low``, ``close``.
@@ -263,7 +281,8 @@ class PaperBroker:
         bar_open, bar_close = float(bar["open"]), float(bar["close"])
 
         for position in list(self._open):
-            if bar_time <= position.entry_time:
+            # R1: strictly-before, not at-or-before. The fill bar is evaluated.
+            if bar_time < position.entry_time:
                 continue
             position.bars_held += 1
 
