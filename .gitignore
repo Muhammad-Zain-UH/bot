@@ -32,3 +32,9 @@ signal_log_main_v2.csv
 # Generated per run and potentially large; regenerate with backtest.runner.
 backtest_results/
 data/raw/
+
+# Phase 3A baselines: the summary artifacts ARE committed (they are the
+# immutable record). The per-decision dump is not -- it is ~5 MB per run and
+# fully regenerable, and its content is covered by decisions_fingerprint in
+# run_fingerprint.txt, so excluding it loses no verifiability.
+baselines/*/decisions.jsonl

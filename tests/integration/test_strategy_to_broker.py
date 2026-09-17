@@ -147,20 +147,73 @@ class FixedPositionSizeTests(unittest.TestCase):
         self.assertEqual(DEFAULT_SIMULATED_VOLUME, 0.01)
 
     def test_risk_manager_is_not_imported_by_the_simulation_packages(self) -> None:
-        """Its ~10x contract-size defect would contaminate every P&L figure."""
+        """Its ~10x contract-size defect would contaminate every P&L figure.
+
+        One module is exempt, and only narrowly. ``backtest/baseline.py`` labels
+        each decision with the trading session, and takes that label from the
+        strategy's own ``get_current_session`` rather than reimplementing the
+        session windows -- a second definition that disagreed would misreport the
+        baseline. That call returns a string and can reach no P&L figure. The
+        exemption is enforced by name below, so any *other* risk_manager symbol
+        reaching that module still fails this test.
+        """
+        allowed_names = {"get_current_session"}
+        exempt = "backtest/baseline.py"
         offenders: list[str] = []
+
         for package in ("data", "execution", "backtest"):
-            for path in (REPO_ROOT / package).glob("*.py"):
+            for path in sorted((REPO_ROOT / package).glob("*.py")):
+                name = f"{package}/{path.name}"
                 tree = ast.parse(path.read_text(encoding="utf-8"))
+                imported: list[str] = []
                 for node in ast.walk(tree):
                     if isinstance(node, ast.Import):
-                        offenders += [
-                            f"{package}/{path.name}" for a in node.names
-                            if a.name.split(".")[0] == "risk_manager"
+                        imported += [
+                            alias.asname or alias.name
+                            for alias in node.names
+                            if alias.name.split(".")[0] == "risk_manager"
                         ]
                     elif isinstance(node, ast.ImportFrom) and node.module:
                         if node.module.split(".")[0] == "risk_manager":
-                            offenders.append(f"{package}/{path.name}")
+                            imported += [alias.name for alias in node.names]
+                if not imported:
+                    continue
+                if name != exempt:
+                    offenders.append(name)
+                    continue
+                # The exempt module may reach only the allow-listed symbols.
+                used = {
+                    node.attr
+                    for node in ast.walk(tree)
+                    if isinstance(node, ast.Attribute)
+                    and isinstance(node.value, ast.Name)
+                    and node.value.id == "risk_manager"
+                }
+                used |= {n for n in imported if n != "risk_manager"}
+                extra = sorted(used - allowed_names)
+                if extra:
+                    offenders.append(f"{name} uses {extra}")
+
+        self.assertEqual(offenders, [])
+
+    def test_no_sizing_symbol_can_reach_the_simulation_packages(self) -> None:
+        """The exemption above must never widen into position sizing."""
+        forbidden = {
+            "calculate_position_size", "calculate_lot_size", "get_account_balance",
+            "calculate_risk_amount", "validate_risk", "get_risk_percent",
+        }
+        offenders: list[str] = []
+        for package in ("data", "execution", "backtest"):
+            for path in sorted((REPO_ROOT / package).glob("*.py")):
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+                for node in ast.walk(tree):
+                    hit = None
+                    if isinstance(node, ast.Attribute) and node.attr in forbidden:
+                        hit = node.attr
+                    elif isinstance(node, ast.Name) and node.id in forbidden:
+                        hit = node.id
+                    if hit:
+                        offenders.append(f"{package}/{path.name}:{hit}")
         self.assertEqual(offenders, [])
 
     def test_risk_amount_derives_from_the_symbol_specification(self) -> None:

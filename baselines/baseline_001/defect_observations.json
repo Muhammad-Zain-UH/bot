@@ -1,0 +1,48 @@
+{
+  "E10_Q3_regime_rr_deadlock": {
+    "by_regime": {
+      "DEAD_CALM": {
+        "decisions": 2312,
+        "signals": 0
+      },
+      "MICRO_SCALP": {
+        "decisions": 5121,
+        "signals": 0
+      }
+    },
+    "defect": "MICRO_SCALP and DEAD_CALM carry tp_ratio=1.5; valid_rr requires rr>=2.0",
+    "effect_on_baseline": "Decisions in these regimes cannot reach an entry regardless of setup quality. Any share of runtime spent in them is unreachable trading time.",
+    "occurrences": 7433,
+    "signals_produced": 0
+  },
+  "G2_U10_absolute_regime_bands": {
+    "defect": "detect_regime classifies on absolute-USD M5 ATR bands (2.5/4.5/7.0)",
+    "effect_on_baseline": "Regime selection on this dataset is a function of gold's price level during the period, not of relative volatility.",
+    "regime_distribution": {
+      "DEAD_CALM": 2312,
+      "INTRADAY_SWING": 1810,
+      "MICRO_SCALP": 5121,
+      "REGIME_SCALP": 6492
+    }
+  },
+  "Q1_Q2_rr_vs_realised_r": {
+    "defect": "The strategy derives its target as risk x tp_ratio, so rr_ratio always equals the regime constant; and it prices risk against an entry it is never filled at.",
+    "distinct_reported_rr": [],
+    "effect_on_baseline": "Realised R differs from the reported RR on every trade. The reported value cannot be used as an outcome measure.",
+    "examples": [],
+    "occurrences": 0
+  },
+  "Q6_stop_buffer_units": {
+    "defect": "_select_stop_anchor subtracts buffer_pips=3.0 directly from a price, giving a $3.00 buffer",
+    "note": "Not separately measurable from the ledger without the sweep wick level, which the decision snapshot does not carry. Confirmed by inspection in Phase 2A.1 (sweep wick 2511.73 -> stop 2508.73).",
+    "occurrences": 0
+  },
+  "U9_h1_atr_gate_units": {
+    "defect": "main_production gates on h1_atr < 8.0 and reports it as 'pips'; the value is quote-currency dollars",
+    "effect_on_baseline": "Blocks every decision whose H1 mean range is below $8.00. Because the threshold is absolute USD, its selectivity depends on the price level.",
+    "observed_atr_max": null,
+    "observed_atr_min": null,
+    "occurrences": 0,
+    "threshold": 8.0
+  }
+}

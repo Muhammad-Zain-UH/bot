@@ -1,0 +1,44 @@
+{
+  "blocked_at": {
+    "L1_BIAS": 2392,
+    "L2_STRUCTURE": 7,
+    "L3_PULLBACK": 5868,
+    "L4_LIQUIDITY": 629,
+    "L5_SWEEP": 4075,
+    "L6_POI": 1,
+    "L7_CONFIDENCE": 1498,
+    "L8_ENTRY": 1265
+  },
+  "blocked_at_percent": {
+    "L1_BIAS": 15.2018,
+    "L2_STRUCTURE": 0.0445,
+    "L3_PULLBACK": 37.2927,
+    "L4_LIQUIDITY": 3.9975,
+    "L5_SWEEP": 25.8977,
+    "L6_POI": 0.0064,
+    "L7_CONFIDENCE": 9.5202,
+    "L8_ENTRY": 8.0394
+  },
+  "note": "'reached' counts decisions that either passed the layer or were blocked AT it. Variant labels (L5_SWEEP_WAIT, L3_PULLBACK_MOMENTUM) are folded into their parent layer.",
+  "reached_layer": {
+    "L1_BIAS": 15735,
+    "L2_STRUCTURE": 13343,
+    "L3_PULLBACK": 8570,
+    "L4_LIQUIDITY": 7468,
+    "L5_SWEEP": 6839,
+    "L6_POI": 1024,
+    "L7_CONFIDENCE": 2763,
+    "L8_ENTRY": 1265
+  },
+  "reached_layer_percent": {
+    "L1_BIAS": 100.0,
+    "L2_STRUCTURE": 84.7982,
+    "L3_PULLBACK": 54.4646,
+    "L4_LIQUIDITY": 47.4611,
+    "L5_SWEEP": 43.4636,
+    "L6_POI": 6.5078,
+    "L7_CONFIDENCE": 17.5596,
+    "L8_ENTRY": 8.0394
+  },
+  "total_decisions": 15735
+}

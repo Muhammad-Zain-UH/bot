@@ -310,6 +310,91 @@ was detected at integration level, and the run is deterministic across repeats a
 machine timezones.
 
 
+---
+
+## 13. OBSERVED DURING PHASE 3A (real XAUUSD baseline) -- catalogued, NOT fixed
+
+Phase 3A ran the unmodified strategy over **real broker history** for the first
+time: XAUUSD from MetaQuotes-Demo, exported read-only, validated, and replayed
+bar by bar. No strategy file was touched -- all 110 tracked modules are
+byte-identical to commit `04a341d`. The run produced **zero entry signals and
+zero trades**, so there is no performance statement to make here, and none is
+made. What follows is measurement.
+
+Artifacts: `baselines/baseline_004/` (canonical -- its `defect_observations.json`
+matches the committed harness) with `baselines/baseline_003/` and
+`baselines/baseline_002/` as independent repeats. All three produced a
+byte-identical 15,735-line decision stream. Fingerprints are in each directory's
+`run_fingerprint.txt`.
+
+### The binding observation: L8 is unreachable in most of the runtime
+
+15,735 decisions were evaluated. 1,265 of them cleared L1-L7 and blocked at L8
+with `Entry triggers not all confirmed`. Broken down by regime:
+
+| Regime | `tp_ratio` | Decisions | Reached L8 | Can satisfy `valid_rr`? |
+|---|---|---|---|---|
+| MICRO_SCALP | 1.5 | 5,121 | 972 | **No -- structurally impossible** |
+| DEAD_CALM | 1.5 | 2,312 | 22 | **No -- structurally impossible** |
+| REGIME_SCALP | 2.0 | 6,492 | 217 | Yes |
+| INTRADAY_SWING | 3.0 | 1,810 | 54 | Yes |
+
+**994 of the 1,265 L8 blocks (78.6%) were decided before the market was
+consulted.** `calculate_entry_levels` sets the target as
+`take_profit = entry +/- risk_distance * tp_ratio` and then tests
+`valid_rr = (reward / risk) >= 2.0`. Those two lines make `rr` identically equal
+to `tp_ratio`, so the test reads a configuration constant. Since
+`entry_triggered = raw_triggered and valid_rr`, no decision in a
+`tp_ratio < 2.0` regime can ever produce an entry, whatever the price action
+did. This is E9 and E10 confirmed on real data at scale, and it is why Q3 was
+not a fixture artefact.
+
+Proved directly against the production function, for every regime and both
+sides, in `tests/backtest/test_baseline_defects.py`. That file also parses
+`entry_engine`'s AST so the copy of these constants in `backtest/baseline.py`
+cannot silently drift from the source.
+
+### New observations
+
+| # | Observation | Relates to | Priority |
+|---|---|---|---|
+| D1 | **Broker tick value contradicts contract size.** `symbol_info` reports `trade_contract_size = 100.0` but `trade_tick_value = 0.1` with `trade_tick_size = 0.01`, giving `money_per_price_unit(1 lot) = 10.0` where the contract size implies 100.0 -- a factor of 10. The baseline uses the broker's own tick value rather than silently substituting the contract size. Any P&L figure from any source that assumes one while the broker reports the other is off by 10x. | R1 | **P0** |
+| D2 | **M1 is the binding coverage constraint.** The broker serves 100,002 M1 bars (2026-06-02 to 2026-09-16, about 3.5 months) while D1 reaches back further. The replay drives on M5 and needs M1, so the usable window is ~3.5 months regardless of what the higher timeframes hold. No claim of multi-year coverage is supportable from this export. | V1 | P1 |
+| D3 | **Server time is not UTC.** The MetaQuotes-Demo server runs UTC+3. Bar stamps are shifted to true UTC at export. A consequence: broker-native H4 and D1 candles are not UTC-aligned (D1 opens 21:00 UTC, H4 at 01:00/05:00/09:00). They are preserved as-is rather than re-cut, because re-cutting would replace real candles with synthetic ones. Session logic in `risk_manager` is defined on UTC hours, so mislabelling these stamps would have shifted every session window by three hours. | T1-T6 | **P0 (handled at export)** |
+| D4 | **Spread is ASSUMED, not historical.** The broker serves OHLC bars with no bid/ask history. The baseline applies a flat 2.0 pip spread and records `spread_is_assumed: true` in every manifest. The broker reported a live spread of 39 points at export time, which at `pip_size = 0.10` is 3.9 pips -- nearly double the assumption, so the assumption is not conservative. No spread-sensitive conclusion can be drawn from this baseline. | E12 | P1 |
+| D9 | **The L2 H1-ATR gate did not bind on real data.** `main_production` blocks at L2 when `h1_atr < 8.0`. Across 15,735 decisions it fired **zero** times; all 7 L2 blocks were `H1 structure is broken`. The threshold is absolute USD, so at gold near $3,900 an $8.00 floor is about 0.2% of price and is always cleared. It is not harmless -- it is simply not selective at this price level, and its selectivity would change with the price level rather than with volatility. Note the two pre-existing unit-test failures (D7) are caused by this same gate firing at 0.0 when indicators are mocked away. | U9, G2 | P1 |
+| D5 | **L3 and L5 dominate the attrition ahead of L8.** 5,868 decisions (37.3%) blocked at L3 and 4,075 (25.9%) at L5, against 1,265 (8.0%) at L8. Even if the L8 tautology were removed, most decisions would not reach it. Fixing E9/E10 alone would not make this strategy trade at the rate the layer structure implies. | S1, A3 | P1 |
+| D6 | **`run_fingerprint` was not sufficient to prove determinism.** As originally written it hashed dataset + ledger + metrics. On a zero-trade run the ledger is empty and every metric is `None`, so two runs that disagreed on every decision would still have matched. A `decisions_fingerprint` over the ordered decision stream was added, and `tests/backtest/test_baseline_fingerprint.py` mutates each covered field in turn to prove the digest moves. Found by inspection during Phase 3A; the earlier Phase 3A determinism claim rested partly on count comparisons, not on this digest. | V2 | P1 (harness, not strategy) |
+| D7 | **Two pre-existing test failures, unrelated to Phase 3A.** `tests/test_layer_gate_logic.py::test_pullback_gate_requires_real_pullback_detection` and `::test_micro_scalp_l7_confidence_uses_55_threshold` both fail at commit `04a341d` with zero Phase 3A changes applied (verified in a clean worktree). Both patch `calculate_indicators` to `{}`, so L2's H1-ATR sub-gate reads `0.0 < 8.0` and blocks before the layer under test is reached. They are left failing: repairing them means editing assertions about strategy gate behaviour, which a measurement phase must not do. Note the sub-gate itself -- L2 is named `L2_STRUCTURE` but carries a volatility gate that its name does not disclose. | U9, X-docs | P2 |
+
+| D8 | **`LondonNewYork` is a session name that cannot occur.** `detect_regime` admits MICRO_SCALP when `kill_zone or session in {"Asian", "London", "LondonNewYork"}`, but `risk_manager.get_current_session` returns only `Asian`, `London`, `NewYork`, `Dead`, `Closed`. The label also appears in `config.py:125` and `main_production.py:442`. Effect on the baseline: during New York hours MICRO_SCALP is reachable only when the kill zone is open, which is why New York shows 72 MICRO_SCALP decisions against London's 2,736. Proved by enumerating every hour of a full week under a frozen clock in `tests/backtest/test_baseline_defects.py`. | T1-T6 | P1 |
+
+### Where the strategy spent its attention
+
+Derived post-hoc from the immutable decision stream (sessions are not a stored
+artifact, because with zero trades `exit_statistics.by_outcome_and_session` is
+empty).
+
+| Session | Decisions | Reached L8 | Dominant regime |
+|---|---|---|---|
+| Asian (00-07 UTC) | 5,040 (32.0%) | 430 | REGIME_SCALP 2,382 / MICRO_SCALP 2,313 |
+| NewYork (13-21 UTC) | 4,999 (31.8%) | 228 | REGIME_SCALP 2,191 / DEAD_CALM 1,459 |
+| London (07-13 UTC) | 4,316 (27.4%) | 607 | **MICRO_SCALP 2,736** |
+| Dead (21-24 UTC) | 1,380 (8.8%) | 0 | DEAD_CALM 820 |
+
+The session that got furthest through the layer stack is London, and London is
+dominated by the one regime in which an entry is structurally impossible. Of its
+607 L8 arrivals, the great majority were decided by `tp_ratio = 1.5` rather than
+by the market.
+
+### What this phase establishes
+
+The export, validation, replay and measurement chain works on real broker data
+and repeats exactly. The strategy, as it stands, produced no trades over ~3.5
+months of real XAUUSD history, and the largest single identified cause is a
+comparison against a configuration constant rather than against the market.
+Nothing here was fixed.
+
 ## RECOMMENDED SEQUENCE
 
 Ordered so that **safety precedes correctness, and measurement precedes tuning**.

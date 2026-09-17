@@ -430,6 +430,13 @@ class ReplayEngine:
             "confidence": entry_signal.get("confidence_score", 0.0),
             "grade": entry_signal.get("grade", ""),
             "strategy_entry_price": entry_signal.get("entry_price"),
+            # The strategy's OWN reported ratio, kept as a diagnostic only. It is
+            # not an outcome measure: entry_engine derives the target as
+            # risk x tp_ratio, so this always equals the regime constant
+            # (PHASE_2_ISSUES E9). Realised R is computed from the actual fill.
+            "strategy_rr_ratio": entry_signal.get("rr_ratio"),
+            "strategy_stop_loss": entry_signal.get("stop_loss"),
+            "strategy_take_profit": entry_signal.get("take_profit"),
             "layers_passed": list(snapshot.layers_passed),
         }
 
