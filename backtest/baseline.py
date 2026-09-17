@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import os
 import platform
 import re
 import time
@@ -40,6 +42,8 @@ from execution.paper_broker import DEFAULT_SIMULATED_VOLUME, PaperBroker
 
 __all__ = [
     "BaselineArtifacts",
+    "PRODUCTION_LOG_NAMES",
+    "assert_logs_are_redirected",
     "dataset_fingerprint",
     "decision_stream_fingerprint",
     "run_baseline",
@@ -507,6 +511,93 @@ def _defect_observations(snapshots: list, ledger: TradeLedger) -> dict[str, Any]
     return observations
 
 
+PRODUCTION_LOG_NAMES: tuple[str, ...] = (
+    "trading_bot_production.log",
+    "trading_bot_main.log",
+    "trading_bot.log",
+    "signal_log.csv",
+    "signal_log_v2.csv",
+    "signal_log_main_v2.csv",
+)
+"""Filenames that hold the permanent production record, at the repository root."""
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+PRODUCTION_LOG_PATHS: frozenset[Path] = frozenset(
+    (REPO_ROOT / name) for name in PRODUCTION_LOG_NAMES
+)
+"""The actual files a replay must not write to."""
+
+
+def _is_production_record(target: str | Path) -> bool:
+    """Return whether a path is one of the real production files.
+
+    Compared by resolved path, not by filename. That distinction matters:
+    ``tests/__init__.py`` redirects output into a temporary directory while
+    keeping the original basenames, so matching on the name alone would reject
+    a redirect that is doing exactly the right thing.
+
+    Args:
+        target: The path to classify.
+
+    Returns:
+        Whether it resolves to a production file at the repository root.
+    """
+    try:
+        resolved = Path(target).resolve()
+    except (OSError, ValueError):
+        return False
+    return resolved in PRODUCTION_LOG_PATHS
+
+
+def assert_logs_are_redirected() -> None:
+    """Refuse to run a baseline that would write to the production record.
+
+    ``main_production`` builds a ``logging.FileHandler`` at module scope from
+    ``TRADING_BOT_LOG_FILE``, defaulting to ``trading_bot_production.log`` in
+    the repository root. A replay drives that module tens of thousands of times,
+    so leaving the variable unset appends the whole run to the permanent log.
+
+    That is the failure Phase 0.4 was built to prevent, and it happened during
+    Phase 3A: baselines 001-004 appended roughly 8,900 diagnostic lines to
+    ``trading_bot_production.log``. No fabricated signal entered the record --
+    the run produced none -- but the record was still polluted by a simulation.
+
+    Both the environment variable and any handler already installed are checked,
+    because the module may have been imported before this is reached.
+
+    Raises:
+        RuntimeError: If a production file would receive output.
+    """
+    offenders: list[str] = []
+
+    configured = os.getenv("TRADING_BOT_LOG_FILE")
+    if configured is None:
+        offenders.append(
+            "TRADING_BOT_LOG_FILE is unset, so main_production defaults to "
+            f"{REPO_ROOT / 'trading_bot_production.log'}"
+        )
+    elif _is_production_record(configured):
+        offenders.append(f"TRADING_BOT_LOG_FILE points at {configured}")
+
+    for logger in (logging.getLogger(), *(
+        logging.getLogger(name) for name in list(logging.root.manager.loggerDict)
+    )):
+        for handler in getattr(logger, "handlers", ()):
+            filename = getattr(handler, "baseFilename", None)
+            if filename and _is_production_record(filename):
+                offenders.append(f"logger {logger.name!r} writes to {filename}")
+
+    if offenders:
+        raise RuntimeError(
+            "refusing to run a baseline that writes to the production record:"
+            + "".join(chr(10) + "  " + line for line in sorted(set(offenders)))
+            + chr(10)
+            + "Point TRADING_BOT_LOG_FILE (and the other output paths) at a "
+              "scratch location before importing main_production."
+        )
+
+
 def run_baseline(
     dataset: HistoricalDataset,
     spec: SymbolSpecification,
@@ -544,7 +635,11 @@ def run_baseline(
 
     Returns:
         A :class:`BaselineArtifacts`.
+
+    Raises:
+        RuntimeError: If logging would reach the production record.
     """
+    assert_logs_are_redirected()
     feed = ReplayFeed(dataset, spread_pips=spread_pips)
     fill_model = FillModel(
         spread=Pips(spread_pips),

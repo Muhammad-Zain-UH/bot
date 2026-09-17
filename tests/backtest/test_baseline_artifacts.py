@@ -10,11 +10,20 @@ already exists, and that refusal is tested here rather than merely documented.
 from __future__ import annotations
 
 import json
+import logging
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
-from backtest.baseline import BaselineArtifacts, write_artifacts
+from backtest.baseline import (
+    PRODUCTION_LOG_NAMES,
+    REPO_ROOT,
+    BaselineArtifacts,
+    assert_logs_are_redirected,
+    write_artifacts,
+)
 from backtest.ledger import TradeLedger
 from backtest.metrics import compute_metrics
 
@@ -108,6 +117,77 @@ class TestManifestRecordsTheSafetyState(unittest.TestCase):
             directory = write_artifacts(_artifacts(), Path(temp))
             manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
             self.assertIs(manifest["live_trading_enabled"], False)
+
+
+class TestBaselineRefusesToPolluteTheProductionLog(unittest.TestCase):
+    """A replay must not append to the permanent trading record.
+
+    ``main_production`` opens its log handler at module scope from
+    ``TRADING_BOT_LOG_FILE``, defaulting to the production file. A baseline
+    drives that module tens of thousands of times, so an unset variable writes
+    the whole run into the record -- which is what happened during Phase 3A
+    before this guard existed.
+    """
+
+    def test_unset_variable_is_refused(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(RuntimeError) as caught:
+                assert_logs_are_redirected()
+        self.assertIn("TRADING_BOT_LOG_FILE", str(caught.exception))
+
+    def test_each_production_file_is_refused(self) -> None:
+        for name in PRODUCTION_LOG_NAMES:
+            with self.subTest(name=name):
+                target = str(REPO_ROOT / name)
+                with mock.patch.dict(os.environ, {"TRADING_BOT_LOG_FILE": target}, clear=True):
+                    with self.assertRaises(RuntimeError):
+                        assert_logs_are_redirected()
+
+    def test_a_same_named_file_elsewhere_is_accepted(self) -> None:
+        """Matching is by resolved path, not by filename.
+
+        ``tests/__init__.py`` redirects into a temporary directory while keeping
+        the original basenames. A name-based check would reject that redirect --
+        which is precisely the thing doing the right thing.
+        """
+        with tempfile.TemporaryDirectory() as temp:
+            target = str(Path(temp) / "trading_bot_production.log")
+            with mock.patch.dict(os.environ, {"TRADING_BOT_LOG_FILE": target}, clear=True):
+                assert_logs_are_redirected()
+
+    def test_a_scratch_path_is_accepted(self) -> None:
+        """Guard against a check that refuses everything and proves nothing."""
+        with tempfile.TemporaryDirectory() as temp:
+            target = str(Path(temp) / "replay.log")
+            with mock.patch.dict(os.environ, {"TRADING_BOT_LOG_FILE": target}, clear=True):
+                assert_logs_are_redirected()
+
+    def test_an_installed_production_handler_is_refused(self) -> None:
+        """Covers the case where the module was imported before the check."""
+        with tempfile.TemporaryDirectory() as temp:
+            scratch = str(Path(temp) / "replay.log")
+            # Deliberately the real production path, opened in append mode
+            # but never written to: the guard must fire on the handler alone.
+            trap = logging.FileHandler(
+                REPO_ROOT / "trading_bot_production.log", encoding="utf-8", delay=True
+            )
+            logger = logging.getLogger("tests.baseline.production-trap")
+            logger.addHandler(trap)
+            try:
+                with mock.patch.dict(os.environ, {"TRADING_BOT_LOG_FILE": scratch}, clear=True):
+                    with self.assertRaises(RuntimeError) as caught:
+                        assert_logs_are_redirected()
+                self.assertIn("trading_bot_production.log", str(caught.exception))
+            finally:
+                logger.removeHandler(trap)
+                trap.close()
+
+    def test_the_trap_is_cleaned_up(self) -> None:
+        """The previous test must not leave the guard permanently tripped."""
+        with tempfile.TemporaryDirectory() as temp:
+            target = str(Path(temp) / "replay.log")
+            with mock.patch.dict(os.environ, {"TRADING_BOT_LOG_FILE": target}, clear=True):
+                assert_logs_are_redirected()
 
 
 if __name__ == "__main__":

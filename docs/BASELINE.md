@@ -114,8 +114,25 @@ Then drive `backtest.baseline.run_baseline` with the dataset, a
 `SymbolSpecification` built by `spec_from_broker_metadata` from the broker's own
 `broker_metadata.json`, and a fresh `baseline_id`.
 
-The strategy prints a multi-line banner per decision -- several megabytes over a
-full run, enough to dominate runtime. Redirect its stdout to a sink for the
-duration. `print()` has no effect on the decision path, so suppressing it changes
-no result; run the redirect around the import too, since the banner is written at
+Two things must be set up before the strategy is imported.
+
+**Redirect its logging.** `main_production` opens a `logging.FileHandler` at
+module scope from `TRADING_BOT_LOG_FILE`, defaulting to
+`trading_bot_production.log`. A replay drives that module tens of thousands of
+times, so leaving the variable unset appends the entire run to the permanent
+trading record. This is not hypothetical: baselines 001-004 put roughly 8,900
+diagnostic lines there before the guard existed. `run_baseline` now calls
+`assert_logs_are_redirected()` and refuses to start unless
+`TRADING_BOT_LOG_FILE` (and any installed handler) points somewhere else. Set
+it, along with `TRADING_BOT_MAIN_LOG_FILE`, `SIGNAL_LOG_FILE`,
+`MAIN_SIGNAL_LOG_FILE` and `LOG_FILE`, at the very top of the runner -- before
+the first project import, because the handler is built at import time.
+
+**Redirect its stdout.** The strategy prints a multi-line banner per decision --
+several megabytes over a full run, enough to dominate runtime. Send it to a sink
+opened with `encoding="utf-8"`: the banner contains box-drawing characters, and
+a default cp1252 sink on Windows raises `UnicodeEncodeError` that
+`analyze_entry`'s blanket `except` converts into a silent `ERROR` decision.
+`print()` has no effect on the decision path, so suppressing it changes no
+result. Wrap the import in the redirect too, since the banner is written at
 module level.
