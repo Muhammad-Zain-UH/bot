@@ -2,6 +2,15 @@
 
 **Status:** complete. **Commits:** `58128ff`, `a8b8092`. **Canonical baseline:** `baselines/baseline_004/`.
 
+> **CORRECTION — 2026-09-17, after Phase 4A pre-analysis.** This report
+> originally attributed 994 of the 1,265 L8 blocks causally to the RR
+> tautology. That attribution is **withdrawn**: measurement shows the allowed
+> entry candidate had `raw_triggered = False` at **all 1,265**, so the RR gate
+> was never the binding term. The tautology is real but **latent**. The
+> measurements themselves are unchanged and the baseline artifacts are
+> untouched — only the causal claim is corrected. Affected passages are marked
+> below and the full correction is in the **Addendum**.
+
 Measurement phase. No strategy logic was changed, no threshold was tuned, and no
 performance claim is made. The strategy produced **zero trades**, so most of the
 statistics this report is required to carry are empty — and where they are empty,
@@ -269,7 +278,7 @@ No leakage failures.
 
 | ID | Defect | Occurrences | Evidence |
 |---|---|---|---|
-| **E9/E10/Q3** | `calculate_entry_levels` sets `take_profit = entry ± risk_distance × tp_ratio`, then tests `valid_rr = rr >= 2.0`. Those two lines make `rr` **identically equal** to `tp_ratio`, so the gate reads a config constant. Since `entry_triggered = raw_triggered and valid_rr`, no decision in a `tp_ratio < 2.0` regime can ever enter. | 7,433 decisions in affected regimes; **994 of 1,265 L8 blocks (78.58%)** | `2026-06-24T17:00Z` onward. Proved directly against the production function for every regime and both sides in `test_baseline_defects.py`. |
+| **E9/E10/Q3** | `calculate_entry_levels` sets `take_profit = entry ± risk_distance × tp_ratio`, then tests `valid_rr = rr >= 2.0`. Those two lines make `rr` **identically equal** to `tp_ratio`, so the gate reads a config constant. Since `entry_triggered = raw_triggered and valid_rr`, no decision in a `tp_ratio < 2.0` regime can ever enter. **The defect is real but latent — see Addendum.** | 7,433 decisions in affected regimes. ~~994 of 1,265 L8 blocks (78.58%)~~ **WITHDRAWN** — that is the count of L8-reaching decisions *in* an unreachable regime, **not** the count the gate blocked. The gate blocked **0**. | `2026-06-24T17:00Z` onward. Proved directly against the production function for every regime and both sides in `test_baseline_defects.py`. |
 | **D8** | `detect_regime` admits MICRO_SCALP on `session in {"Asian","London","LondonNewYork"}`, but `get_current_session` returns only Asian/London/NewYork/Dead/Closed. **`LondonNewYork` is unreachable.** Also in `config.py:125`, `main_production.py:442`. | Structural | New York shows 72 MICRO_SCALP decisions vs London's 2,736. Proved by enumerating every hour of a full week under a frozen clock. |
 | **D1** | Broker `trade_contract_size = 100.0` but `trade_tick_value = 0.1` with `trade_tick_size = 0.01`, giving `money_per_price_unit(1 lot) = 10.0` — a **factor of 10** disagreement. The baseline uses the broker's tick value rather than substituting the contract size. | Every currency figure | `manifest.json` records both. |
 | **D9** | The L2 `h1_atr < 8.0` gate fired **zero** times on real data; all 7 L2 blocks were "H1 structure is broken". The threshold is absolute USD — at gold near $3,900 it is ~0.2% of price. Not harmless, just not selective *at this price level*. | 0 of 15,735 | Same gate causes the two pre-existing test failures (D7) by firing at 0.0 when indicators are mocked. |
@@ -373,7 +382,7 @@ existing baselines stand.
 
 1. **The measurement chain works on real broker data and repeats exactly.** Export → validate → replay → paper broker → ledger → metrics, over 15,735 decisions on real XAUUSD, byte-identical across three runs and three harness versions.
 2. **The strategy as it stands produced zero trades** over ~3.5 months of real XAUUSD history, with zero errors. This is a fact about the code and this dataset, not a prediction.
-3. **The largest single identified cause is a comparison against a configuration constant.** 78.58% of decisions that cleared every other gate were rejected by a test that cannot be satisfied in their regime, regardless of price action.
+3. ~~**The largest single identified cause is a comparison against a configuration constant.**~~ **WITHDRAWN — see Addendum.** The RR gate is tautological, but it was not the binding term at any of the 1,265 L8 blocks. The binding term was `raw_triggered`, which was `False` for the allowed candidate in every case. The largest identified cause at L8 is **the entry trigger conditions**, not RR.
 4. **No look-ahead was detected on real data.** Future mutation changed no past decision at any tested instant.
 5. **Live trading remained impossible throughout**, now enforced by a subprocess-level test rather than by reading source.
 
@@ -398,7 +407,7 @@ existing baselines stand.
 
 In priority order, and **measured against this baseline** rather than assumed:
 
-1. **E9/E10 — the tautological RR gate.** `rr` must be computed against a real target, not derived from `tp_ratio` and then compared to a constant. This is the single change most likely to move the decision stream, which is exactly why it must be made in isolation and re-measured.
+1. ~~**E9/E10 — the tautological RR gate.** … the single change most likely to move the decision stream.~~ **WITHDRAWN — see Addendum.** Correcting it would admit **zero** additional entries on this dataset. It remains a genuine latent defect worth fixing for correctness, but it is not the constraint to investigate first. **The entry trigger conditions are** — specifically the five-way AND in the momentum path and the two-way AND in the pullback path.
 2. **D1/R1 — the contract-size vs tick-value contradiction.** Until this is resolved, no currency figure from any source can be trusted, and `risk_manager` cannot be re-enabled.
 3. **U1/Q6, U8, U9, U10 — the price-unit confusion**, migrated as one coherent change through `core.units`, not piecemeal.
 4. **D8 — the unreachable `LondonNewYork` label**, and an audit for other session-name mismatches.
@@ -410,5 +419,110 @@ baseline, any change that produces trades will look like an improvement, and
 there is currently no way to distinguish more trades from more losses.
 
 ---
+
+---
+
+## Addendum — correction to the causal attribution (2026-09-17)
+
+Added after Phase 4A pre-analysis. **No measurement in this report changed, and
+no baseline artifact was touched.** What changed is a claim I drew *from* the
+measurements, which the measurements did not support.
+
+### What I claimed
+
+That the RR tautology accounted for 994 of the 1,265 L8 blocks — "decided before
+the market was consulted" — and was therefore "the largest single identified
+cause" and the first thing to correct.
+
+### Why it was wrong
+
+`entry_triggered = raw_triggered and valid_rr`. I verified the `valid_rr` term
+was tautological and then attributed the blocks to it **without measuring the
+`raw_triggered` term**. Two true statements were run together:
+
+- In MICRO_SCALP and DEAD_CALM, `valid_rr` can never be true. *(True.)*
+- Therefore `valid_rr` is what blocked those decisions. *(Does not follow.)*
+
+A conjunction is false as soon as either term is false. Establishing that one
+term is always false says nothing about which term was actually binding.
+
+### What the measurement shows
+
+All 1,265 L8-blocked instants were replayed and the production entry functions
+re-invoked with the inputs `main_production` passes them. The reconstruction
+proved itself faithful: `setup_type`, `rr` and `rr_valid` matched the production
+`layer_8` on **1,265 / 1,265**.
+
+| Candidate | `raw_triggered = True` | `= False` |
+|---|---|---|
+| momentum | 0 | 1,265 |
+| pullback | 11 | 1,254 |
+| **allowed candidate for the regime** | **0** | **1,265** |
+
+All 1,265 exited via the trigger path; none reached the entry-quality gate. The
+11 pullback near-misses are all MICRO_SCALP, where `allowed_styles = ["MOMENTUM"]`
+— so the pullback candidate was not evaluated, and the momentum candidate did not
+fire.
+
+**Forcing `valid_rr = True` would therefore have produced 0 additional entries.**
+`raw_triggered` depends on the rejection candle, M1 CHoCH, displacement, FVG and
+kill zone — none of which read TP or RR.
+
+### Corrected conclusion
+
+1. **`rr ≡ tp_ratio` is a genuine defect.** `calculate_entry_levels` derives the
+   target from `tp_ratio` and then tests the resulting ratio against `2.0`, so the
+   gate reads a configuration constant. Unchanged and still proven.
+2. **It is latent, not active.** It has never been the binding term on this
+   dataset. It would bind the moment an allowed candidate fires in a
+   `tp_ratio < 2.0` regime — which has not yet happened.
+3. **It was not demonstrated to cause the 1,265 L8 blocks.** It caused none of them.
+4. **The binding constraint at L8 is `raw_triggered`** — the two-way AND in the
+   pullback path and the five-way AND in the momentum path.
+
+### The number 994 still means something — just not that
+
+994 is the count of L8-*reaching* decisions **in** a regime where `valid_rr` is
+unsatisfiable. That is a real and useful measure of how much runtime sits in a
+structurally unenterable regime. It is **not** a count of decisions the RR gate
+blocked, which is 0.
+
+`baselines/baseline_00{1..4}/defect_observations.json` contains a field named
+`share_of_l8_blocked_by_tautology`. **That name asserts a causation the data does
+not support.** The artifacts are immutable and were not edited; the field is
+renamed in `backtest/baseline.py` so future baselines do not repeat it, and its
+recorded value (0.785771) should be read as "share of L8-reaching decisions that
+were in an unreachable regime", not as an attribution.
+
+### A note on the discarded TP target
+
+Separately established while defining Phase 4A, and recorded here because it
+bears on any future attempt to "fix" the RR gate: L4 computes a `tp_pool`, and
+`assess_liquidity_gate` strictly validates it as being on the profitable side of
+price with `score >= 60`. It is stored in `analysis["layer_4"]["tp_pool"]` and
+then **never passed to L8** — `get_entry_trigger` takes no such argument. All
+1,265 L8-blocked decisions had a valid `tp_pool` available and discarded.
+
+Measured across the allowed candidates, the RR that pool would have implied:
+
+| | Pool-implied RR | RR actually used |
+|---|---|---|
+| median | **0.25** | 1.5 / 2.0 / 3.0 (= `tp_ratio`) |
+| p75 | 0.45 | — |
+| ≥ 2.0 | 19 / 1,504 (**1.3%**) | 100% by construction |
+
+So substituting the pool as the target is **not** a neutral bug-fix. The
+synthetic target sits roughly 6× further away at the median, and a genuine
+`rr >= 2.0` test against the pool would reject about 99% of setups. Whatever is
+done about the tautology, the `2.0` threshold would then need a justification it
+does not presently have.
+
+### Method
+
+Read-only. No strategy file was modified, and nothing was committed to strategy
+code. The probe replays recorded decision instants and calls the production
+functions; replaying a subset is sound because the replay is deterministic and
+each decision depends only on bars visible at its own instant — confirmed by all
+1,265 reproducing their recorded block exactly.
 
 *Phase 3A complete. Awaiting approval before proceeding.*

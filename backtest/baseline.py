@@ -426,8 +426,20 @@ def _defect_observations(snapshots: list, ledger: TradeLedger) -> dict[str, Any]
         "occurrences": sum(item["decisions"] for item in unreachable.values()),
         "reached_l8_in_unreachable_regime": blocked_by_tautology,
         "reached_l8_total": total_l8,
-        "share_of_l8_blocked_by_tautology": (
+        # Deliberately NOT called "share blocked by the tautology". That name
+        # was used in Phase 3A and asserted a causation the data did not
+        # support: entry_triggered is a conjunction, and measuring that one
+        # term is always false says nothing about which term was binding. At
+        # every L8 block measured, the other term (raw_triggered) was already
+        # false, so this gate blocked nothing. This is a measure of unenterable
+        # runtime, not an attribution.
+        "share_of_l8_reached_in_unreachable_regime": (
             round(blocked_by_tautology / total_l8, 6) if total_l8 else None
+        ),
+        "causal_note": (
+            "Not an attribution. entry_triggered = raw_triggered AND valid_rr; "
+            "these counts do not establish which term blocked a decision. "
+            "Measure raw_triggered before attributing a block to the RR gate."
         ),
         "by_regime": by_regime,
         "regimes_not_in_mirror": unknown,

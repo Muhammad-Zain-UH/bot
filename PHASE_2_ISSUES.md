@@ -339,8 +339,17 @@ with `Entry triggers not all confirmed`. Broken down by regime:
 | REGIME_SCALP | 2.0 | 6,492 | 217 | Yes |
 | INTRADAY_SWING | 3.0 | 1,810 | 54 | Yes |
 
-**994 of the 1,265 L8 blocks (78.6%) were decided before the market was
-consulted.** `calculate_entry_levels` sets the target as
+> **CORRECTION (2026-09-17, Phase 4A pre-analysis).** The paragraph below
+> originally read "994 of the 1,265 L8 blocks (78.6%) were decided before the
+> market was consulted". **That causal claim is withdrawn.** At all 1,265 L8
+> blocks the allowed candidate had `raw_triggered = False`, so the RR gate was
+> never the binding term and blocked **0** decisions. 994 is the count of
+> L8-reaching decisions *in* an unreachable regime, not a count the gate
+> blocked. The tautology below is real but **latent**. See
+> `docs/PHASE_3A_BASELINE_REPORT.md` Addendum.
+
+**994 of the 1,265 L8 blocks (78.6%) were in a regime where `valid_rr` is
+unsatisfiable** — a measure of unenterable runtime, not of what blocked them. `calculate_entry_levels` sets the target as
 `take_profit = entry +/- risk_distance * tp_ratio` and then tests
 `valid_rr = (reward / risk) >= 2.0`. Those two lines make `rr` identically equal
 to `tp_ratio`, so the test reads a configuration constant. Since
