@@ -10,6 +10,26 @@ no profitability claim, and no ranking of corrections by expected performance.
 
 # 0. The central finding — re-derived, and corrected
 
+> **CORRECTION (target-semantics investigation,
+> `docs/PHASE_4B_TARGET_SEMANTICS.md`).** This review says the system
+> *"computes a market-derived target and discards it"*. The mechanics are
+> confirmed — `tp_pool` never reaches `entry_engine`, which contains zero
+> references to it — but **the word "discards" is withdrawn**. It presumes
+> `tp_pool` was meant to be the target.
+>
+> Investigating that premise found positive evidence for the opposite: the
+> fixed-R model is documented in `SYSTEM_STRUCTURE_DIAGRAM.md`,
+> `FLOW_DIAGRAM_WITH_FLAWS.md` and `trade_manager.py`, implemented in
+> `trade_manager` and `order_execution`, and produces the identity
+> `exit_1_3 == take_profit`, which holds only under a fixed-R target.
+> `assess_liquidity_gate` validates `tp_pool` on side and score but **never on
+> distance** — a feasibility check, not a target selection.
+>
+> Classification: **deliberate fixed-R design**, with the naming
+> (`tp_pool`/`tp_score`/`tp_level`) recorded as a separate semantic defect that
+> misled this review. E9/E10 remains a defect under either model.
+
+
 The audit claimed:
 
 > Six layers of analysis produce pass/fail admission gates, while the actual
