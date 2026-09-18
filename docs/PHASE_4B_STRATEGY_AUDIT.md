@@ -22,6 +22,25 @@ new replay.
 
 # A. Executive summary — the actual decision architecture
 
+> **CORRECTION (design review, `docs/PHASE_4B_DESIGN_REVIEW.md`).** This section
+> states that only `side` and the sweep wicks reach order construction. That is
+> **incomplete**. Re-tracing found that `_evaluate_momentum_entry` also passes
+> `displacement.origin_low/high` into the level calculation
+> (`entry_engine.py:604-605`), so on the momentum path the stop is anchored to
+> `min(sweep_wick_low, displacement_origin_low) - 3.00`. **Displacement
+> constructs the stop**; this audit classified it only as a trigger term (#37).
+>
+> The corrected statement: of the seven analysis layers **L1–L7**, exactly two
+> outputs reach construction — `side` and the sweep wicks. The other
+> construction inputs (FVG midpoint, displacement origin, M5/M1 bars, ATR
+> fallback) originate **inside L8**, and `tp_ratio` comes from **L0**. The
+> finding stands; its scope was imprecise.
+>
+> Also found while verifying: `calculate_entry_levels` declares
+> `risk_pct: float = 1.5` and never reads it — a dead parameter this audit
+> missed.
+
+
 The system presents as an eight-layer confluence funnel. **Measured, it is a
 seven-gate filter followed by a two-input price constructor.**
 
