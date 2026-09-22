@@ -26,6 +26,7 @@ which is the size-independent metric that actually matters.
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 
 import pandas as pd
@@ -33,6 +34,9 @@ import pandas as pd
 from core.symbols import SymbolSpecification
 from core.types import DomainInvariantError, PendingOrderIntent, Side
 from execution.broker import (
+    BrokerExecutionResult,
+    BrokerModifyResult,
+    ExecutionStatus,
     PendingOrder,
     PendingState,
     FillStatus,
@@ -387,6 +391,292 @@ class PaperBroker:
             )
             opened.append(position)
         return opened
+
+    # ------------------------------------------------------------------
+    # Explicit execution verbs (Phase 4B)
+    # ------------------------------------------------------------------
+    #
+    # The broker executes instructions and reports what happened. It decides
+    # nothing: not that a position should exit, not that a level was reached,
+    # not that a stop should move. Those are canonical decisions and reach here
+    # only as an instruction someone else already took.
+    #
+    # Every verb validates mechanically -- is the position known, is it open,
+    # is the quantity sane and on the broker's step grid -- and reports a
+    # rejection rather than raising, because a rejection is a result the
+    # canonical state is entitled to see (specification §16.2).
+    #
+    # These verbs are not yet driven by anything. ``on_bar`` is unchanged.
+
+    def position(self, position_id: str) -> SimulatedPosition | None:
+        """Return an open position by identity, or ``None``.
+
+        Args:
+            position_id: The identity to look up.
+
+        Returns:
+            The open position, or ``None`` if no open position has that id.
+        """
+        for candidate in self._open:
+            if candidate.position_id == position_id:
+                return candidate
+        return None
+
+    def _reject(
+        self,
+        *,
+        position_id: str,
+        operation_id: str,
+        requested_volume: float,
+        reason: str,
+        remaining_volume: float = 0.0,
+    ) -> BrokerExecutionResult:
+        """Build a rejection result. Nothing about the position changes."""
+        return BrokerExecutionResult(
+            status=ExecutionStatus.REJECTED,
+            position_id=position_id,
+            operation_id=operation_id,
+            requested_volume=requested_volume,
+            executed_volume=0.0,
+            executed_price=None,
+            reference_price=None,
+            time=None,
+            remaining_volume=remaining_volume,
+            closed_position=False,
+            reason=reason,
+        )
+
+    def _volume_problem(self, position: SimulatedPosition, volume: float) -> str:
+        """Return why ``volume`` cannot be executed, or an empty string."""
+        if volume <= 0.0:
+            return f"requested volume {volume} is not positive"
+        snapped = self._spec.round_volume_to_step(volume)
+        if abs(snapped - volume) > 1e-9:
+            return (
+                f"requested volume {volume} is not a multiple of the broker's "
+                f"volume step {self._spec.volume_step}"
+            )
+        if volume > position.remaining_volume + 1e-9:
+            return (
+                f"requested volume {volume} exceeds the {position.remaining_volume} "
+                "still open"
+            )
+        return ""
+
+    def execute_partial_close(
+        self,
+        position_id: str,
+        *,
+        volume: float,
+        reference_price: float,
+        operation_id: str,
+        at_time: datetime,
+        cause: str = "",
+        broker_order_id: str | None = None,
+        broker_deal_id: str | None = None,
+    ) -> BrokerExecutionResult:
+        """Close part of a position, leaving the remainder open.
+
+        The quantity comes from the instruction; the broker never chooses it.
+        The position stays ``OPEN`` and keeps its entry, stop, target and
+        ``bars_held`` -- a partial reduces size, it does not end anything.
+
+        Closing the whole remaining quantity is rejected rather than silently
+        treated as a close: a partial that leaves nothing open is a full close,
+        and the two are different instructions with different results.
+
+        Args:
+            position_id: Which position.
+            volume: Lots to close. Must be positive, on the broker's step grid,
+                and strictly less than what is open.
+            reference_price: The pre-cost price to execute against. The caller
+                supplies it; exit costs are applied here.
+            operation_id: The instruction being answered.
+            at_time: When the execution happens.
+            cause: Why the caller asked, carried onto the result.
+            broker_order_id: Broker order identifier, where one exists.
+            broker_deal_id: Broker execution identifier, where one exists.
+
+        Returns:
+            A :class:`BrokerExecutionResult`. Rejections leave the position
+            untouched.
+        """
+        position = self.position(position_id)
+        if position is None:
+            return self._reject(
+                position_id=position_id, operation_id=operation_id,
+                requested_volume=volume,
+                reason="no open position has that identity",
+            )
+        problem = self._volume_problem(position, volume)
+        if problem:
+            return self._reject(
+                position_id=position_id, operation_id=operation_id,
+                requested_volume=volume, reason=problem,
+                remaining_volume=position.remaining_volume,
+            )
+        if abs(volume - position.remaining_volume) <= 1e-9:
+            return self._reject(
+                position_id=position_id, operation_id=operation_id,
+                requested_volume=volume,
+                reason=(
+                    "a partial close may not close the whole remaining "
+                    f"{position.remaining_volume}; use the close verb"
+                ),
+                remaining_volume=position.remaining_volume,
+            )
+
+        executed_price = self._fill_model.exit_price(
+            position.side, reference_price, self._spec
+        )
+        position.volume_closed = round(position.volume_closed + volume, 8)
+
+        return BrokerExecutionResult(
+            status=ExecutionStatus.FILLED,
+            position_id=position_id,
+            operation_id=operation_id,
+            requested_volume=volume,
+            executed_volume=volume,
+            executed_price=executed_price,
+            reference_price=reference_price,
+            time=at_time,
+            broker_order_id=broker_order_id,
+            broker_deal_id=broker_deal_id,
+            remaining_volume=position.remaining_volume,
+            closed_position=False,
+            reason=cause,
+        )
+
+    def execute_close(
+        self,
+        position_id: str,
+        *,
+        reference_price: float,
+        operation_id: str,
+        at_time: datetime,
+        state: PositionState = PositionState.CLOSED_MANUAL,
+        reason: str = "",
+        ambiguous: bool = False,
+        broker_order_id: str | None = None,
+        broker_deal_id: str | None = None,
+    ) -> BrokerExecutionResult:
+        """Close whatever remains of a position.
+
+        The terminal state and the reason are supplied by the caller. The
+        broker does not infer why a position closed, and ``ambiguous`` is
+        likewise reported, not judged: whoever resolved the bar knows.
+
+        Args:
+            position_id: Which position.
+            reference_price: The pre-cost price to execute against.
+            operation_id: The instruction being answered.
+            at_time: When the execution happens.
+            state: Terminal state to record.
+            reason: Why it closed.
+            ambiguous: Whether the deciding bar was ambiguous.
+            broker_order_id: Broker order identifier, where one exists.
+            broker_deal_id: Broker execution identifier, where one exists.
+
+        Returns:
+            A :class:`BrokerExecutionResult` whose ``executed_volume`` is the
+            quantity that was still open.
+        """
+        position = self.position(position_id)
+        if position is None:
+            return self._reject(
+                position_id=position_id, operation_id=operation_id,
+                requested_volume=0.0,
+                reason="no open position has that identity",
+            )
+
+        remaining = position.remaining_volume
+        self._close(
+            position,
+            raw_exit_price=reference_price,
+            exit_time=at_time,
+            state=state,
+            reason=reason,
+            ambiguous=ambiguous,
+        )
+        position.volume_closed = position.volume
+
+        return BrokerExecutionResult(
+            status=ExecutionStatus.FILLED,
+            position_id=position_id,
+            operation_id=operation_id,
+            requested_volume=remaining,
+            executed_volume=remaining,
+            executed_price=position.exit_price,
+            reference_price=reference_price,
+            time=at_time,
+            broker_order_id=broker_order_id,
+            broker_deal_id=broker_deal_id,
+            remaining_volume=0.0,
+            closed_position=True,
+            reason=reason,
+        )
+
+    def execute_stop_modify(
+        self,
+        position_id: str,
+        *,
+        stop_price: float,
+        operation_id: str,
+        at_time: datetime,
+    ) -> BrokerModifyResult:
+        """Move a position's stop, because the caller asked.
+
+        The broker does not judge whether the move is sensible, forward or
+        adverse. Monotonicity is a canonical rule (specification §7.2) enforced
+        where the decision is made; a broker that second-guessed it would be
+        deciding management.
+
+        The original stop is preserved separately, so risk taken at entry
+        survives the move.
+
+        Args:
+            position_id: Which position.
+            stop_price: The new stop.
+            operation_id: The instruction being answered.
+            at_time: When it is applied.
+
+        Returns:
+            A :class:`BrokerModifyResult`.
+        """
+        position = self.position(position_id)
+        if position is None:
+            return BrokerModifyResult(
+                status=ExecutionStatus.REJECTED,
+                position_id=position_id,
+                operation_id=operation_id,
+                requested_stop=stop_price,
+                confirmed_stop=None,
+                time=None,
+                reason="no open position has that identity",
+            )
+        if not math.isfinite(stop_price) or stop_price <= 0.0:
+            return BrokerModifyResult(
+                status=ExecutionStatus.REJECTED,
+                position_id=position_id,
+                operation_id=operation_id,
+                requested_stop=stop_price,
+                confirmed_stop=position.stop_loss,
+                time=None,
+                reason=f"stop price {stop_price} is not a usable price",
+            )
+
+        if position.original_stop_price is None:
+            position.original_stop_price = position.stop_loss
+        position.stop_loss = stop_price
+
+        return BrokerModifyResult(
+            status=ExecutionStatus.FILLED,
+            position_id=position_id,
+            operation_id=operation_id,
+            requested_stop=stop_price,
+            confirmed_stop=position.stop_loss,
+            time=at_time,
+        )
 
     # ------------------------------------------------------------------
     # Bar processing
