@@ -1297,12 +1297,104 @@ class StaticProhibitions(unittest.TestCase):
             with self.subTest(module=banned):
                 self.assertNotIn(banned, self.source)
 
+    # Ambient clock and I/O, expressed as AST shapes rather than substrings.
+    #
+    # A substring search cannot tell a call to the builtin `open` from the
+    # `is_open` accessor this same contract requires, and it also matches any
+    # docstring that merely mentions either. Matching call nodes is both
+    # narrower in what it flags and wider in what it catches: `path.open()` and
+    # `builtins.open()` are caught here and were invisible to the old check.
+    FORBIDDEN_NAME_CALLS = {"open"}
+    FORBIDDEN_ATTRIBUTE_CALLS = {
+        "open",       # path.open(...), builtins.open(...) -- any receiver
+        "now",        # datetime.now(...)
+        "today",      # datetime.today(...)
+        "getLogger",  # logging is I/O
+    }
+    FORBIDDEN_MODULE_CALLS = {("time", "time")}
+    FORBIDDEN_IMPORTS = {"requests", "urllib", "socket", "http", "shutil"}
+
+    def _io_offenders(self) -> list[str]:
+        """Every ambient-I/O or clock call in the module, with line numbers."""
+        offenders: list[str] = []
+        for node in ast.walk(self.tree):
+            if isinstance(node, ast.Call):
+                func = node.func
+                if isinstance(func, ast.Name) and func.id in self.FORBIDDEN_NAME_CALLS:
+                    offenders.append(f"line {node.lineno}: {func.id}()")
+                elif isinstance(func, ast.Attribute):
+                    if func.attr in self.FORBIDDEN_ATTRIBUTE_CALLS:
+                        offenders.append(f"line {node.lineno}: .{func.attr}()")
+                    elif (
+                        isinstance(func.value, ast.Name)
+                        and (func.value.id, func.attr) in self.FORBIDDEN_MODULE_CALLS
+                    ):
+                        offenders.append(
+                            f"line {node.lineno}: {func.value.id}.{func.attr}()"
+                        )
+            elif isinstance(node, (ast.Import, ast.ImportFrom)):
+                if isinstance(node, ast.Import):
+                    roots = [alias.name.split(".")[0] for alias in node.names]
+                else:
+                    roots = [(node.module or "").split(".")[0]]
+                for root in roots:
+                    if root in self.FORBIDDEN_IMPORTS:
+                        offenders.append(f"line {node.lineno}: import {root}")
+        return offenders
+
+    def _offenders_in(self, source: str) -> list[str]:
+        """Run the detector over an arbitrary snippet, for self-verification."""
+        real_tree, self.tree = self.tree, ast.parse(source)
+        try:
+            return self._io_offenders()
+        finally:
+            self.tree = real_tree
+
     def test_no_ambient_clock_or_io(self) -> None:
-        """MUST 17: evaluation reads no clock and performs no I/O."""
-        for banned in ("datetime.now(", "time.time(", "open(", "requests.",
-                       "logging.getLogger"):
-            with self.subTest(call=banned):
-                self.assertNotIn(banned, self.source)
+        """MUST 17: evaluation reads no clock and performs no I/O.
+
+        The detector is verified against two probes in the same test, so the
+        prohibition cannot pass merely because the check became inert -- the
+        failure mode `tests/core/test_core_constraints.py` guards against for
+        the clock rule.
+        """
+        with self.subTest(check="detects real violations"):
+            self.assertEqual(
+                len(self._offenders_in(
+                    "import socket\n"
+                    "def f(p, d):\n"
+                    "    handle = open(p)\n"
+                    "    other = p.open()\n"
+                    "    stamp = d.now()\n"
+                    "    return handle, other, stamp\n"
+                )),
+                4,
+                "the detector must catch a builtin open, an attribute open, an "
+                "ambient clock read and a network import",
+            )
+
+        with self.subTest(check="does not flag the required is_open accessor"):
+            self.assertEqual(
+                self._offenders_in(
+                    "class S:\n"
+                    "    @property\n"
+                    "    def is_open(self):\n"
+                    "        return self.lifecycle is OPEN\n"
+                    "    def use(self, bar):\n"
+                    "        return self.is_open and bar.open > 0\n"
+                ),
+                [],
+                "`is_open` and a bar's `open` field are part of this contract "
+                "and are not file I/O",
+            )
+
+        with self.subTest(check="the canonical module is clean"):
+            self.assertEqual(
+                self._io_offenders(), [],
+                "the canonical domain model must not read a clock, open a "
+                "file, log, or reach the network; time arrives on the "
+                "observation and everything else belongs to the adapter",
+            )
 
 
 # =====================================================================
