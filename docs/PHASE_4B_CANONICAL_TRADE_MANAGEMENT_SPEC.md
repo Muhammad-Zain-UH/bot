@@ -98,6 +98,7 @@ Everything below resolves the questions these leave open.
 | **this revision** | **Closure is confirmed, never assumed.** Detecting a stop, target or protective condition does not mark the position `CLOSED`; `evaluate` emits `CLOSE_REQUESTED`, the position stays `OPEN` with `pending_close_reason` set, and only a confirming broker result closes it | **§8.2, §11.1, §11.1a, §11.3, §17, §22, §23, §24** |
 | **this revision** | **The domain does not price executions.** The canonical state machine emits `requested_level` and `observed_reference` only; the execution adapter computes the executable price and the broker supplies the recorded fill. No broker-specific logic in `core/trade_model.py` | **§11.1b, §12.1, §18.2, §23, §24** |
 | **this revision** | Two new open items recorded, deliberately **not** resolved: U5/R8 (observed reference on a re-requested close) and U6/R9 (whether an unconfirmed stop promotion blocks the next milestone) | **§24, §25** |
+| `a4c3d5a` + Phase 1 | **Results are applied at most once.** §15 covered only the observation axis; a redelivered broker result could change canonical state a second time. New §16.3 states the invariant, what result identity must distinguish, the four prohibitions on duplicate application, which results carry execution identity, and the five identities kept distinct. It prescribes no storage, format or recovery mechanism | **§15.1, §16.2, §16.3, §24** |
 
 **[DECISION]** Both clarifications state what was already implied by §16 and
 §18; neither changes a decided rule, and R1–R4 are untouched. The 84 contract
@@ -884,6 +885,11 @@ account the canonical state would be provably wrong.
 | `milestones_consumed` | Set; each milestone at most once |
 | `stop_state_intended`, `stop_state_confirmed` | §7.3 |
 | `last_evaluated_time` | Monotonicity guard |
+| the identity it is held under | The canonical `position_id` (§16.3). It is **supplied by the adapter**, not by the domain, and a persisted state is meaningless without it: a state that cannot be attributed to a position cannot be reconciled, and a result cannot be routed to it |
+
+**[DECISION]** §15.1 covers the **observation** axis. Safety against a
+redelivered **broker result** additionally requires the execution identity
+defined in §16.3.
 
 ## 15.2 Guarantees
 
@@ -947,11 +953,87 @@ distinction must be specified now rather than discovered at live wiring.
 | **Stale position** (broker state older than the model's) | The broker's view is authoritative; the model reconciles and records the correction | [DECISION] |
 | **Broker reports a different remaining quantity** | Adopt the broker's quantity, record the discrepancy as an anomaly. Never reconcile silently | [DECISION] |
 | **Position disappeared from the broker** | `CLOSED` with reason `EXTERNAL`; never re-opened; recorded | [DECISION] |
-| **Duplicate management event** | Prevented by §15 | [DECISION] |
+| **Duplicate management event** | A repeated **observation** is prevented by §15; a redelivered **broker result** is prevented by §16.3. The two are different axes | [DECISION] |
 
 **[DECISION] Deferred:** retry policy, backoff, and how many consecutive
 rejections constitute an error condition. The model defines *what the state
 means* after a failure, not *how hard to try*.
+
+## 16.3 Results are applied at most once
+
+**[DECISION]** §15 makes a repeated **observation** safe. It says nothing about
+a repeated **result**, and the two are different axes: an observation is
+something the model reads, a result is something that happened in the world. A
+broker may deliver the same execution twice — on a retry, a reconnection, or a
+restart — and without this rule the second delivery would change canonical state
+a second time.
+
+### The invariant
+
+**Every broker result is applied at most once.** A result identified as already
+applied is a **no-op**: it is recognised, recorded as already seen, and changes
+nothing.
+
+### What result identity must be sufficient for
+
+**[DECISION]** Result identity must distinguish a **legitimate new execution**
+from a **duplicate delivery of one already applied**. Two executions arising
+from the same request are not duplicates; one execution delivered twice is.
+Identity that cannot tell those apart is insufficient, and an implementation
+that cannot tell them apart may not apply either.
+
+### Duplicate application MUST NOT
+
+| # | Prohibition |
+|---|---|
+| 1 | Mutate canonical quantity a second time — `steps_remaining` falls once per execution |
+| 2 | Advance milestone state a second time — `milestones_consumed` is unaffected by redelivery |
+| 3 | Change closure state a second time — a position closes once, for one reason, at one recorded fill |
+| 4 | Create a second economic effect — no second realised P&L, no second recorded fill, no second anomaly for one event |
+
+### Which results carry execution identity
+
+**[DECISION]** The distinction is whether a result **changes a value by an
+amount** or **sets a value**:
+
+| Result | Nature | Identity required |
+|---|---|---|
+| `PartialCloseFilled` | Reduces quantity **by** an amount | **Yes** — redelivery would reduce twice |
+| `CloseFilled` | Closes the position and records a fill | **Yes** — redelivery would record a second economic event |
+| `QuantityReconciled` | **Sets** the remaining quantity | Idempotent in state; redelivery must still not accumulate duplicate anomaly records |
+| `PositionGone` | **Sets** closure | Same |
+| `StopModifyConfirmed` | **Sets** the confirmed stop | Idempotent by construction: re-confirming the same price changes nothing, and a backward or adverse move raises (§7.2) |
+| `PartialCloseRejected`, `StopModifyRejected`, `CloseRejected` | Record that nothing happened | No execution occurred, so no execution identity exists; redelivery must not accumulate duplicate anomaly records |
+
+**[DECISION]** A stop modification produces no execution and therefore no
+execution identity. Its idempotency comes from §7.3 — an unconfirmed promotion
+is re-requested **to the same price** — and from §7.2, which refuses a backward
+move.
+
+### The identifiers, kept distinct
+
+**[DECISION]** Five identities. They are not interchangeable and must not be
+collapsed into one:
+
+| Identity | Names | Exists |
+|---|---|---|
+| **canonical `position_id`** | One canonical position, from entry through any partial to final closure | From position creation |
+| **`operation_id`** (submitted as `client_order_id`) | One instruction the model produced, stable across retries of that instruction | Before submission |
+| **`broker_order_id`** | The broker's record of the order that instruction created | After the broker accepts it |
+| **`broker_deal_id`** | One execution against the position. A single order may produce several | After execution |
+| **`fill_id`** | The identity under which one execution is recorded | When the execution is recorded |
+
+**[DECISION]** A result that names a **different position** is rejected, not
+applied. Attribution is by canonical `position_id`; a result that cannot be
+attributed may not be applied to any position.
+
+### What this section does not prescribe
+
+**[DECISION]** This is a statement of what must be **true**, not of how an
+adapter achieves it. §16.3 does **not** require, imply or forbid any particular
+storage, file format, append-only log, database, crash-recovery design, restart
+architecture, adapter structure or broker behaviour. Those are implementation
+concerns; durable restart in particular remains **I2 and unresolved**.
 
 ---
 
@@ -1314,6 +1396,11 @@ is changed.
 19. Re-evaluating the same or an earlier observation is a no-op.
 20. A management-event stream is produced that is comparable by fingerprint
     across adapters.
+21. **A broker result is applied at most once**, identified by its execution
+    identity. A redelivered result is a no-op: it must not reduce quantity
+    twice, advance milestone state twice, change closure state twice, or create
+    a second economic effect. A result that names a different position is
+    rejected, not applied (§16.3).
 
 ## MUST NOT
 
@@ -1414,7 +1501,24 @@ env -u TRADING_BOT_LOG_FILE -u TRADING_BOT_MAIN_LOG_FILE -u SIGNAL_LOG_FILE \
     ./venv/Scripts/python.exe -m unittest discover -s tests -t .
 ```
 
-### At this revision (after the §11.1a / §11.1b clarifications)
+### At this revision (Phase 1 — after the §16.3 amendment)
+
+| Result | |
+|---|---|
+| Tests run | **752** |
+| Duration | 527.8 s |
+| Failures | **2** |
+| Errors | **0** |
+| Skipped | **0** |
+
+Both failures are the pre-existing L2 H1-ATR mock failures in
+`tests/test_layer_gate_logic.py`, which reproduce at `04a341d`. **The amendment
+changed no test and no test result.** §16.3 states an invariant that
+`core/trade_model.py` does not yet enforce on the result axis; that enforcement
+is implementation work, scheduled after this phase, and is deliberately not
+present here.
+
+### At the §11.1a / §11.1b clarifications
 
 | Result | |
 |---|---|
