@@ -90,6 +90,20 @@ Given by the strategy owner and adopted verbatim:
 
 Everything below resolves the questions these leave open.
 
+## 3.1 Clarification log
+
+| Revision | Change | Sections |
+|---|---|---|
+| `adbbb05` | Original specification | — |
+| **this revision** | **Closure is confirmed, never assumed.** Detecting a stop, target or protective condition does not mark the position `CLOSED`; `evaluate` emits `CLOSE_REQUESTED`, the position stays `OPEN` with `pending_close_reason` set, and only a confirming broker result closes it | **§8.2, §11.1, §11.1a, §11.3, §17, §22, §23, §24** |
+| **this revision** | **The domain does not price executions.** The canonical state machine emits `requested_level` and `observed_reference` only; the execution adapter computes the executable price and the broker supplies the recorded fill. No broker-specific logic in `core/trade_model.py` | **§11.1b, §12.1, §18.2, §23, §24** |
+| **this revision** | Two new open items recorded, deliberately **not** resolved: U5/R8 (observed reference on a re-requested close) and U6/R9 (whether an unconfirmed stop promotion blocks the next milestone) | **§24, §25** |
+
+**[DECISION]** Both clarifications state what was already implied by §16 and
+§18; neither changes a decided rule, and R1–R4 are untouched. The 84 contract
+tests committed at `f4bc150` were written against exactly this reading and
+required **no** assertion change.
+
 ---
 
 # 4. R Definition
@@ -377,12 +391,22 @@ the size was one step".
 
 | State | Meaning | Terminal |
 |---|---|---|
-| `OPEN` | The position exists and is managed | No |
-| `CLOSED` | No quantity remains; never re-evaluated | **Yes** |
+| `OPEN` | The position exists and is managed. **Includes a position whose closure has been requested but not yet confirmed by the broker** | No |
+| `CLOSED` | The broker has **confirmed** that no quantity remains; never re-evaluated | **Yes** |
 
 **[DECISION]** A partially closed position is `OPEN` with fewer steps. There is
 no distinct "partially closed" position state; the partial is visible in
 `steps_remaining` and in the consumed-milestone set.
+
+**[DECISION] — clarification.** A position whose stop or target has been reached
+is still `OPEN`. Detecting an exit condition is **not** a closure. The
+outstanding request is recorded in `pending_close_reason`, which is the only
+marker distinguishing "open, closure requested" from "open, nothing
+outstanding". No third lifecycle state is introduced: closure is a fact about
+the broker's books, and until the broker confirms it, the position exists.
+
+See §11.1a for the canonical sequence and §16 for what happens when the request
+fails.
 
 ## 8.3 Closure reason
 
@@ -512,8 +536,11 @@ evaluate(position, observation):
   2. ADVERSE FIRST
      If the observation's adverse extreme reaches S
         (BUY: low <= S ; SELL: high >= S):
-          close ALL remaining steps at the executable price (§12)
-          state := CLOSED, reason := STOP
+          emit CLOSE_REQUESTED for ALL remaining steps, carrying
+               requested_level    := S
+               observed_reference := bar open if gapped, else S   (§12)
+          pending_close_reason := STOP
+          position stays OPEN -- the domain does NOT mark it CLOSED   (§11.1a)
           RETURN.
 
   3. FAVOURABLE MILESTONES, ascending (§6.4), each at most once:
@@ -526,8 +553,11 @@ evaluate(position, observation):
             stop_state_intended := LOCKED_1R
        c. TARGET reached and not consumed:
             consume TARGET
-            close ALL remaining steps at the executable price (§12)
-            state := CLOSED, reason := TARGET
+            emit CLOSE_REQUESTED for ALL remaining steps, carrying
+                 requested_level    := TARGET
+                 observed_reference := bar open if gapped, else TARGET   (§12)
+            pending_close_reason := TARGET
+            position stays OPEN -- the domain does NOT mark it CLOSED   (§11.1a)
             RETURN.
 
   4. RECONCILE STOP
@@ -536,6 +566,88 @@ evaluate(position, observation):
 
   5. position.last_evaluated_time := observation.time
 ```
+
+## 11.1a Closure is confirmed, never assumed — clarification
+
+**[DECISION]** Detecting an exit condition and closing a position are two
+different things, separated by the broker. The canonical sequence is:
+
+```
+  evaluate()
+      │  the domain detects the condition
+      ▼
+  CLOSE_REQUESTED                     (requested_level, observed_reference, steps)
+      │  position is still OPEN, pending_close_reason is set
+      ▼
+  execution adapter builds the broker request
+      │
+      ▼
+  broker / paper broker / replay adapter executes
+      │
+      ▼
+  broker confirmation                 (CloseFilled: reason, fill price, steps)
+      │
+      ▼
+  apply_broker_result()
+      │
+      ▼
+  CLOSED                              (closure_reason, recorded fill)
+```
+
+**The domain must not claim `CLOSED` before broker confirmation.** This applies
+to every closure cause — stop, target, and any protective rule adopted later —
+and to a full close as much as to a partial.
+
+**[DECISION]** Consequences, stated so they cannot be read two ways:
+
+1. Between `CLOSE_REQUESTED` and confirmation the position is `OPEN`, holds its
+   full `steps_remaining`, and its risk is real. Any position report, exposure
+   calculation or concurrency check must count it.
+2. `evaluate()` **never** sets `lifecycle = CLOSED`. Only `apply_broker_result`
+   does, and only on a confirming result (§16).
+3. A rejected close leaves the position `OPEN` with `pending_close_reason`
+   intact, and the request is re-issued on the next observation (§16.2).
+4. While `pending_close_reason` is set, no milestone is processed: the position
+   is on its way out and must not also partial or promote its stop.
+5. In paper and replay the adapter performs request and confirmation
+   synchronously within one step, so the composed effect is the single
+   transition §11.1 describes. That collapse is an adapter property, **not** a
+   licence for the domain to short-circuit it.
+
+**Why this clarification exists.** The Phase 4B contract tests found that §11.1
+read as though the domain closed the position itself, which contradicts §16 and
+MUST NOT #12 ("must not treat a rejected close as a closure"). The reading above
+is the one that satisfies both, and it is now the specification rather than an
+interpretation.
+
+## 11.1b The domain does not price executions — clarification
+
+**[DECISION]** The canonical state machine does **not** calculate the broker's
+executable fill price, and never applies spread, slippage, commission or any
+other cost.
+
+| Layer | Produces | Owner |
+|---|---|---|
+| **Requested level** | The price the model asked for: the stop, or the target | **Domain** |
+| **Observed reference** | The first price available at or beyond that level: the level itself, or the bar open when the bar gapped through it | **Domain** |
+| **Executable price** | The reference adjusted for spread, slippage and any other cost, per the execution contract | **Execution adapter** |
+| **Recorded fill** | What the broker actually reports, returned to the domain through `CloseFilled` | **Broker**, relayed by the adapter |
+
+**[DECISION]** A `CLOSE_REQUESTED` event therefore carries `requested_level` and
+`observed_reference` **only**. It carries no executable price, because the
+domain has no basis on which to compute one.
+
+**[DECISION]** The domain learns the realised price exactly once, from the
+broker result, and stores it as the recorded fill. All statistics use that
+value (§12.1).
+
+**[REPO]** The cost model already lives in the execution layer
+(`execution/fills.py` applies `spread + slippage` adversely on entry and exit).
+Keeping it there also keeps `core` pure under CONVENTIONS §7, which is enforced
+by an AST test — so this boundary is machine-checked rather than merely
+documented.
+
+**No broker-specific logic may be added to `core/trade_model.py`.**
 
 ## 11.2 The two policy choices inside it, named
 
@@ -564,7 +676,13 @@ collapses to breakeven is not recognised until the following bar.
 
 Assume a BUY unless stated; SELL is the mirror.
 
-| Case | Situation | Order applied | Partial? | Stop moves? | Remainder continues? | Final state |
+**Reading the "outcome" column.** Per §11.1a the domain emits
+`CLOSE_REQUESTED` and the position becomes `CLOSED` only once the broker
+confirms. `CLOSED / STOP` below is shorthand for "closure requested with reason
+`STOP`, and `CLOSED / STOP` after confirmation". No row licenses the domain to
+close a position by itself.
+
+| Case | Situation | Order applied | Partial? | Stop moves? | Remainder continues? | Outcome |
 |---|---|---|---|---|---|---|
 | **A** | 1R and SL both reachable | Stop first (step 2) | **No** | No | No | `CLOSED / STOP`, full quantity |
 | **B** | 2R and SL both reachable | Stop first | No | No | No | `CLOSED / STOP`, quantity as it stood |
@@ -572,8 +690,8 @@ Assume a BUY unless stated; SELL is the mirror.
 | **D** | 1R and 2R reachable, no stop | M1R then M2R (step 3a, 3b) | **Yes**, `floor(steps/2)` | `ORIGINAL → BREAKEVEN → LOCKED_1R` | Yes | `OPEN`, stop `LOCKED_1R` effective next observation |
 | **E** | 1R, 2R and TP all reachable | M1R, M2R, then TARGET | **Yes**, then the remainder closes | Both moves recorded, then irrelevant | No | `CLOSED / TARGET` |
 | **F** | Partial already executed earlier; SL now reachable | Stop first | No (already done) | No | No | `CLOSED / STOP`, closing **only the remaining steps** |
-| **G** | Gap through SL (`open < S`) | Stop first, priced per §12 | No | No | No | `CLOSED / STOP` at the executable price, **not** at S |
-| **H** | Gap through TP (`open > TARGET`) | Step 3c, priced per §12 | Only if M1R also fired this observation | As per D | No | `CLOSED / TARGET` at the executable price |
+| **G** | Gap through SL (`open < S`) | Stop first; reference per §12 | No | No | No | `CLOSED / STOP`. The request carries `requested_level = S` and `observed_reference = bar open`; the adapter prices it (§11.1b), so the fill is **not** S |
+| **H** | Gap through TP (`open > TARGET`) | Step 3c; reference per §12 | Only if M1R also fired this observation | As per D | No | `CLOSED / TARGET`. Request carries `requested_level = TARGET` and `observed_reference = bar open`; the adapter prices it |
 | **I** | Reversal protection and SL both reachable | **Deferred** (§10). If adopted: stop first, protection after, never before | — | — | — | — |
 
 **[INFERENCE]** Cases A, B, C and F all collapse to the same rule — the stop
@@ -616,15 +734,20 @@ produced the historical defect where a stop reported a fill at a price that was
 never traded (`trade_manager`, measured: price 2505 against a 2480 stop still
 reported 2480.00).
 
-| Layer | Definition |
-|---|---|
-| **Requested level** | The price the model asked for: `S`, or `TARGET` |
-| **Observed reference** | The first price actually available at or beyond the requested level |
-| **Executable price** | The observed reference adjusted for execution costs, adversely |
-| **Recorded fill** | What the broker (live) or the fill model (paper/replay) reports. **This is what the ledger stores and what all statistics use** |
+| Layer | Definition | Computed by |
+|---|---|---|
+| **Requested level** | The price the model asked for: `S`, or `TARGET` | **Domain** |
+| **Observed reference** | The first price actually available at or beyond the requested level | **Domain** |
+| **Executable price** | The observed reference adjusted for execution costs, adversely | **Execution adapter** (§11.1b) |
+| **Recorded fill** | What the broker (live) or the fill model (paper/replay) reports. **This is what the ledger stores and what all statistics use** | **Broker**, relayed to the domain |
 
 **[DECISION]** The canonical state update always uses the **recorded fill**. The
 requested level is never used as a fill price.
+
+**[DECISION] — clarification.** The first two layers are the domain's whole
+contribution. It emits them on the `CLOSE_REQUESTED` event and stops there. The
+third and fourth belong to the execution adapter and the broker, and reach the
+domain only through `apply_broker_result` (§11.1b, §16).
 
 ## 12.2 Stop gap
 
@@ -856,14 +979,26 @@ means* after a failure, not *how hard to try*.
   ┌──────────────────────────────────────────────────────────────┐
   │ POSITION LIFECYCLE  (trade-management domain owns it)        │
   │                                                              │
-  │   OPEN ──stop reached──────────────► CLOSED / STOP           │
-  │     │ ──target reached────────────► CLOSED / TARGET          │
+  │   OPEN ──stop reached────┐                                   │
+  │     │ ──target reached───┤                                   │
+  │     │                    ▼                                   │
+  │     │          OPEN + pending_close_reason                   │
+  │     │          (closure REQUESTED, not yet a closure)        │
+  │     │                    │                                   │
+  │     │       broker confirms (CloseFilled)                    │
+  │     │                    ▼                                   │
+  │     │            CLOSED / STOP | TARGET                      │
+  │     │                                                        │
+  │     │       broker rejects -> stays OPEN, pending_close_     │
+  │     │       reason intact, re-requested next observation     │
+  │     │                                                        │
   │     │ ──broker says it is gone────► CLOSED / EXTERNAL        │
   │     │ ──replay dataset ends───────► CLOSED / END_OF_DATA     │
   │     │ ──operator or shutdown──────► CLOSED / MANUAL          │
   │     │                                                        │
   │     └── stays OPEN through: M1R (quantity falls), M2R,       │
-  │         stop promotions, failed partials, failed modifies    │
+  │         stop promotions, failed partials, failed modifies,   │
+  │         and an outstanding close request                     │
   └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -910,9 +1045,9 @@ means* after a failure, not *how hard to try*.
 | Layer | Owns | Must not contain |
 |---|---|---|
 | **Strategy** | Entry decision, side, intended entry, structural stop, `tp_ratio` selection | Lots, broker calls, bar iteration, cost assumptions |
-| **Trade-management domain** | R, levels, milestone consumption, stop-state progression, quantity arithmetic in steps, event emission, idempotency | **Any MT5 call. Any I/O. Any clock read. Any `pandas` dependence. Any knowledge of which adapter is running** |
-| **Execution adapter** | Translating intents to requests, applying the cost/fill model in paper, reporting results, order ids | Strategy logic, milestone rules, R |
-| **Broker** | Authoritative fills, quantities, rejections | — |
+| **Trade-management domain** | R, levels, milestone consumption, stop-state progression, quantity arithmetic in steps, event emission, idempotency, and — for an exit — the **requested level** and **observed reference** only | **Any MT5 call. Any I/O. Any clock read. Any `pandas` dependence. Any knowledge of which adapter is running. Any spread, slippage, commission or other cost arithmetic. Any transition to `CLOSED` that the broker has not confirmed** |
+| **Execution adapter** | Translating intents to requests, **computing the executable price** from the domain's observed reference via the cost/fill model, reporting results, order ids | Strategy logic, milestone rules, R |
+| **Broker** | Authoritative fills, quantities, rejections. **The only source of a `CLOSED` position** | — |
 | **Backtest / replay** | Ordered bars, driving evaluations, ledger assembly, determinism guarantees | Trade-management rules of its own |
 
 **[DECISION]** The state machine must be the **same code** under all three
@@ -1038,9 +1173,13 @@ hardcoded `account_balance = 10000`), B6 (the two conflicting sizing formulas).
 =======================================================================
 
 MACHINE 1 -- POSITION STATE
-┌────────┐   stop reached          ┌──────────────────────┐
+   Every arrow below is completed by a BROKER CONFIRMATION. evaluate()
+   only ever emits CLOSE_REQUESTED and sets pending_close_reason; the
+   transition itself is made by apply_broker_result.   (§11.1a)
+
+┌────────┐  stop reached, confirmed ┌──────────────────────┐
 │  OPEN  │────────────────────────►│ CLOSED / STOP        │
-│        │   target reached        ├──────────────────────┤
+│        │  target reached, confirmed ├────────────────────┤
 │        │────────────────────────►│ CLOSED / TARGET      │
 │        │   broker: gone          ├──────────────────────┤
 │        │────────────────────────►│ CLOSED / EXTERNAL    │
@@ -1082,8 +1221,14 @@ bar n+5    price reaches M2R
            -> consume M2R; no partial; intended=LOCKED_1R
            OPEN | LOCKED_1R (on confirmation) | 3 | {M1R, M2R}
 bar n+9    bar_low <= LOCKED_1R stop
-           -> adverse first: close all 3 steps at the executable price
-           CLOSED / STOP | 0 steps | {M1R, M2R}
+           -> adverse first: emit CLOSE_REQUESTED for all 3 steps,
+              requested_level = 2480, observed_reference = 2480 (no gap)
+           OPEN + pending_close_reason=STOP | 3 steps | {M1R, M2R}
+           *** still OPEN: the condition is detected, not executed ***
+
+           adapter prices it, broker confirms CloseFilled(fill 2479.80)
+           -> apply_broker_result
+           CLOSED / STOP | 0 steps | {M1R, M2R} | recorded fill 2479.80
 ```
 
 ---
@@ -1100,8 +1245,10 @@ bar n+9    bar_low <= LOCKED_1R stop
 | **SL after 2R** | `LOCKED_1R` = `entry ± R`; no further partial | Owner Q5 | **DECIDED** |
 | **Trailing** | None. Discrete ladder only; `config.py` constants inactive | Owner Q8 | **DECIDED / DEFERRED** |
 | **Final TP** | `entry ± tp_ratio × R`, **recomputed at fill** | Owner Q12 + [INFERENCE] | **DECIDED** (behaviour change) |
-| **Gap SL** | Executable price from the observed reference; never the requested level; worse than requested | Owner Q15 + [DECISION] on layering | **DECIDED** |
-| **Gap TP** | Executable price from the observed reference; better than requested is recorded as such | Owner Q16 + [DECISION] | **DECIDED** |
+| **Gap SL** | Domain emits requested level + observed reference (bar open when gapped); the adapter prices it; the fill is never the requested level and is worse than requested | Owner Q15 + [DECISION] §11.1b | **DECIDED** |
+| **Gap TP** | Same split; better than requested is recorded as such | Owner Q16 + [DECISION] §11.1b | **DECIDED** |
+| **Closure confirmation** | `evaluate` emits `CLOSE_REQUESTED` and sets `pending_close_reason`; the position stays `OPEN`; only a confirming broker result makes it `CLOSED` | [DECISION] §11.1a | **DECIDED** |
+| **Executable price ownership** | Computed by the execution adapter, never by the domain; no cost arithmetic in `core/trade_model.py` | [DECISION] §11.1b | **DECIDED** |
 | **Reversal protection** | **Not in the model.** Implementations must not add it | [UNRESOLVED] | **UNRESOLVED** |
 | **Quantity** | Integer steps authoritative; lots derived at the broker boundary; floor rounding; broker-authoritative remainder | [DECISION] | **DECIDED** |
 | **Event ordering** | Adverse first; milestones ascending; stop moves effective next observation; ambiguity recorded | [DECISION] | **DECIDED** |
@@ -1150,6 +1297,13 @@ is changed.
 12. A stop moved during an evaluation takes effect from the **next** observation.
 13. Every exit distinguishes requested level, observed reference, executable
     price and recorded fill, and stores the **recorded fill**.
+13a. `evaluate` emits `CLOSE_REQUESTED` and sets `pending_close_reason`; the
+    position remains `OPEN` until a confirming broker result arrives, and only
+    `apply_broker_result` may set `CLOSED` (§11.1a).
+13b. A `CLOSE_REQUESTED` event carries `requested_level` and
+    `observed_reference` and nothing else; the executable price is the
+    adapter's (§11.1b).
+13c. While `pending_close_reason` is set, no milestone is processed.
 14. A gapped stop fills worse than requested; a gapped target fills better; both
     come from the observed reference.
 15. Every ambiguous intrabar resolution is **flagged and countable**.
@@ -1180,6 +1334,12 @@ is changed.
 10. **Must not** derive a milestone level without the side.
 11. **Must not** couple the 1R stop move to the success of the 1R partial.
 12. **Must not** treat a rejected close as a closure.
+12a. **Must not** set `CLOSED` from `evaluate`, or from any path other than a
+    confirming broker result — detecting an exit condition is not a closure
+    (§11.1a).
+12b. **Must not** compute an executable price, apply spread, slippage or
+    commission, or otherwise price a fill anywhere in `core/trade_model.py`
+    (§11.1b).
 13. **Must not** silently reconcile a broker quantity mismatch; it is recorded
     as an anomaly.
 14. **Must not** change `valid_rr`, risk sizing, SL construction, `tp_ratio`
@@ -1205,6 +1365,12 @@ is changed.
 | U2 | **Opposing positions / account model** (§14.1) | Netting or hedging | Account metadata, or an explicit product decision |
 | U3 | **Session and weekend boundaries for open positions** | Whether an open position is closed, held or frozen across a session close (DD13 already open for resting orders) | A strategy ruling plus measurement of overnight gap exposure |
 | U4 | **Anomaly severity** | Whether a broker quantity mismatch is a warning or a halt condition | Operational policy once live execution is contemplated |
+| U5 | **Observed reference on a re-requested close** | A rejected close is re-issued on the next observation (§16.2), which is a **different** bar. Whether the re-request carries the original observed reference or the new observation's is not decided. It changes the recorded fill on any retry | A ruling, informed by how a real broker prices a re-submitted close |
+| U6 | **Whether an unconfirmed stop promotion blocks the next milestone** | If `BREAKEVEN` is rejected and price then reaches 2R, it is not decided whether `M2R` may fire and advance `stop_state_intended` to `LOCKED_1R` while `stop_state_confirmed` is still `ORIGINAL`, or whether milestone processing pauses until the stop catches up | A ruling on whether the ladder is a price ladder or a protection ladder |
+
+**[UNRESOLVED]** U5 and U6 are **deliberately left open** by this clarification.
+The Phase 4B contract tests do not pin either, so no implementation choice is
+pre-empted, and neither blocks the two matters §11.1a and §11.1b settle.
 
 ---
 
@@ -1219,8 +1385,10 @@ is changed.
 | R5 | Ladder remedy, DD5 (§19) | `valid_rr` (DD15), through what `tp_ratio` controls | **DEFERRED by instruction** |
 | R6 | `valid_rr`, DD15 (§20) | Nothing in this model | **BLOCKED** until a new baseline exists |
 | R7 | Sizing: DD11, F4, B6 (§21) | Quantity **magnitude**, not quantity **representation** | **Independent of DD1** |
+| R8 | Observed reference on a re-requested close (§24 U5) | The recorded fill on a retry only | [UNRESOLVED] |
+| R9 | Whether an unconfirmed stop promotion blocks the next milestone (§24 U6) | Milestone processing while the broker lags | [UNRESOLVED] |
 
-**[DECISION]** None of R1–R7 blocks writing the implementation tests for §24.
+**[DECISION]** None of R1–R9 blocks writing the implementation tests for §24.
 The MUST and MUST NOT lists are complete and testable as they stand; R1 and R2
 appear there as prohibitions, which are themselves testable.
 
@@ -1245,6 +1413,24 @@ env -u TRADING_BOT_LOG_FILE -u TRADING_BOT_MAIN_LOG_FILE -u SIGNAL_LOG_FILE \
     -u MAIN_SIGNAL_LOG_FILE -u LOG_FILE \
     ./venv/Scripts/python.exe -m unittest discover -s tests -t .
 ```
+
+### At this revision (after the §11.1a / §11.1b clarifications)
+
+| Result | |
+|---|---|
+| Tests run | **752** |
+| Duration | 523.3 s |
+| Failures | **3** |
+| Errors | **0** |
+| Skipped | **84** |
+
+The 84 skips and one of the failures are the canonical contract tests committed
+at `f4bc150`: they skip while `core/trade_model.py` is absent, and
+`CanonicalImplementationGate` fails to record that absence. The other two
+failures are the pre-existing `test_layer_gate_logic` pair. **The clarification
+changed no test and no test result.**
+
+### At `adbbb05` (before the contract tests existed)
 
 | Result | |
 |---|---|
