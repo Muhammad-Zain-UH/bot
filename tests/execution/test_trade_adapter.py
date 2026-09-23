@@ -144,7 +144,9 @@ class CanonicalTargetRecomputation(unittest.TestCase):
     INTENDED = 2450.0
 
     # Long: a fill 6.00 better than intended. R shrinks 30 -> 24, so the legacy
-    # target sits at 3.75R and the canonical one at exactly 3R.
+    # target sits at 4.0R -- |2540 - 2444| / 24 -- and the canonical one at
+    # exactly 3R. Both ratios are measured from the ACTUAL fill in units of the
+    # ACTUAL R, which is the only anchoring that means anything here.
     L_FILL, L_STOP, L_R = 2444.0, 2420.0, 24.0
     L_LEGACY = 2540.0                 # 2450 + 3 x 30, off the INTENDED entry
     L_CANONICAL = 2516.0              # 2444 + 3 x 24, off the ACTUAL fill
