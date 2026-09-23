@@ -1,61 +1,71 @@
-"""Shadow integration of the canonical trade-management domain.
+"""Canonical trade-management adapter.
 
-Phase 5A of ``docs/PHASE_4B_CANONICAL_INTEGRATION_IMPLEMENTATION_PLAN.md``,
-following option **G2** from
-``docs/PHASE_4B_EXIT_OWNERSHIP_INTRABAR_TIME_EXIT_AND_MIGRATION_DECISION.md``.
+Phase 5B of ``docs/PHASE_4B_CANONICAL_INTEGRATION_IMPLEMENTATION_PLAN.md``,
+executed against ``docs/PHASE_4B_5B_CUTOVER_PLAN.md``.
 
-What shadow means here
-----------------------
-:class:`ShadowTradeAdapter` runs the canonical domain over the same bars the
-paper broker sees, and records what the domain **would** have done. It never
-instructs the broker, never touches a :class:`~execution.broker.SimulatedPosition`,
-and never changes an outcome. The broker keeps its exit authority for now; this
-exists to produce evidence that the domain reaches the same decisions, before
-anything is cut over.
+The adapter is the **sole exit authority**. It owns the canonical
+:class:`~core.trade_model.TradeState` for every live position, builds a
+:class:`~core.trade_model.PriceObservation` per bar, asks the domain what should
+happen, and turns each answer into a broker instruction. The broker executes and
+reports; it decides nothing.
 
-Because nothing is executed, the adapter confirms its own instructions against
-its **own** :class:`~core.trade_model.TradeState`. That is faithful rather than
-optimistic: paper execution always succeeds, so a request the adapter issued
-would have come back confirmed. Prices are taken through the same cost model
-the broker would have used, so a shadow exit price is comparable with a real
-one.
+Position creation happens **at the fill** (specification §13): an order that
+never fills has no position and no canonical state.
 
-Two scoping choices, both deliberate
-------------------------------------
-**The target is reconstructed, not recomputed.** The canonical model derives
-the target from the actual fill (specification §4.2), while a position carries a
-target the strategy computed from its *intended* entry. Recomputing here would
-mix two changes in one measurement, so this adapter derives ``tp_ratio`` from
-the carried target, making the canonical target equal the legacy one by
-construction. The ladder's effect is then the only thing the comparison sees.
-Recomputation belongs to the cut-over phase.
+Target: a temporary migration control
+-------------------------------------
+The canonical contract is §4.2 -- the target is recomputed from the actual fill
+as ``entry ± tp_ratio × R``. **This phase deliberately does not apply it yet.**
+``tp_ratio`` is instead reconstructed from the target the position already
+carries, which makes the canonical target equal the legacy one by construction.
 
-**Ambiguity is observed, never consulted.** Per decision D16, the domain
-decides every exit with adverse-first ordering, and
-:class:`~execution.intrabar.IntrabarPolicy` survives only as an annotation.
-This module records the domain's own ambiguity flag and never asks a policy
-which exit to take.
+That is a **migration control, not a change to the contract**. Recomputing the
+target moves the exit bar, which moves ``bars_held`` and every figure derived
+from the exit. Landing that in the same commit as the authority and ledger
+migration would make it impossible to tell which change caused what. The
+isolation lets this commit prove that authority transfer and the lossless
+ledger are **representation-only**, with no economic change at all.
 
-What this module does not do
-----------------------------
-No live path, no persistence, no recovery, no concurrency policy: I2, I3 and I7
-are untouched. No reversal protection, no netting rule, no session handling, no
-anomaly grading: R1 through R4 are untouched, as are U5/R8 and U6/R9.
+§4.2 lands in its own commit, with its own audit in which the exit bar is
+expected to move. The specification is unchanged and is not being accommodated
+to; this module is temporarily behind it, and says so.
+
+Record-then-apply
+-----------------
+Every quantity-changing broker result is written to the fill log **before** it
+reaches canonical state, through
+:func:`~execution.trade_identity.record_then_apply`. A redelivered execution is
+recognised at the log and never produces a second economic effect
+(specification §16.3).
+
+Rejections surface
+------------------
+Paper execution rejects only for an unknown position or an unusable price,
+neither of which this adapter can produce for a position it tracks. If one ever
+happens it is raised, not absorbed: absorbing it would require inventing the
+retry semantics that remain **U5/R8** and **U6/R9**, both unresolved.
+
+Intrabar policy
+---------------
+Per decision D16 the domain resolves every exit adverse-first, and
+:class:`~execution.intrabar.IntrabarPolicy` is an annotation only. This module
+never consults it.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 
 import pandas as pd
 
+from backtest.ledger import TradeOutcome, TradeRecord, trade_record_from_fills
 from core.symbols import SymbolSpecification
 from core.trade_model import (
-    ClosureReason,
     CloseFilled,
     CloseRequest,
+    ClosureReason,
     EventType,
     Milestone,
     PartialCloseFilled,
@@ -63,12 +73,15 @@ from core.trade_model import (
     StopModifyConfirmed,
     StopState,
     TradeState,
+    apply_broker_result,
     evaluate,
     open_position,
+    steps_to_lots,
 )
 from core.types import DomainInvariantError
-from execution.broker import SimulatedPosition
-from execution.fills import DEFAULT_FILL_MODEL, FillModel
+from execution.broker import PositionState, SimulatedPosition
+from execution.fills import FillModel
+from execution.paper_broker import PaperBroker
 from execution.trade_identity import (
     FillIdentity,
     FillKind,
@@ -76,30 +89,44 @@ from execution.trade_identity import (
     FillRecord,
     IdentityMinter,
     OperationKind,
+    record_then_apply,
 )
 
 __all__ = [
-    "ShadowEventKind",
-    "ShadowEvent",
-    "ShadowTradeAdapter",
+    "BrokerRejectionNotHandled",
+    "TradeEventKind",
+    "TradeEvent",
+    "TradeAdapter",
 ]
 
+_REASON_TO_STATE: dict[ClosureReason, PositionState] = {
+    ClosureReason.STOP: PositionState.CLOSED_STOP,
+    ClosureReason.TARGET: PositionState.CLOSED_TARGET,
+    ClosureReason.END_OF_DATA: PositionState.CLOSED_END_OF_DATA,
+    ClosureReason.MANUAL: PositionState.CLOSED_MANUAL,
+}
 
-class ShadowEventKind(Enum):
-    """What the canonical domain did on one observation.
+_REASON_TO_OUTCOME: dict[ClosureReason, TradeOutcome] = {
+    ClosureReason.STOP: TradeOutcome.STOPPED,
+    ClosureReason.TARGET: TradeOutcome.TARGET_HIT,
+    ClosureReason.END_OF_DATA: TradeOutcome.END_OF_DATA,
+    ClosureReason.MANUAL: TradeOutcome.MANUAL,
+}
 
-    Attributes:
-        POSITION_OPENED: A filled broker position was adopted as a canonical
-            position.
-        PARTIAL_CLOSE: The 1R partial. **The legacy path has no equivalent** --
-            a new canonical event, not a divergence.
-        STOP_PROMOTED: The stop moved to breakeven or to entry ± 1R. **No
-            legacy equivalent**, and the point after which exits are no longer
-            expected to match.
-        CLOSE_REQUESTED: The domain asked to close the remainder.
-        POSITION_CLOSED: The close was confirmed.
-        SKIPPED: The position could not be adopted, with the reason.
+
+class BrokerRejectionNotHandled(RuntimeError):
+    """Raised when the broker refuses an instruction.
+
+    Paper execution cannot produce this for a tracked position. Handling it
+    would mean choosing what a re-requested close carries (**U5/R8**) or what
+    happens to the ladder after a refused promotion (**U6/R9**), and both are
+    unresolved. Raising keeps the condition visible instead of inventing an
+    answer.
     """
+
+
+class TradeEventKind(Enum):
+    """What the canonical domain did on one observation."""
 
     POSITION_OPENED = "POSITION_OPENED"
     PARTIAL_CLOSE = "PARTIAL_CLOSE"
@@ -110,28 +137,28 @@ class ShadowEventKind(Enum):
 
 
 @dataclass(frozen=True, slots=True)
-class ShadowEvent:
-    """One canonical decision, recorded rather than executed.
+class TradeEvent:
+    """One canonical decision and its execution.
 
     Attributes:
         kind: What happened.
         bar_time: The observation it happened on.
         position_id: Canonical position identity.
-        broker_position_id: The broker position it shadows.
-        canonical_only: True when the legacy path has no equivalent concept --
-            the ``NEW_CANONICAL_EVENT`` classification.
+        broker_position_id: The broker position it manages.
+        canonical_only: True for an event the pre-cut engine had no concept of
+            -- the 1R partial and the stop promotions.
         reason: Closure reason, on a close.
-        requested_level: The level the domain asked for, on a close.
+        requested_level: The level the domain asked for.
         observed_reference: The first price available at or beyond it.
-        executed_price: The cost-adjusted price the adapter recorded.
-        steps: Quantity in volume steps, on a quantity-changing event.
+        executed_price: What the broker reported.
+        steps: Quantity in volume steps.
         stop_price: The new stop, on a promotion.
         stop_state: The state promoted to.
-        ambiguous: The domain's own ambiguity flag for the observation.
+        ambiguous: The domain's ambiguity flag for the observation.
         detail: Free text, used for a skip reason.
     """
 
-    kind: ShadowEventKind
+    kind: TradeEventKind
     bar_time: datetime | None
     position_id: str
     broker_position_id: str
@@ -148,107 +175,127 @@ class ShadowEvent:
 
 
 @dataclass
-class _Shadowed:
-    """One position's shadow state."""
+class _Managed:
+    """One position's canonical state and its provenance."""
 
     broker_position_id: str
+    canonical_id: str
     state: TradeState
-    promoted: bool = False
-    partialled: bool = False
+    ambiguous_fill_ids: set[str]
 
 
-class ShadowTradeAdapter:
-    """Runs the canonical domain beside the broker, changing nothing.
+class TradeAdapter:
+    """Drives the canonical domain and instructs the broker.
 
     Args:
-        spec: Broker specification, supplying the volume step and the symbol.
-        fill_model: Cost model, used so shadow prices are comparable with real
-            ones.
+        broker: The broker to instruct.
         minter: Identity minter. One is created if not supplied.
         fill_log: Fill log. One is created if not supplied.
     """
 
-    __slots__ = (
-        "_spec", "_fill_model", "_minter", "_fill_log",
-        "_live", "_closed", "_ids", "_events",
-    )
+    __slots__ = ("_broker", "_spec", "_fill_model", "_minter", "_fill_log",
+                 "_live", "_closed", "_events", "_records")
 
     def __init__(
         self,
-        spec: SymbolSpecification,
-        fill_model: FillModel = DEFAULT_FILL_MODEL,
+        broker: PaperBroker,
         minter: IdentityMinter | None = None,
         fill_log: FillLog | None = None,
     ) -> None:
-        self._spec = spec
-        self._fill_model = fill_model
+        self._broker = broker
+        self._spec: SymbolSpecification = broker.spec
+        self._fill_model: FillModel = broker.fill_model
         self._minter = minter or IdentityMinter()
         self._fill_log = fill_log or FillLog()
-        self._live: dict[str, _Shadowed] = {}
-        self._closed: dict[str, _Shadowed] = {}
-        self._ids: dict[str, str] = {}
-        self._events: list[ShadowEvent] = []
+        self._live: dict[str, _Managed] = {}
+        self._closed: dict[str, _Managed] = {}
+        self._events: list[TradeEvent] = []
+        self._records: list[TradeRecord] = []
 
     # -- inspection ------------------------------------------------------
 
     @property
-    def events(self) -> tuple[ShadowEvent, ...]:
-        """Every canonical decision recorded, in order."""
+    def events(self) -> tuple[TradeEvent, ...]:
+        """Every canonical decision, in order."""
         return tuple(self._events)
 
     @property
     def fill_log(self) -> FillLog:
-        """The executions the domain would have produced."""
+        """Every execution recorded."""
         return self._fill_log
 
-    def state_for(self, broker_position_id: str) -> TradeState | None:
-        """The canonical state shadowing a broker position, live or closed."""
-        entry = self._live.get(broker_position_id) or self._closed.get(broker_position_id)
-        return entry.state if entry else None
+    @property
+    def records(self) -> tuple[TradeRecord, ...]:
+        """The aggregate record of every position that has closed."""
+        return tuple(self._records)
 
-    def events_for(self, broker_position_id: str) -> tuple[ShadowEvent, ...]:
+    def drain_records(self) -> list[TradeRecord]:
+        """Return records finalised since the last drain, and clear them.
+
+        Lets the caller append to a ledger without tracking indices.
+        """
+        drained = list(self._records)
+        self._records.clear()
+        return drained
+
+    def state_for(self, broker_position_id: str) -> TradeState | None:
+        """The canonical state for a broker position, live or closed."""
+        managed = self._live.get(broker_position_id) or self._closed.get(broker_position_id)
+        return managed.state if managed else None
+
+    def events_for(self, broker_position_id: str) -> tuple[TradeEvent, ...]:
         """Every event recorded against one broker position."""
         return tuple(
             event for event in self._events
             if event.broker_position_id == broker_position_id
         )
 
-    # -- adoption --------------------------------------------------------
+    # -- position creation ----------------------------------------------
 
-    def adopt(self, position: SimulatedPosition) -> str | None:
+    def on_position_opened(self, position: SimulatedPosition) -> str | None:
         """Create the canonical position for a filled broker position.
 
-        Called at the fill, never at intent: an order that never fills has no
-        position (specification §13).
-
-        ``tp_ratio`` is reconstructed from the carried target so that the
-        canonical target equals the legacy one -- see the module docstring.
+        Called at the fill, before the position is managed for the first time.
 
         Args:
-            position: A filled broker position.
+            position: A freshly filled broker position.
 
         Returns:
-            The canonical ``position_id``, or ``None`` if the position could
-            not be adopted, in which case a ``SKIPPED`` event records why.
+            The canonical ``position_id``, or ``None`` if it could not be
+            created, in which case a ``SKIPPED`` event records why.
         """
         broker_id = position.position_id
-        if broker_id in self._ids:
-            return self._ids[broker_id]  # adoption is idempotent
+        existing = self._live.get(broker_id) or self._closed.get(broker_id)
+        if existing is not None:
+            return existing.canonical_id
 
         original_stop = position.original_stop
         risk = abs(position.entry_price - original_stop)
-        if position.take_profit is None:
-            return self._skip(position, "position carries no target, so tp_ratio is undefined")
         if risk <= 0.0:
             return self._skip(position, "R is zero at the fill")
+
+        # MIGRATION CONTROL (5B-i): reconstruct tp_ratio from the carried
+        # target so the canonical target equals the legacy one exactly. The
+        # strategy's own ratio is the §4.2 input and is used only when the
+        # position carries no target. See the module docstring.
+        raw_ratio = (
+            abs(position.take_profit - position.entry_price) / risk
+            if position.take_profit is not None
+            else position.metadata.get("strategy_rr_ratio")
+        )
+        if raw_ratio is None:
+            return self._skip(
+                position,
+                "no target and no strategy tp_ratio on the fill, so the canonical "
+                "geometry cannot be completed",
+            )
+        tp_ratio = float(raw_ratio)
+        if tp_ratio <= 0.0:
+            return self._skip(position, f"tp_ratio {tp_ratio} is not positive")
 
         steps = int(round(position.volume / self._spec.volume_step))
         if steps <= 0:
             return self._skip(position, f"volume {position.volume} is under one step")
-
-        tp_ratio = abs(position.take_profit - position.entry_price) / risk
-        if tp_ratio <= 0.0:
-            return self._skip(position, "target coincides with the entry")
 
         try:
             state = open_position(
@@ -267,24 +314,41 @@ class ShadowTradeAdapter:
             side=position.side,
             entry_bar_time=position.entry_time,
         )
-        self._live[broker_id] = _Shadowed(broker_position_id=broker_id, state=state)
+        self._live[broker_id] = _Managed(
+            broker_position_id=broker_id,
+            canonical_id=canonical_id,
+            state=state,
+            ambiguous_fill_ids=set(),
+        )
+
+        # The broker-facing projection follows the canonical geometry: the
+        # target is the recomputed one, and the entry stop is preserved apart
+        # from the stop that will move.
+        position.original_stop_price = original_stop
+        position.take_profit = state.target
+
+        operation = self._minter.next_operation_id(
+            scope=canonical_id, kind=OperationKind.ENTRY
+        )
+        self._append_entry_fill(
+            canonical_id, operation, steps, position.entry_price, position.entry_time
+        )
         self._events.append(
-            ShadowEvent(
-                kind=ShadowEventKind.POSITION_OPENED,
+            TradeEvent(
+                kind=TradeEventKind.POSITION_OPENED,
                 bar_time=position.entry_time,
                 position_id=canonical_id,
                 broker_position_id=broker_id,
                 steps=steps,
             )
         )
-        self._ids[broker_id] = canonical_id
         return canonical_id
 
     def _skip(self, position: SimulatedPosition, why: str) -> None:
         """Record that a position was not adopted, and why."""
         self._events.append(
-            ShadowEvent(
-                kind=ShadowEventKind.SKIPPED,
+            TradeEvent(
+                kind=TradeEventKind.SKIPPED,
                 bar_time=position.entry_time,
                 position_id="",
                 broker_position_id=position.position_id,
@@ -293,21 +357,17 @@ class ShadowTradeAdapter:
         )
         return None
 
-    # -- observation -----------------------------------------------------
+    # -- management ------------------------------------------------------
 
-    def observe(self, bar: pd.Series, bar_time: datetime) -> tuple[ShadowEvent, ...]:
-        """Advance every shadowed position against one bar.
-
-        The broker is not consulted and not changed. Each instruction the
-        domain emits is confirmed against the adapter's own state, because
-        paper execution would have succeeded.
+    def manage(self, bar: pd.Series, bar_time: datetime) -> list[SimulatedPosition]:
+        """Advance every managed position against one bar.
 
         Args:
             bar: The OHLC bar.
             bar_time: Its open time.
 
         Returns:
-            The events recorded for this bar.
+            The broker positions that closed on this bar.
         """
         observation = PriceObservation(
             time=bar_time,
@@ -316,191 +376,366 @@ class ShadowTradeAdapter:
             low=float(bar["low"]),
             close=float(bar["close"]),
         )
-
-        produced: list[ShadowEvent] = []
+        closed: list[SimulatedPosition] = []
         for broker_id in list(self._live):
-            produced.extend(self._advance(broker_id, observation))
-        self._events.extend(produced)
-        return tuple(produced)
+            position = self._advance(broker_id, observation)
+            if position is not None:
+                closed.append(position)
+        return closed
 
-    def _advance(self, broker_id: str, observation: PriceObservation) -> list[ShadowEvent]:
-        """Evaluate one position and confirm whatever it asked for."""
-        shadowed = self._live[broker_id]
-        canonical_id = self._ids[broker_id]
-        result = evaluate(shadowed.state, observation)
-        shadowed.state = result.state
-        produced: list[ShadowEvent] = []
+    def _advance(
+        self, broker_id: str, observation: PriceObservation
+    ) -> SimulatedPosition | None:
+        """Evaluate one position and execute whatever it asked for."""
+        managed = self._live[broker_id]
+        result = evaluate(managed.state, observation)
+        managed.state = result.state
 
         for event in result.events:
             if event.type is EventType.PARTIAL_CLOSE_REQUESTED:
-                produced.append(
-                    self._confirm_partial(
-                        shadowed, canonical_id, event.steps, observation, result.ambiguous
-                    )
-                )
+                self._do_partial(managed, event.steps, observation, result.ambiguous)
             elif event.type is EventType.STOP_MODIFY_REQUESTED:
-                produced.append(
-                    self._confirm_stop(
-                        shadowed, canonical_id, event.stop_price, event.to_state,
-                        observation, result.ambiguous,
-                    )
+                self._do_stop_modify(
+                    managed, event.stop_price, event.to_state,
+                    observation, result.ambiguous,
                 )
             elif event.type is EventType.CLOSE_REQUESTED:
-                produced.extend(
-                    self._confirm_close(
-                        shadowed, canonical_id, event, observation, result.ambiguous
-                    )
-                )
-        return produced
+                return self._do_close(managed, event, observation, result.ambiguous)
+        return None
 
-    def _confirm_partial(
+    def _do_partial(
         self,
-        shadowed: _Shadowed,
-        canonical_id: str,
+        managed: _Managed,
         steps: int,
         observation: PriceObservation,
         ambiguous: bool,
-    ) -> ShadowEvent:
-        """Record and apply the 1R partial. No legacy equivalent exists."""
-        state = shadowed.state
-        executed = self._fill_model.exit_price(state.side, state.m1r, self._spec)
+    ) -> None:
+        """Instruct a partial close and fold the result back."""
+        state = managed.state
         operation = self._minter.next_operation_id(
-            scope=canonical_id, kind=OperationKind.PARTIAL_CLOSE
+            scope=managed.canonical_id, kind=OperationKind.PARTIAL_CLOSE
         )
-        self._record_fill(
-            canonical_id, operation, FillKind.PARTIAL_EXIT, Milestone.M1R.value,
-            steps, executed, observation.time,
+        result = self._broker.execute_partial_close(
+            managed.broker_position_id,
+            volume=steps_to_lots(steps, self._spec.volume_step),
+            reference_price=state.m1r,
+            operation_id=operation,
+            at_time=observation.time,
+            cause=Milestone.M1R.value,
         )
-        shadowed.state = self._apply(shadowed.state, PartialCloseFilled(steps_closed=steps))
-        shadowed.partialled = True
-        return ShadowEvent(
-            kind=ShadowEventKind.PARTIAL_CLOSE,
-            bar_time=observation.time,
-            position_id=canonical_id,
-            broker_position_id=shadowed.broker_position_id,
-            canonical_only=True,
-            requested_level=state.m1r,
-            executed_price=executed,
-            steps=steps,
-            ambiguous=ambiguous,
+        if not result.filled:
+            raise BrokerRejectionNotHandled(
+                f"partial close rejected for {managed.canonical_id}: {result.reason}"
+            )
+
+        record = self._fill_record(
+            managed.canonical_id, operation, FillKind.PARTIAL_EXIT,
+            Milestone.M1R.value, result.executed_volume, result.executed_price,
+            observation.time, result.broker_order_id, result.broker_deal_id,
+        )
+        if ambiguous:
+            managed.ambiguous_fill_ids.add(record.fill_id)
+
+        def _apply(fill: FillRecord) -> None:
+            managed.state = apply_broker_result(
+                managed.state, PartialCloseFilled(steps_closed=fill.quantity_steps)
+            )
+
+        record_then_apply(
+            self._fill_log, record, for_position=managed.canonical_id, apply=_apply
+        )
+        self._events.append(
+            TradeEvent(
+                kind=TradeEventKind.PARTIAL_CLOSE,
+                bar_time=observation.time,
+                position_id=managed.canonical_id,
+                broker_position_id=managed.broker_position_id,
+                canonical_only=True,
+                requested_level=state.m1r,
+                executed_price=result.executed_price,
+                steps=record.quantity_steps,
+                ambiguous=ambiguous,
+            )
         )
 
-    def _confirm_stop(
+    def _do_stop_modify(
         self,
-        shadowed: _Shadowed,
-        canonical_id: str,
+        managed: _Managed,
         stop_price: float,
         to_state: StopState,
         observation: PriceObservation,
         ambiguous: bool,
-    ) -> ShadowEvent:
-        """Record and apply a stop promotion. No legacy equivalent exists."""
-        self._minter.next_operation_id(scope=canonical_id, kind=OperationKind.STOP_MODIFY)
-        shadowed.state = self._apply(
-            shadowed.state,
-            StopModifyConfirmed(stop_price=stop_price, to_state=to_state),
+    ) -> None:
+        """Instruct a stop move and fold the confirmation back."""
+        operation = self._minter.next_operation_id(
+            scope=managed.canonical_id, kind=OperationKind.STOP_MODIFY
         )
-        shadowed.promoted = True
-        return ShadowEvent(
-            kind=ShadowEventKind.STOP_PROMOTED,
-            bar_time=observation.time,
-            position_id=canonical_id,
-            broker_position_id=shadowed.broker_position_id,
-            canonical_only=True,
+        result = self._broker.execute_stop_modify(
+            managed.broker_position_id,
             stop_price=stop_price,
-            stop_state=to_state,
-            ambiguous=ambiguous,
+            operation_id=operation,
+            at_time=observation.time,
+        )
+        if not result.confirmed:
+            raise BrokerRejectionNotHandled(
+                f"stop modification rejected for {managed.canonical_id}: {result.reason}"
+            )
+        managed.state = apply_broker_result(
+            managed.state,
+            StopModifyConfirmed(stop_price=result.confirmed_stop, to_state=to_state),
+        )
+        self._events.append(
+            TradeEvent(
+                kind=TradeEventKind.STOP_PROMOTED,
+                bar_time=observation.time,
+                position_id=managed.canonical_id,
+                broker_position_id=managed.broker_position_id,
+                canonical_only=True,
+                stop_price=result.confirmed_stop,
+                stop_state=to_state,
+                ambiguous=ambiguous,
+            )
         )
 
-    def _confirm_close(
+    def _do_close(
         self,
-        shadowed: _Shadowed,
-        canonical_id: str,
+        managed: _Managed,
         event: CloseRequest,
         observation: PriceObservation,
         ambiguous: bool,
-    ) -> list[ShadowEvent]:
-        """Record and apply a closure."""
-        state = shadowed.state
-        reference = event.observed_reference
-        reason = event.reason
-        steps = event.steps
-        executed = (
-            self._fill_model.exit_price(state.side, reference, self._spec)
-            if reference is not None else None
+    ) -> SimulatedPosition | None:
+        """Instruct a close, fold the result back, and emit the trade record."""
+        if event.observed_reference is None:
+            raise BrokerRejectionNotHandled(
+                f"a re-requested close for {managed.canonical_id} carries no observed "
+                "reference; what it should carry is U5/R8 and is unresolved"
+            )
+
+        self._events.append(
+            TradeEvent(
+                kind=TradeEventKind.CLOSE_REQUESTED,
+                bar_time=observation.time,
+                position_id=managed.canonical_id,
+                broker_position_id=managed.broker_position_id,
+                reason=event.reason,
+                requested_level=event.requested_level,
+                observed_reference=event.observed_reference,
+                steps=event.steps,
+                ambiguous=ambiguous,
+            )
         )
+
         operation = self._minter.next_operation_id(
-            scope=canonical_id, kind=OperationKind.FINAL_CLOSE
+            scope=managed.canonical_id, kind=OperationKind.FINAL_CLOSE
         )
-        requested = ShadowEvent(
-            kind=ShadowEventKind.CLOSE_REQUESTED,
-            bar_time=observation.time,
-            position_id=canonical_id,
-            broker_position_id=shadowed.broker_position_id,
-            reason=reason,
-            requested_level=event.requested_level,
-            observed_reference=reference,
-            executed_price=executed,
-            steps=steps,
+        result = self._broker.execute_close(
+            managed.broker_position_id,
+            reference_price=event.observed_reference,
+            operation_id=operation,
+            at_time=observation.time,
+            state=_REASON_TO_STATE[event.reason],
+            reason=event.reason.value,
             ambiguous=ambiguous,
         )
-        if executed is None:
-            return [requested]
+        if not result.filled:
+            raise BrokerRejectionNotHandled(
+                f"close rejected for {managed.canonical_id}: {result.reason}"
+            )
 
-        self._record_fill(
-            canonical_id, operation, FillKind.FINAL_EXIT, reason.value,
-            steps, executed, observation.time,
+        record = self._fill_record(
+            managed.canonical_id, operation, FillKind.FINAL_EXIT,
+            event.reason.value, result.executed_volume, result.executed_price,
+            observation.time, result.broker_order_id, result.broker_deal_id,
         )
-        shadowed.state = self._apply(
-            shadowed.state,
-            CloseFilled(reason=reason, fill_price=executed, steps_closed=steps),
+        if ambiguous:
+            managed.ambiguous_fill_ids.add(record.fill_id)
+
+        def _apply(fill: FillRecord) -> None:
+            managed.state = apply_broker_result(
+                managed.state,
+                CloseFilled(
+                    reason=event.reason,
+                    fill_price=fill.price,
+                    steps_closed=fill.quantity_steps,
+                ),
+            )
+
+        record_then_apply(
+            self._fill_log, record, for_position=managed.canonical_id, apply=_apply
         )
-        self._closed[shadowed.broker_position_id] = shadowed
-        self._live.pop(shadowed.broker_position_id, None)
-        return [
-            requested,
-            ShadowEvent(
-                kind=ShadowEventKind.POSITION_CLOSED,
+
+        position = self._finalise(managed, event.reason)
+        self._events.append(
+            TradeEvent(
+                kind=TradeEventKind.POSITION_CLOSED,
                 bar_time=observation.time,
-                position_id=canonical_id,
-                broker_position_id=shadowed.broker_position_id,
-                reason=reason,
-                executed_price=executed,
-                steps=steps,
+                position_id=managed.canonical_id,
+                broker_position_id=managed.broker_position_id,
+                reason=event.reason,
+                executed_price=result.executed_price,
+                steps=record.quantity_steps,
                 ambiguous=ambiguous,
-            ),
-        ]
+            )
+        )
+        return position
+
+    # -- end of data -----------------------------------------------------
+
+    def close_all_at_end_of_data(
+        self, reference_price: float, at_time: datetime
+    ) -> list[SimulatedPosition]:
+        """Close every still-open position because the dataset ended.
+
+        The reason is the adapter's to supply: the domain has no concept of a
+        dataset boundary.
+
+        Args:
+            reference_price: The last price available.
+            at_time: When the dataset ended.
+
+        Returns:
+            The positions closed.
+        """
+        reference = float(reference_price)
+        closed: list[SimulatedPosition] = []
+        for broker_id in list(self._live):
+            managed = self._live[broker_id]
+            operation = self._minter.next_operation_id(
+                scope=managed.canonical_id, kind=OperationKind.FINAL_CLOSE
+            )
+            result = self._broker.execute_close(
+                broker_id,
+                reference_price=reference,
+                operation_id=operation,
+                at_time=at_time,
+                state=PositionState.CLOSED_END_OF_DATA,
+                reason="end of data",
+            )
+            if not result.filled:
+                raise BrokerRejectionNotHandled(
+                    f"end-of-data close rejected for {managed.canonical_id}: "
+                    f"{result.reason}"
+                )
+            record = self._fill_record(
+                managed.canonical_id, operation, FillKind.FINAL_EXIT,
+                ClosureReason.END_OF_DATA.value, result.executed_volume,
+                result.executed_price, at_time,
+                result.broker_order_id, result.broker_deal_id,
+            )
+
+            def _apply(fill: FillRecord, _m: _Managed = managed) -> None:
+                _m.state = apply_broker_result(
+                    _m.state,
+                    CloseFilled(
+                        reason=ClosureReason.END_OF_DATA,
+                        fill_price=fill.price,
+                        steps_closed=fill.quantity_steps,
+                    ),
+                )
+
+            record_then_apply(
+                self._fill_log, record, for_position=managed.canonical_id, apply=_apply
+            )
+            position = self._finalise(managed, ClosureReason.END_OF_DATA)
+            self._events.append(
+                TradeEvent(
+                    kind=TradeEventKind.POSITION_CLOSED,
+                    bar_time=at_time,
+                    position_id=managed.canonical_id,
+                    broker_position_id=broker_id,
+                    reason=ClosureReason.END_OF_DATA,
+                    executed_price=result.executed_price,
+                    steps=record.quantity_steps,
+                )
+            )
+            if position is not None:
+                closed.append(position)
+        return closed
 
     # -- plumbing --------------------------------------------------------
 
-    def _record_fill(
+    def _finalise(
+        self, managed: _Managed, reason: ClosureReason
+    ) -> SimulatedPosition | None:
+        """Emit the aggregate record and retire the position."""
+        broker_id = managed.broker_position_id
+        position = next(
+            (p for p in self._broker.closed_positions() if p.position_id == broker_id),
+            None,
+        )
+        state = managed.state
+        record = trade_record_from_fills(
+            position_id=managed.canonical_id,
+            symbol=self._spec.symbol,
+            side=state.side,
+            outcome=_REASON_TO_OUTCOME[reason],
+            entry_price=state.entry_price,
+            original_stop_price=state.original_stop_price,
+            original_quantity_steps=state.steps_at_entry,
+            executions=list(self._fill_log.fills_for(managed.canonical_id)),
+            spec=self._spec,
+            take_profit=state.target,
+            final_stop_price=state.confirmed_stop_price,
+            bars_held=position.bars_held if position else 0,
+            commission_per_lot=self._fill_model.commission_per_lot,
+            ambiguous_fill_ids=managed.ambiguous_fill_ids,
+            fill=position.fill if position else None,
+            metadata=dict(position.metadata) if position else None,
+        )
+        self._records.append(record)
+        self._closed[broker_id] = managed
+        self._live.pop(broker_id, None)
+        return position
+
+    def _fill_record(
         self,
         canonical_id: str,
         operation_id: str,
         kind: FillKind,
         cause: str,
+        volume: float,
+        price: float,
+        at_time: datetime,
+        broker_order_id: str | None = None,
+        broker_deal_id: str | None = None,
+    ) -> FillRecord:
+        """Build the execution record for a broker result."""
+        return FillRecord(
+            identity=FillIdentity(
+                position_id=canonical_id,
+                operation_id=operation_id,
+                broker_deal_id=broker_deal_id,
+                execution_index=None if broker_deal_id else 1,
+            ),
+            kind=kind,
+            cause=cause,
+            quantity_steps=int(round(volume / self._spec.volume_step)),
+            price=price,
+            time=at_time,
+            broker_order_id=broker_order_id,
+        )
+
+    def _append_entry_fill(
+        self,
+        canonical_id: str,
+        operation_id: str,
         steps: int,
         price: float,
         at_time: datetime,
     ) -> None:
-        """Append one execution through the Phase 2 identity infrastructure."""
-        record = FillRecord(
-            identity=FillIdentity(
-                position_id=canonical_id,
-                operation_id=operation_id,
-                execution_index=1,
+        """Append the entry execution, which has no broker result to fold."""
+        self._fill_log.record(
+            FillRecord(
+                identity=FillIdentity(
+                    position_id=canonical_id,
+                    operation_id=operation_id,
+                    execution_index=1,
+                ),
+                kind=FillKind.ENTRY,
+                cause="ENTRY",
+                quantity_steps=steps,
+                price=price,
+                time=at_time,
             ),
-            kind=kind,
-            cause=cause,
-            quantity_steps=steps,
-            price=price,
-            time=at_time,
+            for_position=canonical_id,
         )
-        self._fill_log.record(record, for_position=canonical_id)
-
-    @staticmethod
-    def _apply(state: TradeState, result: object) -> TradeState:
-        """Fold a broker result into canonical state."""
-        from core.trade_model import apply_broker_result
-
-        return apply_broker_result(state, result)

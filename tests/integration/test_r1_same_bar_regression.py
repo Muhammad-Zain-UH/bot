@@ -25,9 +25,19 @@ from execution.broker import PositionState
 from tests.fixtures.integration_market import Resolution
 from tests.integration._harness import long_dataset, run_replay, short_dataset
 
-# Post-R1 values, measured before and after the change (see the report).
-LONG_LEDGER_FINGERPRINT = "d42a9218d75d45ba03fe7d9c849dc84c13052aa5354d078809ac141b546d821d"
-SHORT_LEDGER_FINGERPRINT = "ca9b8a9b2f07b330bbcf9306cd38de9d31ba5d2fd37d5b6bde08f6c728626559"
+# Re-pinned at the Phase 5B-i cut-over, and ONLY because the ledger's
+# representation changed: a trade is now a canonical TradeRecord carrying its
+# executions, where it used to be a flat row. The audit for that commit proved
+# the change is representation-only -- entry fill, exit time, exit price,
+# closure reason, executed quantity, net P&L, R multiple, ambiguity and
+# bars_held were all byte-identical before and after, on both fixtures, with
+# UNEXPLAINED = 0. The assertions below that pin those figures are unchanged
+# and still pass, which is what makes this re-pin safe.
+#
+#   before 5B-i: long d42a9218d75d45ba03fe7d9c849dc84c13052aa5354d078809ac141b546d821d
+#                short ca9b8a9b2f07b330bbcf9306cd38de9d31ba5d2fd37d5b6bde08f6c728626559
+LONG_LEDGER_FINGERPRINT = "67c95bf0960018afb29e1052fe4191429cd51ec11b3be7060e17fec4ef3aeb82"
+SHORT_LEDGER_FINGERPRINT = "057d9b75b86133a8848e06442243eb1e0d3ab5b5ed0d232e8143a186767b836e"
 
 LONG_BARS_HELD = 24     # was 23 before R1
 SHORT_BARS_HELD = 20    # was 19 before R1

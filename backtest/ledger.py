@@ -286,19 +286,34 @@ class TradeLedger:
     results must stay separate from production trade history.
     """
 
-    __slots__ = ("_trades", "_rejections")
+    __slots__ = ("_trades", "_rejections", "_records")
 
     def __init__(self) -> None:
         self._trades: list[SimulatedTrade] = []
         self._rejections: list[dict] = []
+        self._records: list[TradeRecord] = []
 
     def record(self, trade: SimulatedTrade) -> None:
-        """Append a completed trade.
+        """Append a completed trade in the flat representation.
+
+        Retained for callers that still build a flat row directly. The
+        canonical path is :meth:`record_canonical`.
 
         Args:
             trade: The trade to record.
         """
         self._trades.append(trade)
+
+    def record_canonical(self, record: TradeRecord) -> None:
+        """Append a canonical trade record, executions and all.
+
+        This is the authoritative append after the Phase 5B cut-over: one
+        record per canonical position, holding every execution.
+
+        Args:
+            record: The record to append.
+        """
+        self._records.append(record)
 
     def record_rejection(
         self,
@@ -335,7 +350,12 @@ class TradeLedger:
     @property
     def trades(self) -> list[SimulatedTrade]:
         """All recorded trades."""
-        return list(self._trades)
+        return list(self._trades) + [r.to_simulated_trade() for r in self._records]
+
+    @property
+    def records(self) -> list[TradeRecord]:
+        """Every canonical trade record, in the order they closed."""
+        return list(self._records)
 
     @property
     def rejections(self) -> list[dict]:
@@ -374,7 +394,9 @@ class TradeLedger:
         import hashlib
 
         payload = json.dumps(
-            [t.to_dict() for t in self._trades], sort_keys=True, default=str
+            [t.to_dict() for t in self._trades]
+            + [r.to_dict() for r in self._records],
+            sort_keys=True, default=str,
         )
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 

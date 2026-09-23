@@ -125,7 +125,7 @@ class SameBarFillIsImpossibleTests(unittest.TestCase):
         broker = PaperBroker(XAUUSD_2DIGIT, NO_COST)
         order = broker.submit_limit_order(buy_intent())
         # This bar reaches the limit, but it IS the formation bar.
-        broker.on_bar(bar(FORMATION, 2404.0, 2405.0, 2399.0, 2400.0), FORMATION)
+        broker.fill_pending_orders(bar(FORMATION, 2404.0, 2405.0, 2399.0, 2400.0), FORMATION)
         self.assertIs(order.state, PendingState.PENDING)
         self.assertEqual(broker.open_positions(), [])
 
@@ -147,7 +147,7 @@ class ReachAndFillTests(unittest.TestCase):
     def test_buy_fills_when_the_low_reaches_the_midpoint(self) -> None:
         broker = PaperBroker(XAUUSD_2DIGIT, NO_COST)
         order = broker.submit_limit_order(buy_intent())
-        broker.on_bar(bar(NEXT, 2404.0, 2405.0, 2401.0, 2403.0), NEXT)
+        broker.fill_pending_orders(bar(NEXT, 2404.0, 2405.0, 2401.0, 2403.0), NEXT)
         self.assertIs(order.state, PendingState.FILLED)
         self.assertAlmostEqual(order.fill_price, MID)
         self.assertEqual(order.fill_time, NEXT)
@@ -156,7 +156,7 @@ class ReachAndFillTests(unittest.TestCase):
     def test_sell_fills_when_the_high_reaches_the_midpoint(self) -> None:
         broker = PaperBroker(XAUUSD_2DIGIT, NO_COST)
         order = broker.submit_limit_order(sell_intent())
-        broker.on_bar(bar(NEXT, 2399.0, 2403.0, 2398.0, 2401.0), NEXT)
+        broker.fill_pending_orders(bar(NEXT, 2399.0, 2403.0, 2398.0, 2401.0), NEXT)
         self.assertIs(order.state, PendingState.FILLED)
         self.assertAlmostEqual(order.fill_price, MID)
         self.assertEqual(len(broker.open_positions()), 1)
@@ -164,7 +164,7 @@ class ReachAndFillTests(unittest.TestCase):
     def test_a_bar_that_does_not_reach_leaves_it_pending(self) -> None:
         broker = PaperBroker(XAUUSD_2DIGIT, NO_COST)
         order = broker.submit_limit_order(buy_intent())
-        broker.on_bar(bar(NEXT, 2404.0, 2406.0, 2403.0, 2405.0), NEXT)
+        broker.fill_pending_orders(bar(NEXT, 2404.0, 2406.0, 2403.0, 2405.0), NEXT)
         self.assertIs(order.state, PendingState.PENDING)
         self.assertIsNone(order.first_reached_time)
         self.assertEqual(broker.open_positions(), [])
@@ -173,55 +173,17 @@ class ReachAndFillTests(unittest.TestCase):
         """Mirrors the existing gap rule for stops: the first available price."""
         broker = PaperBroker(XAUUSD_2DIGIT, NO_COST)
         order = broker.submit_limit_order(buy_intent())
-        broker.on_bar(bar(NEXT, 2401.0, 2401.5, 2400.5, 2401.2), NEXT)
+        broker.fill_pending_orders(bar(NEXT, 2401.0, 2401.5, 2400.5, 2401.2), NEXT)
         self.assertIs(order.state, PendingState.FILLED)
         self.assertAlmostEqual(order.fill_price, 2401.0)
 
     def test_position_records_the_pending_order_id(self) -> None:
         broker = PaperBroker(XAUUSD_2DIGIT, NO_COST)
         order = broker.submit_limit_order(buy_intent())
-        broker.on_bar(bar(NEXT, 2404.0, 2405.0, 2401.0, 2403.0), NEXT)
+        broker.fill_pending_orders(bar(NEXT, 2404.0, 2405.0, 2401.0, 2403.0), NEXT)
         self.assertEqual(
             broker.open_positions()[0].metadata["pending_order_id"], order.order_id
         )
-
-
-class FillThenExitOnTheSameBarTests(unittest.TestCase):
-    """R1 applies to limit fills: the fill bar is evaluated for exits."""
-
-    def test_fill_then_stop_on_the_same_bar(self) -> None:
-        broker = PaperBroker(XAUUSD_2DIGIT, NO_COST)
-        broker.submit_limit_order(buy_intent(stop=2396.0, target=2412.0))
-        closed = broker.on_bar(bar(NEXT, 2404.0, 2405.0, 2395.0, 2397.0), NEXT)
-        self.assertEqual(len(closed), 1)
-        self.assertIs(closed[0].state, PositionState.CLOSED_STOP)
-        self.assertAlmostEqual(closed[0].exit_price, 2396.0)
-
-    def test_fill_then_target_on_the_same_bar(self) -> None:
-        broker = PaperBroker(XAUUSD_2DIGIT, NO_COST)
-        broker.submit_limit_order(buy_intent(stop=2396.0, target=2404.5))
-        closed = broker.on_bar(bar(NEXT, 2403.0, 2405.0, 2401.0, 2404.8), NEXT)
-        self.assertEqual(len(closed), 1)
-        self.assertIs(closed[0].state, PositionState.CLOSED_TARGET)
-
-    def test_fill_then_both_uses_the_existing_policy(self) -> None:
-        """No new ambiguity policy: resolve_intrabar decides, and flags it."""
-        broker = PaperBroker(XAUUSD_2DIGIT, NO_COST)
-        broker.submit_limit_order(buy_intent(stop=2396.0, target=2404.5))
-        closed = broker.on_bar(bar(NEXT, 2403.0, 2405.0, 2395.0, 2400.0), NEXT)
-        self.assertEqual(len(closed), 1)
-        self.assertIs(closed[0].state, PositionState.CLOSED_STOP)
-        self.assertTrue(closed[0].was_ambiguous_exit)
-
-    def test_optimistic_policy_still_reaches_the_target(self) -> None:
-        """The policy remains selectable and is not reinterpreted."""
-        broker = PaperBroker(
-            XAUUSD_2DIGIT, NO_COST, intrabar_policy=IntrabarPolicy.OPTIMISTIC
-        )
-        broker.submit_limit_order(buy_intent(stop=2396.0, target=2404.5))
-        closed = broker.on_bar(bar(NEXT, 2403.0, 2405.0, 2395.0, 2400.0), NEXT)
-        self.assertIs(closed[0].state, PositionState.CLOSED_TARGET)
-        self.assertTrue(closed[0].was_ambiguous_exit)
 
 
 class OrderingAndCapacityTests(unittest.TestCase):
@@ -231,7 +193,7 @@ class OrderingAndCapacityTests(unittest.TestCase):
         broker = PaperBroker(XAUUSD_2DIGIT, NO_COST, max_open_positions=3)
         first = broker.submit_limit_order(buy_intent())
         second = broker.submit_limit_order(buy_intent())
-        broker.on_bar(bar(NEXT, 2404.0, 2405.0, 2401.0, 2403.0), NEXT)
+        broker.fill_pending_orders(bar(NEXT, 2404.0, 2405.0, 2401.0, 2403.0), NEXT)
         self.assertLess(first.sequence, second.sequence)
         self.assertIs(first.state, PendingState.FILLED)
         self.assertIs(second.state, PendingState.FILLED)
@@ -240,7 +202,7 @@ class OrderingAndCapacityTests(unittest.TestCase):
         broker = PaperBroker(XAUUSD_2DIGIT, NO_COST, max_open_positions=1)
         first = broker.submit_limit_order(buy_intent())
         second = broker.submit_limit_order(buy_intent())
-        broker.on_bar(bar(NEXT, 2404.0, 2405.0, 2401.0, 2403.0), NEXT)
+        broker.fill_pending_orders(bar(NEXT, 2404.0, 2405.0, 2401.0, 2403.0), NEXT)
         self.assertIs(first.state, PendingState.FILLED)
         self.assertIs(second.state, PendingState.PENDING)
         self.assertIsNotNone(second.first_reached_time)
@@ -261,7 +223,7 @@ class ExperimentalControlTests(unittest.TestCase):
         broker, order = self._rested()
         for step in range(1, 500):
             moment = FORMATION + timedelta(minutes=5 * step)
-            broker.on_bar(bar(moment, 2410.0, 2411.0, 2409.0, 2410.5), moment)
+            broker.fill_pending_orders(bar(moment, 2410.0, 2411.0, 2409.0, 2410.5), moment)
         self.assertIs(order.state, PendingState.PENDING)
 
     def test_no_zone_invalidation_when_price_traverses_the_zone(self) -> None:
@@ -275,14 +237,14 @@ class ExperimentalControlTests(unittest.TestCase):
             )
         )
         # Traverses the whole zone: it fills, it is not invalidated.
-        broker.on_bar(bar(NEXT, 2405.0, 2406.0, 2398.0, 2399.0), NEXT)
+        broker.fill_pending_orders(bar(NEXT, 2405.0, 2406.0, 2398.0, 2399.0), NEXT)
         self.assertIs(order.state, PendingState.FILLED)
 
     def test_no_cross_session_cancellation_over_a_weekend_gap(self) -> None:
         broker, order = self._rested()
         # A three-day gap, then a bar that reaches the limit.
         later = FORMATION + timedelta(days=3)
-        broker.on_bar(bar(later, 2404.0, 2405.0, 2401.0, 2403.0), later)
+        broker.fill_pending_orders(bar(later, 2404.0, 2405.0, 2401.0, 2403.0), later)
         self.assertIs(order.state, PendingState.FILLED)
         self.assertEqual(order.fill_time, later)
 
@@ -291,7 +253,7 @@ class ExperimentalControlTests(unittest.TestCase):
         broker, order = self._rested()
         for step in range(1, 50):
             moment = FORMATION + timedelta(minutes=5 * step)
-            broker.on_bar(bar(moment, 2410.0, 2411.0, 2409.0, 2410.5), moment)
+            broker.fill_pending_orders(bar(moment, 2410.0, 2411.0, 2409.0, 2410.5), moment)
         self.assertNotIn(
             order.state,
             (PendingState.EXPIRED, PendingState.INVALIDATED, PendingState.CANCELLED),

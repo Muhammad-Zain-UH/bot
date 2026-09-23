@@ -34,7 +34,8 @@ from typing import Any, Callable
 import pandas as pd
 
 from backtest.clock_patch import frozen_clock
-from backtest.ledger import TradeLedger, TradeOutcome, trade_from_position
+from backtest.ledger import TradeLedger, TradeOutcome
+from execution.trade_adapter import TradeAdapter
 from core.symbols import SymbolSpecification
 from core.types import DomainInvariantError, PendingOrderIntent, Side, Timeframe
 from data.replay_feed import BarAvailability, ReplayFeed
@@ -180,7 +181,7 @@ class ReplayEngine:
             can substitute a stub without importing MetaTrader5.
     """
 
-    __slots__ = ("_feed", "_broker", "_spec", "_config", "_strategy")
+    __slots__ = ("_feed", "_broker", "_spec", "_config", "_strategy", "_adapter")
 
     def __init__(
         self,
@@ -192,6 +193,7 @@ class ReplayEngine:
     ) -> None:
         self._feed = feed
         self._broker = broker
+        self._adapter: TradeAdapter | None = None
         self._spec = spec
         self._config = config or ReplayConfig()
         self._strategy = strategy
@@ -238,6 +240,10 @@ class ReplayEngine:
         config = self._config
         ledger = TradeLedger()
         result = ReplayResult(ledger=ledger)
+        # The canonical domain owns every exit decision from here; the broker
+        # executes what this adapter instructs and decides nothing.
+        adapter = TradeAdapter(self._broker)
+        self._adapter = adapter
 
         decision_times = self._feed.decision_times(
             config.driving_timeframe, config.start, config.end
@@ -257,14 +263,11 @@ class ReplayEngine:
             if len(just_closed) > 0:
                 bar = just_closed.iloc[-1]
                 bar_time = pd.Timestamp(bar["time"]).to_pydatetime()
-                for position in self._broker.on_bar(bar, bar_time):
-                    ledger.record(
-                        trade_from_position(
-                            position,
-                            self._spec,
-                            commission=self._broker.fill_model.commission_for(position.volume),
-                        )
-                    )
+                for opened in self._broker.fill_pending_orders(bar, bar_time):
+                    adapter.on_position_opened(opened)
+                adapter.manage(bar, bar_time)
+                for record in adapter.drain_records():
+                    ledger.record_canonical(record)
 
             # 2. Take a decision using only what is visible now.
             frames = self._frames_at(replay_time)
@@ -316,20 +319,10 @@ class ReplayEngine:
 
         if result.last_decision_time is not None:
             final_price = self._feed.price_at(result.last_decision_time)
-            for position in (
-                self._broker.close_all_at_end_of_data(
-                    final_price, result.last_decision_time
-                )
-                if final_price is not None
-                else []
-            ):
-                ledger.record(
-                    trade_from_position(
-                        position,
-                        self._spec,
-                        commission=self._broker.fill_model.commission_for(position.volume),
-                    )
-                )
+            if final_price is not None:
+                adapter.close_all_at_end_of_data(final_price, result.last_decision_time)
+                for record in adapter.drain_records():
+                    ledger.record_canonical(record)
 
         return result
 
@@ -495,6 +488,7 @@ class ReplayEngine:
             )
             return 0
 
+        known = {p.position_id for p in self._broker.open_positions()}
         fill = self._broker.submit_market_order(
             side=side,
             volume=self._config.volume,
@@ -509,6 +503,11 @@ class ReplayEngine:
             execution_bar=execution_bar,
             metadata=metadata,
         )
+
+        if fill.status is FillStatus.FILLED and self._adapter is not None:
+            for position in self._broker.open_positions():
+                if position.position_id not in known:
+                    self._adapter.on_position_opened(position)
 
         if fill.status is not FillStatus.FILLED:
             outcome = (

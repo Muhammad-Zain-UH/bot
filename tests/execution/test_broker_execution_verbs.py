@@ -257,7 +257,7 @@ class StopModification(VerbTestCase):
 
     def test_a_stop_moves_only_when_requested(self) -> None:
         before = self.position.stop_loss
-        self.broker.on_bar(
+        self.broker.fill_pending_orders(
             _bar(5, open_=2480.0, high=2485.0, low=2479.0, close=2484.0),
             T0 + timedelta(minutes=5),
         )
@@ -313,7 +313,7 @@ class BrokerDecidesNothing(VerbTestCase):
     """The restriction that matters most in this phase."""
 
     def test_reaching_1r_triggers_no_partial(self) -> None:
-        self.broker.on_bar(
+        self.broker.fill_pending_orders(
             _bar(5, open_=2480.0, high=2485.0, low=2479.0, close=2484.0),
             T0 + timedelta(minutes=5),
         )
@@ -322,7 +322,7 @@ class BrokerDecidesNothing(VerbTestCase):
         self.assertTrue(self.position.is_open)
 
     def test_reaching_2r_triggers_no_stop_move(self) -> None:
-        self.broker.on_bar(
+        self.broker.fill_pending_orders(
             _bar(5, open_=2505.0, high=2515.0, low=2504.0, close=2512.0),
             T0 + timedelta(minutes=5),
         )
@@ -330,7 +330,7 @@ class BrokerDecidesNothing(VerbTestCase):
 
     def test_no_close_happens_without_an_instruction_or_a_level(self) -> None:
         """A bar that touches neither stop nor target leaves it open."""
-        self.broker.on_bar(
+        self.broker.fill_pending_orders(
             _bar(5, open_=2460.0, high=2470.0, low=2455.0, close=2465.0),
             T0 + timedelta(minutes=5),
         )
@@ -389,38 +389,13 @@ class IdentityThroughExecution(VerbTestCase):
 class ExistingBehaviourUnchanged(VerbTestCase):
     """Phase 5 has not taken exit decisions yet, so on_bar still resolves."""
 
-    def test_a_target_bar_still_closes_the_position_as_before(self) -> None:
-        closed = self.broker.on_bar(
-            _bar(5, open_=2500.0, high=2545.0, low=2499.0, close=2542.0),
-            T0 + timedelta(minutes=5),
-        )
-        self.assertEqual(len(closed), 1)
-        self.assertEqual(closed[0].state, PositionState.CLOSED_TARGET)
-
-    def test_a_stop_bar_still_closes_the_position_as_before(self) -> None:
-        closed = self.broker.on_bar(
-            _bar(5, open_=2440.0, high=2445.0, low=2419.0, close=2425.0),
-            T0 + timedelta(minutes=5),
-        )
-        self.assertEqual(len(closed), 1)
-        self.assertEqual(closed[0].state, PositionState.CLOSED_STOP)
-
-    def test_ambiguity_semantics_are_unchanged(self) -> None:
-        closed = self.broker.on_bar(
-            _bar(5, open_=2450.0, high=2545.0, low=2419.0, close=2430.0),
-            T0 + timedelta(minutes=5),
-        )
-        self.assertEqual(len(closed), 1)
-        self.assertTrue(closed[0].was_ambiguous_exit)
-        self.assertEqual(closed[0].state, PositionState.CLOSED_STOP)
-
     def test_bars_held_semantics_are_unchanged(self) -> None:
-        self.broker.on_bar(
+        self.broker.fill_pending_orders(
             _bar(5, open_=2460.0, high=2470.0, low=2455.0, close=2465.0),
             T0 + timedelta(minutes=5),
         )
         self.assertEqual(self.position.bars_held, 1)
-        self.broker.on_bar(
+        self.broker.fill_pending_orders(
             _bar(10, open_=2465.0, high=2470.0, low=2460.0, close=2468.0),
             T0 + timedelta(minutes=10),
         )

@@ -45,7 +45,7 @@ from execution.broker import (
     SimulatedPosition,
 )
 from execution.fills import DEFAULT_FILL_MODEL, FillModel
-from execution.intrabar import IntrabarPolicy, resolve_intrabar
+from execution.intrabar import IntrabarPolicy
 
 __all__ = ["DEFAULT_SIMULATED_VOLUME", "PaperBroker"]
 
@@ -64,12 +64,10 @@ class PaperBroker:
         intrabar_policy: How to resolve bars containing both stop and target.
         max_open_positions: Concurrency cap, mirroring production's
             ``max_concurrent_trades``.
-        max_bars_held: Optional time stop, in bars on the driving timeframe.
-            ``None`` means positions are held until stop, target, or end of data.
     """
 
     __slots__ = (
-        "_spec", "_fill_model", "_policy", "_max_open", "_max_bars_held",
+        "_spec", "_fill_model", "_policy", "_max_open",
         "_open", "_closed", "_counter", "_pending",
     )
 
@@ -79,13 +77,11 @@ class PaperBroker:
         fill_model: FillModel = DEFAULT_FILL_MODEL,
         intrabar_policy: IntrabarPolicy = IntrabarPolicy.CONSERVATIVE,
         max_open_positions: int = 3,
-        max_bars_held: int | None = None,
     ) -> None:
         self._spec = spec
         self._fill_model = fill_model
         self._policy = intrabar_policy
         self._max_open = max_open_positions
-        self._max_bars_held = max_bars_held
         self._open: list[SimulatedPosition] = []
         self._closed: list[SimulatedPosition] = []
         self._counter = 0
@@ -682,7 +678,9 @@ class PaperBroker:
     # Bar processing
     # ------------------------------------------------------------------
 
-    def on_bar(self, bar: pd.Series, bar_time: datetime) -> list[SimulatedPosition]:
+    def fill_pending_orders(
+        self, bar: pd.Series, bar_time: datetime
+    ) -> list[SimulatedPosition]:
         """Advance every open position against one bar.
 
         A position **is** evaluated against the bar it was filled on. A market
@@ -702,21 +700,19 @@ class PaperBroker:
         ``bars_held`` increased by exactly one. See
         ``docs/PHASE_4A_R1_SAME_BAR_EXIT_MEASUREMENT.md``.
 
-        Resolution itself is unchanged: :func:`resolve_intrabar` is called with
-        the same arguments and the same policy as before. No new ambiguity
-        class is introduced -- for a market fill the position exists from the
-        bar's open, so the existing two-level resolution applies exactly.
+        Exit selection is **not** done here. Choosing when a position leaves
+        is a canonical decision, taken by the trade-management domain, which
+        instructs this broker through :meth:`execute_partial_close`,
+        :meth:`execute_stop_modify` and :meth:`execute_close`. This method
+        fills resting orders and counts bars.
 
         Args:
             bar: OHLC bar with ``open``, ``high``, ``low``, ``close``.
             bar_time: The bar's open time.
 
         Returns:
-            Positions that closed on this bar.
+            Positions **opened** on this bar. Nothing is closed here.
         """
-        closed_now: list[SimulatedPosition] = []
-        high, low = float(bar["high"]), float(bar["low"])
-        bar_open, bar_close = float(bar["open"]), float(bar["close"])
 
         # Phase A -- pending maintenance (expiry / invalidation / cancellation).
         # Intentionally empty: all three are unresolved research questions and
@@ -724,83 +720,22 @@ class PaperBroker:
         # EXPERIMENTAL CONTROL, not a policy. See
         # docs/PHASE_4A_STEP4_DECISION_EVIDENCE.md.
         #
-        # Phase B -- fill any resting order this bar reaches. Runs before exits
-        # so a position filled on this bar is eligible for its own stop or
-        # target on the same bar, per R1.
-        self._fill_pending(bar, bar_time)
+        # Phase B -- fill any resting order this bar reaches. Runs before
+        # management so a position filled on this bar is eligible for its own
+        # stop or target on the same bar, per R1.
+        opened = self._fill_pending(bar, bar_time)
 
-        # Phase C -- advance positions, including any just filled above.
+        # Phase C -- advance positions that are now live. The broker counts
+        # bars and nothing else: choosing an exit is a canonical decision and
+        # belongs to the trade-management domain, which instructs this broker
+        # through execute_partial_close, execute_stop_modify and execute_close.
         for position in list(self._open):
-            # R1: strictly-before, not at-or-before. The fill bar is evaluated.
+            # R1: strictly-before, not at-or-before. The fill bar is counted.
             if bar_time < position.entry_time:
                 continue
             position.bars_held += 1
 
-            resolution = resolve_intrabar(
-                side=position.side,
-                bar_high=high, bar_low=low,
-                bar_open=bar_open, bar_close=bar_close,
-                stop_loss=position.stop_loss,
-                take_profit=position.take_profit,
-                policy=self._policy,
-            )
-
-            if resolution.hit_stop:
-                # Gap handling: if the bar opened already through the stop, the
-                # realistic fill is the open, which is worse than the stop.
-                gapped = (
-                    bar_open < position.stop_loss
-                    if position.side is Side.BUY
-                    else bar_open > position.stop_loss
-                )
-                raw_exit = bar_open if gapped else position.stop_loss
-                self._close(
-                    position,
-                    raw_exit_price=raw_exit,
-                    exit_time=bar_time,
-                    state=PositionState.CLOSED_STOP,
-                    reason=(
-                        f"{resolution.reason}"
-                        + (" | GAPPED through stop, filled at bar open" if gapped else "")
-                    ),
-                    ambiguous=resolution.was_ambiguous,
-                )
-                closed_now.append(position)
-                continue
-
-            if resolution.hit_target and position.take_profit is not None:
-                gapped = (
-                    bar_open > position.take_profit
-                    if position.side is Side.BUY
-                    else bar_open < position.take_profit
-                )
-                raw_exit = bar_open if gapped else position.take_profit
-                self._close(
-                    position,
-                    raw_exit_price=raw_exit,
-                    exit_time=bar_time,
-                    state=PositionState.CLOSED_TARGET,
-                    reason=(
-                        f"{resolution.reason}"
-                        + (" | GAPPED through target, filled at bar open" if gapped else "")
-                    ),
-                    ambiguous=resolution.was_ambiguous,
-                )
-                closed_now.append(position)
-                continue
-
-            if self._max_bars_held is not None and position.bars_held >= self._max_bars_held:
-                self._close(
-                    position,
-                    raw_exit_price=bar_close,
-                    exit_time=bar_time,
-                    state=PositionState.CLOSED_TIME,
-                    reason=f"time stop after {position.bars_held} bars",
-                    ambiguous=False,
-                )
-                closed_now.append(position)
-
-        return closed_now
+        return opened
 
     def close_all_at_end_of_data(
         self,
