@@ -31,7 +31,7 @@ import pandas as pd
 from backtest.ledger import TradeLedger, TradeOutcome
 from backtest.metrics import BacktestMetrics, compute_metrics
 from backtest.replay_engine import DEFAULT_BAR_COUNTS, ReplayConfig, ReplayEngine
-from core.symbols import SymbolSpecification
+from core.symbols import CalculationMode, SymbolSpecification
 from core.types import Timeframe
 from core.units import Pips
 from data.dataset import HistoricalDataset
@@ -158,15 +158,28 @@ def dataset_fingerprint(dataset: HistoricalDataset) -> tuple[str, dict[str, str]
     return combined.hexdigest(), per_timeframe
 
 
-def spec_from_broker_metadata(metadata: dict, pip_size: float = 0.10) -> SymbolSpecification:
+def spec_from_broker_metadata(
+    metadata: dict,
+    pip_size: float = 0.10,
+    calc_mode: CalculationMode = CalculationMode.CFD_LEVERAGE,
+) -> SymbolSpecification:
     """Build a :class:`SymbolSpecification` from an exported broker metadata file.
 
     Uses the broker's **own** reported values rather than any reference constant.
     ``pip_size`` stays an explicit argument because MT5 does not report it.
 
+    ``calc_mode`` is taken from ``metadata["trade_calc_mode"]`` when the export
+    carries it. The 2026-09-16 export predates that field, so the argument
+    supplies it: Phase 6E captured ``SYMBOL_TRADE_CALC_MODE = 4``
+    (``CFD_LEVERAGE``) for XAUUSD from the same server and account, which is why
+    that is the default here. It is an argument rather than a constant so a
+    different export cannot silently inherit this instrument's economics --
+    see ``docs/BROKER_SYMBOL_SPECIFICATION_EVIDENCE.md``.
+
     Args:
         metadata: Parsed ``broker_metadata.json``.
         pip_size: Pip size by market convention. ``0.10`` for XAUUSD.
+        calc_mode: Fallback calculation mode when the export omits one.
 
     Returns:
         The specification.
@@ -182,6 +195,11 @@ def spec_from_broker_metadata(metadata: dict, pip_size: float = 0.10) -> SymbolS
         volume_min=float(metadata["volume_min"]),
         volume_max=float(metadata["volume_max"]),
         volume_step=float(metadata["volume_step"]),
+        calc_mode=(
+            CalculationMode(int(metadata["trade_calc_mode"]))
+            if "trade_calc_mode" in metadata
+            else calc_mode
+        ),
         base_currency=str(metadata.get("currency_base", "")),
         quote_currency=str(metadata.get("currency_profit", "")),
         account_currency=str(metadata.get("account_currency", "USD")),

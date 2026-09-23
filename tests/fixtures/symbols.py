@@ -34,6 +34,7 @@ class FakeMT5SymbolInfo:
     trade_tick_size: float
     trade_tick_value: float
     trade_contract_size: float
+    trade_calc_mode: int
     volume_min: float
     volume_max: float
     volume_step: float
@@ -63,6 +64,7 @@ def xauusd_symbol_info(digits: int = 2) -> FakeMT5SymbolInfo:
             trade_tick_size=0.01,
             trade_tick_value=1.0,
             trade_contract_size=100.0,
+            trade_calc_mode=4,   # CFD_LEVERAGE, captured from MetaQuotes-Demo
             volume_min=0.01,
             volume_max=100.0,
             volume_step=0.01,
@@ -77,6 +79,7 @@ def xauusd_symbol_info(digits: int = 2) -> FakeMT5SymbolInfo:
             trade_tick_size=0.001,
             trade_tick_value=0.1,
             trade_contract_size=100.0,
+            trade_calc_mode=4,   # CFD_LEVERAGE, captured from MetaQuotes-Demo
             volume_min=0.01,
             volume_max=100.0,
             volume_step=0.01,
@@ -99,6 +102,7 @@ def eurusd_symbol_info() -> FakeMT5SymbolInfo:
         trade_tick_size=0.00001,
         trade_tick_value=0.1,
         trade_contract_size=100_000.0,
+        trade_calc_mode=0,   # FOREX
         volume_min=0.01,
         volume_max=200.0,
         volume_step=0.01,

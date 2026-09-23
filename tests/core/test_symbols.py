@@ -9,6 +9,7 @@ from __future__ import annotations
 import unittest
 
 from core.symbols import (
+    CalculationMode,
     EURUSD_5DIGIT,
     XAUUSD_2DIGIT,
     XAUUSD_3DIGIT,
@@ -33,6 +34,7 @@ class SpecificationValidationTests(unittest.TestCase):
             volume_min=0.01,
             volume_max=100.0,
             volume_step=0.01,
+            calc_mode=CalculationMode.CFD_LEVERAGE,
         )
         base.update(overrides)
         return base
@@ -162,7 +164,15 @@ class MonetaryValueTests(unittest.TestCase):
         )
 
     def test_forex_value_differs_from_gold(self) -> None:
-        self.assertAlmostEqual(EURUSD_5DIGIT.money_per_price_unit(1.0), 10_000.0)
+        """1 lot EURUSD is 100,000 units, so a 1.0 price move is $100,000.
+
+        Was pinned at ``10_000`` while the conversion derived money from
+        ``tick_value / tick_size`` and the constant carried ``tick_value=0.1``
+        against ``contract_size=100_000`` -- the same ten-fold inconsistency
+        this module exists to catch, and the same one the live XAUUSD symbol
+        turned out to have. Both are now contract-size derived.
+        """
+        self.assertAlmostEqual(EURUSD_5DIGIT.money_per_price_unit(1.0), 100_000.0)
 
     def test_negative_volume_rejected(self) -> None:
         with self.assertRaises(ValueError):

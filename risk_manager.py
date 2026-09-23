@@ -2,24 +2,68 @@
 
 from datetime import datetime, timezone
 
-def calculate_lot_size_for_symbol(symbol: str, balance: float, risk_percent: float, entry: float, stop: float) -> float:
+from core.sizing import SizingInputError, lots_for_risk
+from core.symbols import SymbolSpecification
+
+
+def calculate_lot_size_for_symbol(
+    symbol: str,
+    balance: float,
+    risk_percent: float,
+    entry: float,
+    stop: float,
+    *,
+    spec: SymbolSpecification,
+) -> float:
+    """Calculate position size in lots for a given risk.
+
+    Delegates to :func:`core.sizing.lots_for_risk`, which is the single
+    implementation of the sizing contract. This function only adapts the
+    percentage-based signature the production caller uses.
+
+    ``spec`` is a **required keyword argument with no default**. The previous
+    implementation hardcoded ``10.0`` as the money value of a one-dollar move on
+    one lot; the terminal's own ``order_calc_profit`` reports ``100.0`` for
+    XAUUSD on MetaQuotes-Demo, so every position it sized was ten times the
+    intended risk. Instrument economics cannot be assumed -- the caller must
+    supply the instrument. See ``docs/SIZING_CONTRACT.md``.
+
+    Args:
+        symbol: Symbol name, used only to check it matches ``spec``.
+        balance: Account balance in the account currency.
+        risk_percent: Risk as a **percentage**, e.g. ``1.0`` for 1 %.
+        entry: Intended entry price.
+        stop: Original stop price.
+        spec: The instrument's specification.
+
+    Returns:
+        Lots to trade, floored to the volume step. **``0.0`` when the budget
+        cannot buy a tradeable size** -- the caller must check for it rather
+        than treating it as a size. A minimum is never substituted, because
+        doing so would exceed the risk budget.
+
+    Raises:
+        SizingInputError: If an input cannot describe a real position.
+        ValueError: If ``symbol`` does not match ``spec.symbol``.
+        UnsupportedCalculationModeError: If the instrument's calculation mode
+            has no implemented economics.
     """
-    Calculate position size (lot size) for a given risk.
-    Assumes XAUUSD pip value ~ 0.01 per standard lot per pip.
-    """
-    risk_amount = balance * risk_percent / 100.0
+    if symbol != spec.symbol:
+        raise ValueError(
+            f"symbol {symbol!r} does not match the supplied specification "
+            f"{spec.symbol!r}; sizing must not guess the instrument"
+        )
     stop_distance = abs(entry - stop)
-    if stop_distance <= 0:
-        return 0.01
-    # Pip value for XAUUSD: 1 pip = 0.01 USD per 0.01 lot? Actually standard lot XAUUSD pip value ~ $1 per pip.
-    # For simplicity, we use a generic formula.
-    # For XAUUSD, 0.01 lot = 0.01 * 100 = 1 unit? We'll approximate.
-    pip_value = 0.01  # per 0.01 lot per pip? Actually it's 0.01 for XAUUSD pip value per 0.01 lot.
-    # Standard: 1 lot XAUUSD pip value = $10, so 0.01 lot pip value = $0.10? Let's simplify.
-    # Use: lot = risk_amount / (stop_distance * pip_value)
-    lot_size = risk_amount / (stop_distance * 10.0)  # approximate
-    lot_size = max(0.01, round(lot_size, 2))
-    return min(lot_size, 1.0)  # cap at 1 lot
+    try:
+        decision = lots_for_risk(
+            spec,
+            balance=balance,
+            risk_fraction=risk_percent / 100.0,
+            stop_distance=stop_distance,
+        )
+    except SizingInputError:
+        raise
+    return decision.lots if decision.tradeable else 0.0
 
 def get_current_session() -> str:
     """

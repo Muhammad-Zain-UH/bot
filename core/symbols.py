@@ -38,12 +38,15 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from enum import IntEnum
 from typing import Any, Protocol, runtime_checkable
 
 __all__ = [
+    "CalculationMode",
     "InvalidSymbolSpecificationError",
     "MT5SymbolInfoLike",
     "SymbolSpecification",
+    "UnsupportedCalculationModeError",
     "EURUSD_5DIGIT",
     "XAUUSD_2DIGIT",
     "XAUUSD_3DIGIT",
@@ -55,8 +58,65 @@ __all__ = [
 _MULTIPLE_TOLERANCE = 1e-9
 
 
+class CalculationMode(IntEnum):
+    """The broker's profit calculation mode for a symbol (MT5 ``SYMBOL_TRADE_CALC_MODE``).
+
+    **Which mode a symbol is in decides which economic formula applies**, so it
+    is a property of the instrument the broker reports, never a value business
+    logic may assume.
+
+    Only the modes whose documented profit formula is
+    ``(close - open) * contract_size * lots`` are listed. The futures and
+    exchange modes, whose profit is tick-based, are deliberately **absent**:
+    supporting them needs its own implementation and its own evidence, and an
+    unlisted mode must raise rather than fall through to a formula that does
+    not describe it. See ``docs/SIZING_CONTRACT.md``.
+    """
+
+    FOREX = 0
+    CFD = 2
+    CFD_INDEX = 3
+    CFD_LEVERAGE = 4
+
+
 class InvalidSymbolSpecificationError(ValueError):
     """Raised when a :class:`SymbolSpecification` is internally inconsistent."""
+
+
+class UnsupportedCalculationModeError(ValueError):
+    """Raised when a symbol's calculation mode has no implemented economics.
+
+    Deliberately an error rather than a fallback. Applying the contract-size
+    formula to a futures-style instrument would be silently wrong by whatever
+    factor separates its tick value from its contract size -- the exact class of
+    defect this module exists to prevent.
+    """
+
+
+def _calc_mode_from_broker(symbol: str, raw: Any) -> CalculationMode:
+    """Translate a broker's raw ``trade_calc_mode`` into a supported mode.
+
+    Args:
+        symbol: Symbol name, for the error message.
+        raw: The broker's reported mode.
+
+    Returns:
+        The matching :class:`CalculationMode`.
+
+    Raises:
+        UnsupportedCalculationModeError: If the broker reports a mode this
+            module has no economics for. Refusing here means an unsupported
+            instrument cannot be constructed and then silently priced with the
+            wrong formula.
+    """
+    try:
+        return CalculationMode(int(raw))
+    except (TypeError, ValueError) as exc:
+        raise UnsupportedCalculationModeError(
+            f"{symbol}: broker reports calculation mode {raw!r}, which has no "
+            f"implemented economics; supported modes are "
+            f"{[(m.name, int(m)) for m in CalculationMode]}"
+        ) from exc
 
 
 @runtime_checkable
@@ -74,6 +134,7 @@ class MT5SymbolInfoLike(Protocol):
     trade_tick_size: float
     trade_tick_value: float
     trade_contract_size: float
+    trade_calc_mode: int
     volume_min: float
     volume_max: float
     volume_step: float
@@ -104,6 +165,8 @@ class SymbolSpecification:
         volume_min: Smallest permitted order volume, in lots.
         volume_max: Largest permitted order volume, in lots.
         volume_step: Volume increment, in lots.
+        calc_mode: The broker's profit calculation mode. Decides which economic
+            formula applies, so it is required and never defaulted.
         base_currency: Base currency / underlying asset code.
         quote_currency: Currency the instrument is quoted in.
         account_currency: Currency ``tick_value`` is denominated in.
@@ -119,6 +182,7 @@ class SymbolSpecification:
     volume_min: float
     volume_max: float
     volume_step: float
+    calc_mode: CalculationMode
     base_currency: str = ""
     quote_currency: str = ""
     account_currency: str = "USD"
@@ -276,13 +340,18 @@ class SymbolSpecification:
     def money_per_price_unit(self, volume: float = 1.0) -> float:
         """Account-currency value of a ``1.0`` price move on ``volume`` lots.
 
-        Derived from ``tick_value / tick_size`` rather than from a hardcoded
-        contract size, so it stays correct for brokers whose tick size differs
-        from their point size.
+        Derived from ``contract_size``, because for every mode in
+        :class:`CalculationMode` the platform's documented profit formula is
+        ``(close - open) * contract_size * lots``. ``tick_value`` does **not**
+        appear in it and is not consulted here.
 
-        For XAUUSD with ``tick_size=0.01`` and ``tick_value=1.0`` this returns
-        ``100.0`` per lot -- the value ``risk_manager`` currently assumes to be
-        ``10.0``.
+        That is not a stylistic choice. On the MetaQuotes-Demo XAUUSD used by
+        this repository the broker reports ``tick_value = 0.1`` against
+        ``tick_size = 0.01`` and ``contract_size = 100.0``, which disagree by a
+        factor of ten; the terminal's own ``order_calc_profit`` values a $1.00
+        move on 1.0 lot at **$100**, matching ``contract_size``. A tick-derived
+        conversion would be wrong by 10x on that instrument. Evidence:
+        ``docs/BROKER_SYMBOL_SPECIFICATION_EVIDENCE.md``.
 
         Args:
             volume: Position size in lots.
@@ -292,10 +361,20 @@ class SymbolSpecification:
 
         Raises:
             ValueError: If ``volume`` is negative or not finite.
+            UnsupportedCalculationModeError: If this symbol's calculation mode
+                has no implemented economics. Tick-based (futures and exchange)
+                modes are not supported and must not silently borrow this
+                formula.
         """
         if not math.isfinite(volume) or volume < 0.0:
             raise ValueError(f"volume must be finite and >= 0, got {volume!r}")
-        return (self.tick_value / self.tick_size) * volume
+        if self.calc_mode not in CalculationMode.__members__.values():
+            raise UnsupportedCalculationModeError(
+                f"{self.symbol}: calculation mode {self.calc_mode!r} has no "
+                f"implemented economics; supported modes are "
+                f"{[m.name for m in CalculationMode]}"
+            )
+        return self.contract_size * volume
 
     def money_for_price_distance(self, price_distance: float, volume: float = 1.0) -> float:
         """Account-currency value of a ``price_distance`` move on ``volume`` lots.
@@ -357,6 +436,7 @@ class SymbolSpecification:
             "trade_tick_size",
             "trade_tick_value",
             "trade_contract_size",
+            "trade_calc_mode",
             "volume_min",
             "volume_max",
             "volume_step",
@@ -382,6 +462,7 @@ class SymbolSpecification:
             volume_min=float(info.volume_min),
             volume_max=float(info.volume_max),
             volume_step=float(info.volume_step),
+            calc_mode=_calc_mode_from_broker(str(info.name), info.trade_calc_mode),
             base_currency=str(getattr(info, "currency_base", "") or ""),
             quote_currency=str(getattr(info, "currency_profit", "") or ""),
             account_currency=account_currency,
@@ -408,6 +489,7 @@ XAUUSD_2DIGIT = SymbolSpecification(
     volume_min=0.01,
     volume_max=100.0,
     volume_step=0.01,
+    calc_mode=CalculationMode.CFD_LEVERAGE,   # captured from MetaQuotes-Demo
     base_currency="XAU",
     quote_currency="USD",
     account_currency="USD",
@@ -425,6 +507,7 @@ XAUUSD_3DIGIT = SymbolSpecification(
     volume_min=0.01,
     volume_max=100.0,
     volume_step=0.01,
+    calc_mode=CalculationMode.CFD_LEVERAGE,
     base_currency="XAU",
     quote_currency="USD",
     account_currency="USD",
@@ -441,11 +524,12 @@ EURUSD_5DIGIT = SymbolSpecification(
     point=0.00001,
     pip_size=0.0001,        # FX convention: 1 pip = 10 points at 5-digit quoting
     tick_size=0.00001,
-    tick_value=0.1,
+    tick_value=1.0,         # 100,000 * 0.00001 = $1.00; was 0.1, inconsistent
     contract_size=100_000.0,
     volume_min=0.01,
     volume_max=200.0,
     volume_step=0.01,
+    calc_mode=CalculationMode.FOREX,
     base_currency="EUR",
     quote_currency="USD",
     account_currency="USD",

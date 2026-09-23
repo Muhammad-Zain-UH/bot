@@ -1089,24 +1089,72 @@ def analyze_entry(
 # ORDER EXECUTION
 # ============================================================
 
+def _live_symbol_specification():
+    """Build the traded symbol's specification from the broker, or ``None``.
+
+    The specification is read from the terminal rather than assumed, because
+    the economics differ per instrument and per broker: which formula applies
+    is decided by the symbol's calculation mode, which only the broker knows.
+
+    Returns:
+        A ``SymbolSpecification``, or ``None`` if the terminal or the symbol is
+        unavailable, or the instrument's calculation mode is unsupported. The
+        caller must decline to trade rather than guess.
+    """
+    if not MT5_AVAILABLE:
+        return None
+    try:
+        from core.symbols import SymbolSpecification
+
+        info = mt5.symbol_info(CONFIG["symbol"])
+        if info is None:
+            logger.error(f"[SIZING] symbol_info({CONFIG['symbol']}) returned None")
+            return None
+        return SymbolSpecification.from_mt5_symbol_info(
+            info, pip_size=CONFIG.get("pip_size", 0.10)
+        )
+    except Exception as exc:
+        logger.error(f"[SIZING] Could not build a symbol specification: {exc}")
+        return None
+
+
 def execute_entry_signal(entry_signal: Dict, account_balance: float = 10000) -> Optional[str]:
     if not entry_signal or not order_executor:
         return None
 
     try:
         risk_pct = entry_signal.get("risk_percent", 1.0)
-        if RISK_MANAGER_AVAILABLE:
-            position_size = calculate_lot_size_for_symbol(
-                CONFIG["symbol"],
-                account_balance,
-                risk_pct,
-                entry_signal["entry_price"],
-                entry_signal["stop_loss"],
+
+        # One sizing implementation, and the instrument comes from the broker.
+        # This replaced two formulas that disagreed by a factor of ten -- the
+        # risk_manager branch divided by 10.0 and this branch's fallback by
+        # 100.0, for the same symbol. See docs/SIZING_CONTRACT.md.
+        spec = _live_symbol_specification()
+        if spec is None:
+            logger.error(
+                "[SIZING] No symbol specification available; declining to size. "
+                "Instrument economics must not be assumed."
             )
-        else:
-            risk_amount = account_balance * risk_pct / 100
-            stop_distance = abs(entry_signal["entry_price"] - entry_signal["stop_loss"])
-            position_size = max(0.01, round(risk_amount / (max(stop_distance, 1e-6) * 100.0), 2))
+            return None
+
+        position_size = calculate_lot_size_for_symbol(
+            CONFIG["symbol"],
+            account_balance,
+            risk_pct,
+            entry_signal["entry_price"],
+            entry_signal["stop_loss"],
+            spec=spec,
+        )
+        if position_size <= 0.0:
+            # The budget cannot buy a tradeable size. Declining is the whole
+            # point: raising it to the minimum would exceed the risk budget.
+            logger.warning(
+                f"[SIZING] Risk budget affords no tradeable size "
+                f"(balance={account_balance}, risk={risk_pct}%, "
+                f"stop_distance={abs(entry_signal['entry_price'] - entry_signal['stop_loss'])}). "
+                f"No order placed."
+            )
+            return None
 
         order = order_executor.create_order(
             order_type=OrderType.BUY if entry_signal["position_type"] == "BUY" else OrderType.SELL,
