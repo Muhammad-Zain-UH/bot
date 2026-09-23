@@ -12,23 +12,23 @@ reports; it decides nothing.
 Position creation happens **at the fill** (specification §13): an order that
 never fills has no position and no canonical state.
 
-Target: a temporary migration control
--------------------------------------
-The canonical contract is §4.2 -- the target is recomputed from the actual fill
-as ``entry ± tp_ratio × R``. **This phase deliberately does not apply it yet.**
-``tp_ratio`` is instead reconstructed from the target the position already
-carries, which makes the canonical target equal the legacy one by construction.
+Target: anchored to the actual fill
+-----------------------------------
+The target is **recomputed from the actual fill** as ``entry ± tp_ratio × R``
+(specification §4.2), where ``R`` is measured against the *original* stop and
+``tp_ratio`` is the ratio the strategy asked for, carried on the fill metadata.
 
-That is a **migration control, not a change to the contract**. Recomputing the
-target moves the exit bar, which moves ``bars_held`` and every figure derived
-from the exit. Landing that in the same commit as the authority and ledger
-migration would make it impossible to tell which change caused what. The
-isolation lets this commit prove that authority transfer and the lossless
-ledger are **representation-only**, with no economic change at all.
+The position may arrive carrying a ``take_profit`` computed from the entry the
+strategy *intended*. That level is **not** the canonical target and takes no
+part in the geometry. A fill that beats the intended entry shrinks R, and a
+target left at the intended anchor would then sit at some other multiple of the
+R that actually exists -- on the R1 fixtures, 4.35R and 6.62R against a
+requested 3.0R. Re-anchoring is what makes ``reward / R`` equal ``tp_ratio``.
 
-§4.2 lands in its own commit, with its own audit in which the exit bar is
-expected to move. The specification is unchanged and is not being accommodated
-to; this module is temporarily behind it, and says so.
+Until the previous commit ``tp_ratio`` was reconstructed from the carried
+target, as a migration control that kept the two equal by construction while
+exit authority and the ledger moved. That control is gone; §4.2 is now in
+force, and the exit bar moves accordingly.
 
 Record-then-apply
 -----------------
@@ -274,20 +274,14 @@ class TradeAdapter:
         if risk <= 0.0:
             return self._skip(position, "R is zero at the fill")
 
-        # MIGRATION CONTROL (5B-i): reconstruct tp_ratio from the carried
-        # target so the canonical target equals the legacy one exactly. The
-        # strategy's own ratio is the §4.2 input and is used only when the
-        # position carries no target. See the module docstring.
-        raw_ratio = (
-            abs(position.take_profit - position.entry_price) / risk
-            if position.take_profit is not None
-            else position.metadata.get("strategy_rr_ratio")
-        )
+        # §4.2: the ratio is the strategy's own, and the target is rebuilt from
+        # the actual fill below. The carried take_profit is anchored to the
+        # entry the strategy intended and is deliberately not consulted.
+        raw_ratio = position.metadata.get("strategy_rr_ratio")
         if raw_ratio is None:
             return self._skip(
                 position,
-                "no target and no strategy tp_ratio on the fill, so the canonical "
-                "geometry cannot be completed",
+                "no strategy tp_ratio on the fill, so the target cannot be recomputed",
             )
         tp_ratio = float(raw_ratio)
         if tp_ratio <= 0.0:

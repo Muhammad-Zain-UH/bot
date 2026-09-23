@@ -8,6 +8,9 @@ longer acts on its own.
 They replace ``test_shadow_equivalence.py``, whose central claim ("the shadow
 changes nothing") stopped being true the moment the adapter became
 authoritative. The equivalence oracle it carried lives on as the cut-over audit.
+
+Phase 5B-ii adds :class:`CanonicalTargetRecomputation`, which pins §4.2: the
+target is rebuilt from the actual fill and the carried level has no authority.
 """
 
 from __future__ import annotations
@@ -35,7 +38,7 @@ NO_COST = FillModel(spread=Pips(0.0), slippage=Pips(0.0))
 
 ENTRY = 2450.0
 STOP = 2420.0          # R = 30
-TARGET = 2540.0        # tp_ratio 3.0 against the carried target
+TARGET = 2540.0        # 2450 + 3.0 x 30: the §4.2 target for this fill
 ONE_R = 2480.0
 TWO_R = 2510.0
 
@@ -108,10 +111,12 @@ class PositionCreation(AdapterHarness):
         self.assertAlmostEqual(state.m1r, ONE_R, places=9)
         self.assertAlmostEqual(state.m2r, TWO_R, places=9)
 
-    def test_the_carried_target_is_preserved_by_the_migration_control(self) -> None:
-        """5B-i isolates the authority cut from §4.2, so the target must not
-        move. Recomputation lands in its own commit."""
+    def test_the_target_is_three_r_from_the_fill(self) -> None:
+        """§4.2. This harness fills at the intended entry, so it cannot tell
+        the two anchors apart -- :class:`CanonicalTargetRecomputation` is where
+        that is pinned. Here it only has to hold that the target is 3R out."""
         state = self.adapter.state_for(self.position.position_id)
+        self.assertAlmostEqual(state.target, ENTRY + 3.0 * 30.0, places=9)
         self.assertAlmostEqual(state.target, TARGET, places=9)
         self.assertAlmostEqual(self.position.take_profit, TARGET, places=9)
 
@@ -125,6 +130,212 @@ class PositionCreation(AdapterHarness):
         again = self.adapter.on_position_opened(self.position)
         self.assertEqual(again, self.canonical_id)
         self.assertEqual(len(self.all_of(TradeEventKind.POSITION_OPENED)), 1)
+
+
+class CanonicalTargetRecomputation(unittest.TestCase):
+    """§4.2: the target is anchored to the actual fill, not the intended entry.
+
+    Phase 5B-ii. Every case here fills **materially away** from the entry the
+    strategy intended and carries a ``take_profit`` computed from that intended
+    entry, so the legacy level and the canonical one cannot coincide. If the
+    adapter ever reads the carried target again, these fail.
+    """
+
+    INTENDED = 2450.0
+
+    # Long: a fill 6.00 better than intended. R shrinks 30 -> 24, so the legacy
+    # target sits at 3.75R and the canonical one at exactly 3R.
+    L_FILL, L_STOP, L_R = 2444.0, 2420.0, 24.0
+    L_LEGACY = 2540.0                 # 2450 + 3 x 30, off the INTENDED entry
+    L_CANONICAL = 2516.0              # 2444 + 3 x 24, off the ACTUAL fill
+
+    # Short, mirrored: a fill 6.00 better than intended.
+    S_FILL, S_STOP, S_R = 2456.0, 2480.0, 24.0
+    S_LEGACY = 2360.0                 # 2450 - 3 x 30
+    S_CANONICAL = 2384.0              # 2456 - 3 x 24
+
+    RATIO = 3.0
+
+    def _open(self, *, side: Side, fill: float, stop: float,
+              carried: float | None, ratio: float = RATIO):
+        """Fill `side` at `fill` while the signal intended ``INTENDED``."""
+        broker = PaperBroker(SPEC, NO_COST)
+        adapter = TradeAdapter(broker)
+        broker.submit_market_order(
+            side=side,
+            volume=1.00,
+            stop_loss=stop,
+            take_profit=carried,
+            decision_time=T0,
+            decision_bar_time=T0 - timedelta(minutes=5),
+            # The bar opens away from the intended entry, so the fill does too.
+            execution_bar=bar(
+                0, open_=fill, high=fill + 1.0, low=fill - 1.0, close=fill
+            ),
+            metadata={
+                "strategy_rr_ratio": ratio,
+                "strategy_entry_price": self.INTENDED,
+                "strategy_take_profit": carried,
+                "strategy_stop_loss": stop,
+            },
+        )
+        position = broker.open_positions()[0]
+        adapter.on_position_opened(position)
+        return broker, adapter, position
+
+    # -- the contract itself ---------------------------------------------
+
+    def test_long_target_is_fill_plus_ratio_times_original_r(self) -> None:
+        _, adapter, position = self._open(
+            side=Side.BUY, fill=self.L_FILL, stop=self.L_STOP, carried=self.L_LEGACY
+        )
+        state = adapter.state_for(position.position_id)
+        self.assertAlmostEqual(state.entry_price, self.L_FILL, places=9)
+        self.assertAlmostEqual(state.r, self.L_R, places=9)
+        self.assertAlmostEqual(
+            state.target, self.L_FILL + self.RATIO * self.L_R, places=9
+        )
+        self.assertAlmostEqual(state.target, self.L_CANONICAL, places=9)
+
+    def test_short_target_is_fill_minus_ratio_times_original_r(self) -> None:
+        _, adapter, position = self._open(
+            side=Side.SELL, fill=self.S_FILL, stop=self.S_STOP, carried=self.S_LEGACY
+        )
+        state = adapter.state_for(position.position_id)
+        self.assertAlmostEqual(state.entry_price, self.S_FILL, places=9)
+        self.assertAlmostEqual(state.r, self.S_R, places=9)
+        self.assertAlmostEqual(
+            state.target, self.S_FILL - self.RATIO * self.S_R, places=9
+        )
+        self.assertAlmostEqual(state.target, self.S_CANONICAL, places=9)
+
+    def test_the_canonical_target_is_not_the_carried_one(self) -> None:
+        """The premise of every case here: the two levels really do differ."""
+        for side, fill, stop, legacy, canonical in (
+            (Side.BUY, self.L_FILL, self.L_STOP, self.L_LEGACY, self.L_CANONICAL),
+            (Side.SELL, self.S_FILL, self.S_STOP, self.S_LEGACY, self.S_CANONICAL),
+        ):
+            with self.subTest(side=side):
+                self.assertNotAlmostEqual(legacy, canonical, places=6)
+                _, adapter, position = self._open(
+                    side=side, fill=fill, stop=stop, carried=legacy
+                )
+                state = adapter.state_for(position.position_id)
+                self.assertNotAlmostEqual(state.target, legacy, places=6)
+                self.assertAlmostEqual(state.target, canonical, places=9)
+
+    # -- independence from the carried level ------------------------------
+
+    def test_changing_the_carried_target_does_not_move_the_canonical_one(self) -> None:
+        """Three different legacy levels, one canonical target."""
+        for carried in (self.L_LEGACY, 2600.0, 2470.0):
+            with self.subTest(carried=carried):
+                _, adapter, position = self._open(
+                    side=Side.BUY, fill=self.L_FILL, stop=self.L_STOP, carried=carried
+                )
+                state = adapter.state_for(position.position_id)
+                self.assertAlmostEqual(state.target, self.L_CANONICAL, places=9)
+
+    def test_removing_the_carried_target_does_not_move_the_canonical_one(self) -> None:
+        for side, fill, stop, canonical in (
+            (Side.BUY, self.L_FILL, self.L_STOP, self.L_CANONICAL),
+            (Side.SELL, self.S_FILL, self.S_STOP, self.S_CANONICAL),
+        ):
+            with self.subTest(side=side):
+                _, adapter, position = self._open(
+                    side=side, fill=fill, stop=stop, carried=None
+                )
+                state = adapter.state_for(position.position_id)
+                self.assertAlmostEqual(state.target, canonical, places=9)
+
+    def test_a_position_with_no_ratio_is_skipped_not_guessed(self) -> None:
+        """Without the strategy's ratio there is no §4.2 input. The carried
+        target must not be used to invent one."""
+        broker = PaperBroker(SPEC, NO_COST)
+        adapter = TradeAdapter(broker)
+        broker.submit_market_order(
+            side=Side.BUY, volume=1.00, stop_loss=self.L_STOP,
+            take_profit=self.L_LEGACY, decision_time=T0,
+            decision_bar_time=T0 - timedelta(minutes=5),
+            execution_bar=bar(0, open_=self.L_FILL, high=2445.0,
+                              low=2443.0, close=self.L_FILL),
+            metadata={},
+        )
+        position = broker.open_positions()[0]
+        self.assertIsNone(adapter.on_position_opened(position))
+        self.assertIsNone(adapter.state_for(position.position_id))
+
+    # -- the anchors ------------------------------------------------------
+
+    def test_the_anchor_is_the_fill_not_the_intended_entry(self) -> None:
+        _, adapter, position = self._open(
+            side=Side.BUY, fill=self.L_FILL, stop=self.L_STOP, carried=self.L_LEGACY
+        )
+        state = adapter.state_for(position.position_id)
+        intended_r = abs(self.INTENDED - self.L_STOP)
+        self.assertNotAlmostEqual(state.r, intended_r, places=6)
+        self.assertNotAlmostEqual(
+            state.target, self.INTENDED + self.RATIO * intended_r, places=6
+        )
+
+    def test_r_comes_from_the_original_stop_not_the_promoted_one(self) -> None:
+        """The stop moves to breakeven at 1R; R and the target do not."""
+        broker, adapter, position = self._open(
+            side=Side.BUY, fill=self.L_FILL, stop=self.L_STOP, carried=self.L_LEGACY
+        )
+        state = adapter.state_for(position.position_id)
+        one_r = state.m1r
+        self.assertAlmostEqual(one_r, self.L_FILL + self.L_R, places=9)
+
+        # A bar that reaches 1R without reaching the target.
+        reach = bar(5, open_=self.L_FILL, high=one_r + 0.5,
+                    low=self.L_FILL - 0.5, close=one_r)
+        bar_time = pd.Timestamp(reach["time"]).to_pydatetime()
+        broker.fill_pending_orders(reach, bar_time)
+        adapter.manage(reach, bar_time)
+
+        after = adapter.state_for(position.position_id)
+        self.assertIs(after.stop_state_confirmed, StopState.BREAKEVEN)
+        self.assertGreater(after.confirmed_stop_price, self.L_STOP)
+        # R and the target are frozen at creation (§6.1) and must not follow.
+        self.assertAlmostEqual(after.original_stop_price, self.L_STOP, places=9)
+        self.assertAlmostEqual(after.r, self.L_R, places=9)
+        self.assertAlmostEqual(after.target, self.L_CANONICAL, places=9)
+
+    def test_the_ratio_is_the_strategys_own(self) -> None:
+        for ratio in (1.5, 2.0, 4.5):
+            with self.subTest(ratio=ratio):
+                _, adapter, position = self._open(
+                    side=Side.BUY, fill=self.L_FILL, stop=self.L_STOP,
+                    carried=self.L_LEGACY, ratio=ratio,
+                )
+                state = adapter.state_for(position.position_id)
+                self.assertAlmostEqual(state.tp_ratio, ratio, places=9)
+                self.assertAlmostEqual(
+                    state.target, self.L_FILL + ratio * self.L_R, places=9
+                )
+
+    def test_reward_over_r_equals_the_ratio(self) -> None:
+        """The property the recomputation exists to guarantee."""
+        for side, fill, stop in (
+            (Side.BUY, self.L_FILL, self.L_STOP),
+            (Side.SELL, self.S_FILL, self.S_STOP),
+        ):
+            for ratio in (1.5, 3.0, 4.5):
+                with self.subTest(side=side, ratio=ratio):
+                    _, adapter, position = self._open(
+                        side=side, fill=fill, stop=stop, carried=None, ratio=ratio
+                    )
+                    state = adapter.state_for(position.position_id)
+                    reward = abs(state.target - state.entry_price)
+                    self.assertAlmostEqual(reward / state.r, ratio, places=9)
+
+    def test_the_broker_projection_follows_the_canonical_target(self) -> None:
+        """The carried level is overwritten, so nothing downstream can read it."""
+        _, _, position = self._open(
+            side=Side.BUY, fill=self.L_FILL, stop=self.L_STOP, carried=self.L_LEGACY
+        )
+        self.assertAlmostEqual(position.take_profit, self.L_CANONICAL, places=9)
 
 
 class BrokerDecidesNothing(AdapterHarness):
@@ -358,6 +569,14 @@ class LimitFillHandsOffToManagement(unittest.TestCase):
     FORMATION = datetime(2026, 5, 4, 10, 0, tzinfo=timezone.utc)
     NEXT = FORMATION + timedelta(minutes=5)
 
+    # The limit fills at MID, so R = 6.00 against the 2396.00 stop and the
+    # §4.2 target is 2402 + 3 x 6 = 2420.00. The carried target below is
+    # deliberately somewhere else: these bars must be built around the
+    # canonical level, not the one the intent happens to carry.
+    STOP = 2396.0
+    CANONICAL_TARGET = 2420.0
+    CARRIED_TARGET = 2404.5
+
     def _intent(self, *, stop: float, target: float) -> PendingOrderIntent:
         return PendingOrderIntent(
             side=Side.BUY, limit_price=self.MID, stop_loss=stop, take_profit=target,
@@ -378,32 +597,59 @@ class LimitFillHandsOffToManagement(unittest.TestCase):
             volume=0.01,
             metadata={"strategy_rr_ratio": 3.0},
         )
+        filled = []
         for position in broker.fill_pending_orders(candidate, self.NEXT):
             adapter.on_position_opened(position)
+            filled.append(position.position_id)
         closed = adapter.manage(candidate, self.NEXT)
-        return broker, adapter, closed
+        self.assertEqual(len(filled), 1, "the limit should have filled")
+        return adapter, filled[0], closed
+
+    def test_the_fill_bar_geometry_is_canonical(self) -> None:
+        """The premise of the bars below: the limit fills at MID and the
+        target is recomputed from it, not taken from the intent."""
+        adapter, pid, _ = self._run(
+            stop=self.STOP, target=self.CARRIED_TARGET,
+            candidate=self._bar(2403.0, 2405.0, 2401.0, 2404.0),
+        )
+        state = adapter.state_for(pid)
+        self.assertAlmostEqual(state.entry_price, self.MID, places=9)
+        self.assertAlmostEqual(state.r, 6.0, places=9)
+        self.assertAlmostEqual(state.target, self.CANONICAL_TARGET, places=9)
 
     def test_fill_then_stop_on_the_same_bar(self) -> None:
         _, _, closed = self._run(
-            stop=2396.0, target=2412.0,
+            stop=self.STOP, target=self.CARRIED_TARGET,
             candidate=self._bar(2404.0, 2405.0, 2395.0, 2397.0),
         )
         self.assertEqual(len(closed), 1)
         self.assertIs(closed[0].state, PositionState.CLOSED_STOP)
-        self.assertAlmostEqual(closed[0].exit_price, 2396.0, places=9)
+        self.assertAlmostEqual(closed[0].exit_price, self.STOP, places=9)
 
     def test_fill_then_target_on_the_same_bar(self) -> None:
+        # The bar reaches the canonical 2420.00, not the carried 2404.50.
         _, _, closed = self._run(
-            stop=2396.0, target=2404.5,
-            candidate=self._bar(2403.0, 2405.0, 2401.0, 2404.8),
+            stop=self.STOP, target=self.CARRIED_TARGET,
+            candidate=self._bar(2403.0, 2421.0, 2401.0, 2420.5),
         )
         self.assertEqual(len(closed), 1)
         self.assertIs(closed[0].state, PositionState.CLOSED_TARGET)
+        self.assertAlmostEqual(closed[0].exit_price, self.CANONICAL_TARGET, places=9)
+
+    def test_reaching_only_the_carried_target_does_not_close(self) -> None:
+        """§4.2 from the other side: the carried level has no authority."""
+        adapter, pid, closed = self._run(
+            stop=self.STOP, target=self.CARRIED_TARGET,
+            candidate=self._bar(2403.0, 2405.0, 2401.0, 2404.8),
+        )
+        self.assertEqual(closed, [])
+        state = adapter.state_for(pid)
+        self.assertIs(state.lifecycle, PositionLifecycle.OPEN)
 
     def test_fill_then_both_resolves_adverse_first_and_flags_it(self) -> None:
-        _, adapter, closed = self._run(
-            stop=2396.0, target=2404.5,
-            candidate=self._bar(2403.0, 2405.0, 2395.0, 2400.0),
+        adapter, pid, closed = self._run(
+            stop=self.STOP, target=self.CARRIED_TARGET,
+            candidate=self._bar(2403.0, 2421.0, 2395.0, 2400.0),
         )
         self.assertEqual(len(closed), 1)
         self.assertIs(closed[0].state, PositionState.CLOSED_STOP)
@@ -414,11 +660,11 @@ class LimitFillHandsOffToManagement(unittest.TestCase):
         broker = PaperBroker(SPEC, NO_COST, intrabar_policy=IntrabarPolicy.OPTIMISTIC)
         adapter = TradeAdapter(broker)
         broker.submit_limit_order(
-            self._intent(stop=2396.0, target=2404.5),
+            self._intent(stop=self.STOP, target=self.CARRIED_TARGET),
             volume=0.01,
             metadata={"strategy_rr_ratio": 3.0},
         )
-        candidate = self._bar(2403.0, 2405.0, 2395.0, 2400.0)
+        candidate = self._bar(2403.0, 2421.0, 2395.0, 2400.0)
         for position in broker.fill_pending_orders(candidate, self.NEXT):
             adapter.on_position_opened(position)
         closed = adapter.manage(candidate, self.NEXT)
