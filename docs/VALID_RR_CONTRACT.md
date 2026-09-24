@@ -109,7 +109,7 @@ and its `tp_ratio` is exactly `1.5`, so `rr` lands **on the boundary** and the
 comparison is decided by representation error.
 
 The candidate at **2026-08-06 08:00** computed
-`rr = 1.4999999999999196` — below `1.5` by about `8e-14` — and was refused,
+`rr = 1.4999999999998295` — below `1.5` by about `1.7e-13` — and was refused,
 while three candidates at or just above `1.5` were admitted.
 
 The diagnostic message compounds it: it reports `micro scalp quality too low

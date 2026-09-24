@@ -259,29 +259,56 @@ class ASecondRrGateStillExistsAndIsUnchanged(unittest.TestCase):
 
         MICRO_SCALP's threshold is ``rr >= 1.5`` and its ``tp_ratio`` is 1.5,
         so ``rr`` lands exactly on the boundary and the comparison is decided by
-        representation error. A real candidate from the verified dataset
-        (2026-08-06 08:00) computed ``rr = 1.4999999999999196`` -- below 1.5 by
-        about 8e-14 -- and was refused, while three others at or just above 1.5
-        were admitted.
+        representation error. The candidate at 2026-08-06 08:00 was refused
+        this way while three others at or just above 1.5 were admitted.
 
         The message is also misleading: it reports ``quality too low`` and
         prints ``rr=1.5``, when quality was 10.0 and it was ``rr`` that failed.
 
-        Phase 6I has no authority to change this gate, its threshold or its
-        message. It is pinned so the behaviour is visible rather than a
-        surprise in a later measurement.
+        Reproduced from the candidate's **own** geometry, as the Phase 6A probe
+        recorded it, using the same arithmetic ``calculate_entry_levels``
+        performs. Phase 6J §E identifies the mechanism.
+
+        Phase 6I had no authority to change this gate, its threshold or its
+        message. Pinned so the behaviour is visible rather than a surprise.
         """
-        levels = entry_engine.calculate_entry_levels(
-            entry_price=4257.775, sweep_wick_low=4255.11,
-            direction="BUY", tp_ratio=1.5,
-        )
-        rr = levels["reward_to_risk_ratio"]
+        entry, stop, tp_ratio = 4257.775, 4255.11, 1.5
+        risk = abs(entry - stop)
+        take_profit = entry + risk * tp_ratio
+        rr = abs(take_profit - entry) / risk
+
+        self.assertEqual(rr, 1.4999999999998295)
         self.assertLess(rr, 1.5)
         self.assertAlmostEqual(rr, 1.5, places=12)
         result = self._gate("MICRO_SCALP", 10.0, rr)
         self.assertFalse(result["entry_allowed"])
         self.assertIn("quality too low", result["reason"])
         self.assertIn("rr=1.5", result["reason"])
+
+    def test_the_loss_is_the_round_trip_through_take_profit(self) -> None:
+        """E: a deterministic minimal reproduction of the mechanism.
+
+        ``reward_distance`` is rebuilt as ``|take_profit - entry_price|`` after
+        ``take_profit`` was formed by adding a small quantity to a large one.
+        That addition rounds to the grid of the large value, so the low bits of
+        the addend are lost and cannot be recovered by subtracting it back.
+
+        The quantity was already in hand: ``risk_distance * tp_ratio`` divided
+        by ``risk_distance`` is **exactly** the ratio, with no error at all.
+        """
+        entry, stop, tp_ratio = 4257.775, 4255.11, 1.5
+        risk = abs(entry - stop)
+        product = risk * tp_ratio
+
+        round_tripped = abs((entry + product) - entry)
+        self.assertNotEqual(product, round_tripped)
+        self.assertAlmostEqual(product, round_tripped, places=11)
+
+        self.assertEqual(product / risk, 1.5)             # no error
+        self.assertLess(round_tripped / risk, 1.5)        # error, and it decides
+
+        # The magnitude gap is what destroys the low bits.
+        self.assertGreater(entry / product, 1000.0)
 
     def test_an_unconfirmed_trigger_is_still_refused_here(self) -> None:
         result = entry_engine.evaluate_entry_for_regime(
