@@ -405,8 +405,11 @@ def calculate_entry_levels(
             take_profit = entry_price - (risk_distance * tp_ratio)
 
         reward_distance = abs(take_profit - entry_price)
+        # rr is reported, never judged. take_profit is constructed as
+        # risk_distance * tp_ratio just above, so rr IS tp_ratio -- comparing it
+        # to a threshold asked whether the configured value was the configured
+        # value. The gate that did so is retired; see docs/VALID_RR_CONTRACT.md.
         rr = reward_distance / risk_distance if risk_distance > 0 else 0
-        valid_rr = rr >= 2.0
         reasoning = f"Entry {entry_price:.2f} | SL {stop_loss:.2f} ({risk_distance:.1f}p risk) | TP {take_profit:.2f} ({reward_distance:.1f}p reward) | RR {rr:.1f}:1"
         return {
             "entry_price": entry_price,
@@ -415,7 +418,6 @@ def calculate_entry_levels(
             "risk_distance": risk_distance,
             "reward_distance": reward_distance,
             "reward_to_risk_ratio": rr,
-            "valid_rr": valid_rr,
             "reasoning": reasoning,
         }
     except Exception as exc:
@@ -427,7 +429,6 @@ def calculate_entry_levels(
             "risk_distance": None,
             "reward_distance": None,
             "reward_to_risk_ratio": 0.0,
-            "valid_rr": False,
             "reasoning": f"Error: {str(exc)}",
         }
 
@@ -442,8 +443,7 @@ def _score_entry_candidate(candidate: dict[str, Any]) -> float:
     rr = float(candidate.get("reward_to_risk_ratio", 0.0) or 0.0)
     style_bonus = 0.5 if candidate.get("entry_style") == "PULLBACK" else 0.0
     rr_bonus = min(rr, 4.0) * 1.5
-    valid_bonus = 2.0 if candidate.get("valid_rr") else 0.0
-    return (quality * 2.0) + rr_bonus + valid_bonus + style_bonus
+    return (quality * 2.0) + rr_bonus + style_bonus
 
 # ============================================================
 # ENTRY EVALUATION FUNCTIONS (with tp_ratio)
@@ -531,8 +531,7 @@ def _evaluate_pullback_entry(
         "entry_style": "PULLBACK",
         "entry_mode": "MARKET",
         "raw_triggered": raw_triggered,
-        "rr_valid": entry_levels["valid_rr"],
-        "entry_triggered": bool(raw_triggered and entry_levels["valid_rr"]),
+        "entry_triggered": bool(raw_triggered),
         "trigger_type": trigger_type,
         "entry_price": entry_levels["entry_price"],
         "stop_loss": entry_levels["stop_loss"],
@@ -541,15 +540,10 @@ def _evaluate_pullback_entry(
         "reward_distance": entry_levels["reward_distance"],
         "reward_to_risk_ratio": entry_levels["reward_to_risk_ratio"],
         "trigger_quality": quality,
-        "valid_rr": entry_levels["valid_rr"],
         "recommendation": (
             f"PULLBACK ENTRY READY (RR {entry_levels['reward_to_risk_ratio']:.1f}:1)"
-            if raw_triggered and entry_levels["valid_rr"]
-            else (
-                "PULLBACK FOUND BUT RR TOO LOW - WAIT"
-                if raw_triggered
-                else "PULLBACK CONDITIONS NOT MET"
-            )
+            if raw_triggered
+            else "PULLBACK CONDITIONS NOT MET"
         ),
         "rejection": rejection,
         "momentum": momentum,
@@ -634,8 +628,7 @@ def _evaluate_momentum_entry(
         "entry_style": "MOMENTUM",
         "entry_mode": "LIMIT_FVG",
         "raw_triggered": core_trigger,
-        "rr_valid": entry_levels["valid_rr"],
-        "entry_triggered": bool(core_trigger and entry_levels["valid_rr"]),
+        "entry_triggered": bool(core_trigger),
         "trigger_type": "momentum+fvg+choch" if core_trigger else (
             "momentum_outside_killzone" if not kill_zone else "momentum_wait"
         ),
@@ -646,15 +639,10 @@ def _evaluate_momentum_entry(
         "reward_distance": entry_levels["reward_distance"],
         "reward_to_risk_ratio": entry_levels["reward_to_risk_ratio"],
         "trigger_quality": quality,
-        "valid_rr": entry_levels["valid_rr"],
         "recommendation": (
             f"MOMENTUM FVG LIMIT READY (RR {entry_levels['reward_to_risk_ratio']:.1f}:1)"
-            if core_trigger and entry_levels["valid_rr"]
-            else (
-                "MOMENTUM FOUND BUT WAIT FOR FVG / KILL ZONE / CHoCH"
-                if core_trigger
-                else "MOMENTUM CONDITIONS NOT MET"
-            )
+            if core_trigger
+            else "MOMENTUM CONDITIONS NOT MET"
         ),
         "momentum": momentum,
         "m1_choch": m1_choch,
@@ -747,7 +735,6 @@ def get_entry_trigger(
         "reward_distance": best_entry.get("reward_distance"),
         "reward_to_risk_ratio": best_entry.get("reward_to_risk_ratio", 0.0),
         "trigger_quality": best_entry.get("trigger_quality", 0.0),
-        "valid_rr": best_entry.get("valid_rr", False),
         "limit_price": best_entry.get("limit_price"),
         "fvg_zone_low": best_entry.get("fvg_zone_low"),
         "fvg_zone_high": best_entry.get("fvg_zone_high"),

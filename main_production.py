@@ -1005,7 +1005,13 @@ def analyze_entry(
                 "entry_style": entry.get("entry_style", "NONE"),
                 "entry_mode": entry.get("entry_mode", "MARKET"),
                 "trigger_type": entry.get("trigger_type", "none"),
-                "rr_valid": entry.get("valid_rr", False),
+                # No RR verdict is recorded: the gate that produced one is
+                # retired (docs/VALID_RR_CONTRACT.md). The geometry it was
+                # derived from is reported instead, which is what a reader
+                # needs and what the verdict never added to.
+                "tp_ratio": regime_info.get("tp_ratio"),
+                "risk_distance": entry.get("risk_distance"),
+                "reward_distance": entry.get("reward_distance"),
                 "rr": entry.get("reward_to_risk_ratio", 0),
                 "entry_triggered": False,
             }
@@ -1022,7 +1028,7 @@ def analyze_entry(
                 "trigger_type": entry.get("trigger_type"),
                 "entry_style": entry.get("entry_style", "NONE"),
                 "entry_mode": entry.get("entry_mode", "MARKET"),
-                "rr_valid": entry.get("valid_rr", False),
+                "tp_ratio": regime_info.get("tp_ratio"),
                 "rr": entry.get("reward_to_risk_ratio"),
                 "entry_triggered": False,
                 "gate_reason": gate_result.get("reason"),
@@ -1035,7 +1041,7 @@ def analyze_entry(
             "trigger_type": entry.get("trigger_type"),
             "entry_style": entry.get("entry_style", "NONE"),
             "entry_mode": entry.get("entry_mode", "MARKET"),
-            "rr_valid": entry.get("valid_rr", False),
+            "tp_ratio": regime_info.get("tp_ratio"),
             "rr": entry.get("reward_to_risk_ratio"),
             "entry_triggered": True,
             "recommended_mode": gate_result.get("recommended_mode"),
@@ -1057,7 +1063,9 @@ def analyze_entry(
             "entry_method": entry.get("entry_style", "NONE"),
             "entry_mode": entry.get("entry_mode", "MARKET"),
             "trigger_type": entry.get("trigger_type", "none"),
-            "rr_valid": entry.get("valid_rr", False),
+            "tp_ratio": regime_info.get("tp_ratio"),
+            "risk_distance": entry.get("risk_distance"),
+            "reward_distance": entry.get("reward_distance"),
             # Carried so execution can rest a LIMIT_FVG order without the
             # strategy knowing anything about how orders are filled.
             "limit_price": entry.get("limit_price"),

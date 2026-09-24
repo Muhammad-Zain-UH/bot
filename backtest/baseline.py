@@ -358,7 +358,11 @@ REGIME_TP_RATIO: dict[str, float] = {
     "DEAD_CALM": 1.5,
 }
 
-# The threshold ``valid_rr`` compares against (entry_engine.py:409).
+# The threshold the retired ``valid_rr`` gate compared against. **Historical.**
+# The gate was removed in Phase 6I (docs/VALID_RR_CONTRACT.md); this constant is
+# kept so the defect report below can still say which regimes it had made
+# unenterable, and is deliberately NOT a live minimum-RR setting. No minimum-RR
+# value is currently defined anywhere -- that remains UNRESOLVED.
 VALID_RR_THRESHOLD = 2.0
 
 
@@ -527,11 +531,19 @@ def _defect_observations(snapshots: list, ledger: TradeLedger) -> dict[str, Any]
     total_l8 = sum(reached_l8.values())
     blocked_by_tautology = sum(item["reached_l8"] for item in unreachable.values())
     observations["E9_E10_Q3_regime_rr_deadlock"] = {
+        "status": (
+            "RETIRED in Phase 6I. The runtime gate no longer exists: "
+            "entry_triggered is now raw_triggered alone. The counts below "
+            "describe the decision stream as it was WHILE the gate existed and "
+            "are retained as the historical record. They do not describe "
+            "current behaviour."
+        ),
         "defect": (
             "entry_engine.calculate_entry_levels sets take_profit = entry +/- "
             "risk_distance * tp_ratio, so reward_to_risk_ratio == tp_ratio "
-            "identically; valid_rr = rr >= 2.0 therefore tests the regime constant "
-            "and is unsatisfiable wherever tp_ratio < 2.0 (MICRO_SCALP, DEAD_CALM)."
+            "identically; valid_rr = rr >= 2.0 therefore tested the regime "
+            "constant and was unsatisfiable wherever tp_ratio < 2.0 "
+            "(MICRO_SCALP, DEAD_CALM)."
         ),
         "occurrences": sum(item["decisions"] for item in unreachable.values()),
         "reached_l8_in_unreachable_regime": blocked_by_tautology,
@@ -547,9 +559,10 @@ def _defect_observations(snapshots: list, ledger: TradeLedger) -> dict[str, Any]
             round(blocked_by_tautology / total_l8, 6) if total_l8 else None
         ),
         "causal_note": (
-            "Not an attribution. entry_triggered = raw_triggered AND valid_rr; "
-            "these counts do not establish which term blocked a decision. "
-            "Measure raw_triggered before attributing a block to the RR gate."
+            "Not an attribution. While the gate existed, entry_triggered was "
+            "raw_triggered AND valid_rr, and these counts do not establish "
+            "which term blocked a decision. Phase 6A measured raw_triggered "
+            "directly: 4 of 1,265 were blocked by the RR gate alone."
         ),
         "by_regime": by_regime,
         "regimes_not_in_mirror": unknown,
