@@ -404,11 +404,19 @@ def calculate_entry_levels(
         else:
             take_profit = entry_price - (risk_distance * tp_ratio)
 
-        reward_distance = abs(take_profit - entry_price)
-        # rr is reported, never judged. take_profit is constructed as
-        # risk_distance * tp_ratio just above, so rr IS tp_ratio -- comparing it
-        # to a threshold asked whether the configured value was the configured
-        # value. The gate that did so is retired; see docs/VALID_RR_CONTRACT.md.
+        # U4: the reward distance IS the quantity take_profit was built from,
+        # two lines above. Recovering it as |take_profit - entry_price| adds a
+        # small number to a large one and subtracts the large one back, which
+        # discards the addend's low bits in proportion to
+        # entry_price / (risk_distance * tp_ratio) -- about 1.7e-13 on gold.
+        # That error was the same order as the distance between rr and two of
+        # the four regime thresholds, so it decided admissions.
+        # See docs/PHASE_6K_F_U4_REPAIR.md.
+        reward_distance = risk_distance * tp_ratio
+        # rr is reported here, never judged. take_profit is constructed from
+        # risk_distance * tp_ratio, so rr IS tp_ratio; the per-candidate gate
+        # that compared it to a constant is retired (docs/VALID_RR_CONTRACT.md).
+        # The surviving regime gate still compares it -- that is U2/U9, untouched.
         rr = reward_distance / risk_distance if risk_distance > 0 else 0
         reasoning = f"Entry {entry_price:.2f} | SL {stop_loss:.2f} ({risk_distance:.1f}p risk) | TP {take_profit:.2f} ({reward_distance:.1f}p reward) | RR {rr:.1f}:1"
         return {

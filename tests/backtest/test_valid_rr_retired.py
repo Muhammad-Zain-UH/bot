@@ -322,3 +322,143 @@ class ASecondRrGateStillExistsAndIsUnchanged(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class U4RewardIsTheConstructionQuantity(unittest.TestCase):
+    """U4: reward distance is the product, not a reconstruction.
+
+    ``take_profit`` is built as ``entry ± risk_distance * tp_ratio``. Recovering
+    the reward by subtracting ``entry_price`` back out adds a small number to a
+    large one and loses the addend's low bits. The product is already in hand.
+
+    **This is a representation repair, not a policy change.** No threshold,
+    regime rule, stop construction, ``tp_ratio`` or gate semantic is altered by
+    it. What the minimum RR should be is U9 and remains undecided.
+    """
+
+    def _levels(self, *, entry, wick, direction, tp_ratio):
+        kw = {"sweep_wick_low": wick} if direction == "BUY" else {"sweep_wick_high": wick}
+        return entry_engine.calculate_entry_levels(
+            entry_price=entry, direction=direction, tp_ratio=tp_ratio, **kw
+        )
+
+    def test_reward_distance_is_risk_times_ratio(self) -> None:
+        for direction, entry, wick in (
+            ("BUY", 2500.0, 2490.0), ("SELL", 2500.0, 2512.0),
+            ("BUY", 4257.775, 4250.0), ("SELL", 1850.0, 1861.0),
+        ):
+            for tp_ratio in (1.5, 2.0, 2.5, 3.0):
+                with self.subTest(direction=direction, entry=entry, tp_ratio=tp_ratio):
+                    levels = self._levels(
+                        entry=entry, wick=wick, direction=direction, tp_ratio=tp_ratio
+                    )
+                    self.assertEqual(
+                        levels["reward_distance"],
+                        levels["risk_distance"] * tp_ratio,
+                        "reward_distance must be the product, exactly",
+                    )
+
+    def test_non_integer_ratios_behave_the_same(self) -> None:
+        for tp_ratio in (1.25, 1.75, 2.33, 2.75, 3.5):
+            with self.subTest(tp_ratio=tp_ratio):
+                levels = self._levels(
+                    entry=4257.775, wick=4250.0, direction="BUY", tp_ratio=tp_ratio
+                )
+                self.assertEqual(
+                    levels["reward_distance"], levels["risk_distance"] * tp_ratio
+                )
+                self.assertAlmostEqual(
+                    levels["reward_to_risk_ratio"], tp_ratio, places=12
+                )
+
+    def test_take_profit_is_unchanged_by_the_repair(self) -> None:
+        """U4 touches the reward only. The target construction is untouched."""
+        for direction, entry, wick, sign in (
+            ("BUY", 2500.0, 2490.0, 1.0), ("SELL", 2500.0, 2512.0, -1.0),
+        ):
+            with self.subTest(direction=direction):
+                levels = self._levels(
+                    entry=entry, wick=wick, direction=direction, tp_ratio=3.0
+                )
+                self.assertAlmostEqual(
+                    levels["take_profit"],
+                    levels["entry_price"] + sign * levels["risk_distance"] * 3.0,
+                    places=12,
+                )
+
+    def test_the_zero_risk_contract_is_unchanged(self) -> None:
+        """``rr`` is 0 when risk is not positive. Existing semantics, not new.
+
+        Reached when the stop anchor lands exactly on the entry: for a BUY the
+        stop is ``wick - 3.0``, so a wick 3.0 above the entry gives a zero-width
+        stop. U4 changes ``reward_distance`` from ``0.0`` (the old subtraction)
+        to ``0.0`` (``0.0 * tp_ratio``), and the guarded division still yields
+        ``0``. **No new semantics are introduced.**
+        """
+        levels = entry_engine.calculate_entry_levels(
+            entry_price=2500.0, sweep_wick_low=2503.0, direction="BUY", tp_ratio=3.0,
+        )
+        self.assertEqual(levels["risk_distance"], 0.0)
+        self.assertEqual(levels["reward_distance"], 0.0)
+        self.assertEqual(levels["reward_to_risk_ratio"], 0)
+
+    def test_a_missing_anchor_still_falls_back_to_the_atr_stop(self) -> None:
+        """Unchanged by U4, and pinned because it is easily mistaken for the
+        zero-risk path: with no wick and no structure the stop comes from ATR."""
+        levels = entry_engine.calculate_entry_levels(
+            entry_price=2500.0, direction="BUY", tp_ratio=3.0,
+        )
+        self.assertEqual(levels["risk_distance"], 30.0)
+        self.assertEqual(levels["reward_distance"], 90.0)
+        self.assertEqual(levels["reward_to_risk_ratio"], 3.0)
+
+
+class U4TheBoundaryCandidate(unittest.TestCase):
+    """The 2026-08-06 MICRO_SCALP candidate, before and after U4."""
+
+    ENTRY, STOP, TP_RATIO = 4257.775, 4255.11, 1.5
+
+    def test_the_old_reconstruction_fell_below_the_threshold(self) -> None:
+        """Preserved as history: what the lossy form produced."""
+        risk = abs(self.ENTRY - self.STOP)
+        old = abs((self.ENTRY + risk * self.TP_RATIO) - self.ENTRY) / risk
+        self.assertEqual(old, 1.4999999999998295)
+        self.assertLess(old, 1.5)
+
+    def test_the_construction_quantity_reaches_the_threshold(self) -> None:
+        """After U4 the same candidate evaluates from the product."""
+        risk = abs(self.ENTRY - self.STOP)
+        new = (risk * self.TP_RATIO) / risk
+        self.assertEqual(new, 1.5)
+        self.assertGreaterEqual(new, 1.5)
+
+    def test_the_gate_now_admits_it_on_rr(self) -> None:
+        """Its quality was already 10.0; rr was the failing term."""
+        risk = abs(self.ENTRY - self.STOP)
+        rr = (risk * self.TP_RATIO) / risk
+        result = entry_engine.evaluate_entry_for_regime(
+            {"trigger_quality": 10.0, "reward_to_risk_ratio": rr,
+             "entry_triggered": True},
+            {"regime": "MICRO_SCALP"},
+        )
+        self.assertTrue(result["entry_allowed"])
+
+    def test_the_boundary_is_narrowed_but_not_removed(self) -> None:
+        """**U4 does not make the comparison safe.**
+
+        ``(R * k) / R`` is not exactly ``k`` for every ``R``: it differs by one
+        ulp for a substantial minority of values. U4 shrinks the error from
+        ~1.7e-13 to ~2e-16, roughly three orders of magnitude, but MICRO_SCALP's
+        threshold still equals its own ``tp_ratio``, so a candidate can still
+        land one ulp below it.
+
+        Pinned so the repair is not mistaken for a fix to the threshold
+        coincidence, which is U9.
+        """
+        inexact = [
+            r for r in (45.365599541799085, 212.26534937936555, 473.85499413907826)
+            if (r * 1.5) / r != 1.5
+        ]
+        self.assertEqual(len(inexact), 3, "expected these to be inexact")
+        self.assertTrue(any((r * 1.5) / r < 1.5 for r in inexact),
+                        "at least one rounds down, i.e. would still be rejected")
