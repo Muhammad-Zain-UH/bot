@@ -484,6 +484,126 @@ class PinnedAggregateFingerprint(unittest.TestCase):
         self.assertGreater(effective["BUY"], initial["BUY"])
 
 
+class PinnedCorrectedL2Population(unittest.TestCase):
+    """Phase 6Q Part E: the corrected reversal population, and what it is not.
+
+    Phase 6O-E reported 174 reversals from a 1-in-10 sample. The population is
+    1,738. Critically, those are **decision-level** reversals: each H1 structure
+    break is re-decided once per M5 bar inside that hour, so 1,738 decisions
+    correspond to ~153 distinct H1 break states. This class asserts both numbers
+    and asserts that they are **not** the same thing.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        import json
+
+        cls.fingerprint = json.loads(
+            (REPO_ROOT / "tests" / "fixtures" / "behavior_fingerprint.json").read_text(
+                encoding="utf-8"
+            )
+        )
+
+    def test_sided_decision_count(self) -> None:
+        sides = self.fingerprint["effective_side"]
+        self.assertEqual(sides["BUY"] + sides["SELL"], 13343)
+
+    def test_reversal_count_and_rate(self) -> None:
+        self.assertEqual(self.fingerprint["reversals"]["count"], 1738)
+        self.assertAlmostEqual(self.fingerprint["reversals"]["pct_of_sided"], 13.0256, places=3)
+
+    def test_broken_count(self) -> None:
+        self.assertEqual(self.fingerprint["l2_structure_type"]["BROKEN"], 1745)
+
+    def test_rescue_failure_count(self) -> None:
+        self.assertEqual(self.fingerprint["blocked_at"]["L2_STRUCTURE"], 7)
+
+    def test_the_three_numbers_reconcile(self) -> None:
+        """1,745 BROKEN = 1,738 reversals + 7 rescue failures. No third outcome."""
+        self.assertEqual(
+            self.fingerprint["l2_structure_type"]["BROKEN"],
+            self.fingerprint["reversals"]["count"]
+            + self.fingerprint["blocked_at"]["L2_STRUCTURE"],
+        )
+
+    def test_decision_level_reversals_are_not_market_events(self) -> None:
+        """The distinction the brief requires: 1,738 decisions, ~153 H1 states."""
+        reversals = self.fingerprint["reversals"]
+        self.assertEqual(reversals["distinct_h1_states"], 153)
+        self.assertLess(
+            reversals["distinct_h1_states"], reversals["count"] / 10,
+            "distinct H1 states should be an order of magnitude below the decision count",
+        )
+
+    def test_a_reversal_run_spans_one_h1_bar(self) -> None:
+        """Twelve M5 decisions fit in an H1 bar, and the run length reaches twelve."""
+        run_length = self.fingerprint["reversals"]["run_length"]
+        self.assertEqual(run_length["max"], 12)
+        self.assertEqual(run_length["median"], 12)
+        self.assertGreaterEqual(run_length["min"], 1)
+
+    def test_the_seven_rescue_failures_share_one_h1_state(self) -> None:
+        self.assertEqual(self.fingerprint["l2_blocks"]["distinct_h1_states"], 1)
+
+
+class PinnedSideStateInconsistencyHasZeroExceptions(unittest.TestCase):
+    """Phase 6Q Part F: the stale-bias inconsistency, pinned exhaustively.
+
+    For **every** reversal: ``L1_INITIAL_SIDE != EFFECTIVE_SIDE`` and
+    ``BIAS_SIDE_USED_BY_L3 == L1_INITIAL_SIDE``. This is pinned so that a future
+    state-consistency repair (D-6OF-2) fails here and is recognised as an
+    intentional behavioural change rather than drift.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        import json
+
+        cls.matrix = json.loads(
+            (REPO_ROOT / "tests" / "fixtures" / "behavior_fingerprint.json").read_text(
+                encoding="utf-8"
+            )
+        )["side_state_matrix"]
+
+    @staticmethod
+    def _parse(key: str) -> tuple[str, str, str]:
+        parts = dict(piece.split("=", 1) for piece in key.split("|"))
+        return parts["L1"], parts["EFF"], parts["L3"]
+
+    def test_every_combination_present_is_one_of_exactly_five(self) -> None:
+        self.assertEqual(len(self.matrix), 5)
+
+    def test_l3_always_equals_l1_with_no_exception(self) -> None:
+        for key, count in self.matrix.items():
+            initial, _effective, used_by_l3 = self._parse(key)
+            with self.subTest(key=key, count=count):
+                self.assertEqual(
+                    used_by_l3, initial,
+                    "L3 now sees a side other than L1's -- D-6OF-2 may have been applied",
+                )
+
+    def test_no_combination_exists_where_l3_tracks_the_effective_side(self) -> None:
+        offenders = [
+            key for key in self.matrix
+            if (lambda triple: triple[1] != triple[0] and triple[2] == triple[1])(self._parse(key))
+        ]
+        self.assertEqual(offenders, [])
+
+    def test_the_reversed_combinations_account_for_every_reversal(self) -> None:
+        import json
+
+        fingerprint = json.loads(
+            (REPO_ROOT / "tests" / "fixtures" / "behavior_fingerprint.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        reversed_total = sum(
+            count for key, count in self.matrix.items()
+            if (lambda triple: triple[0] != triple[1] and triple[0] != "None")(self._parse(key))
+        )
+        self.assertEqual(reversed_total, fingerprint["reversals"]["count"])
+
+
 class PinnedVacuousTestInventory(unittest.TestCase):
     """Phase 6P section 14: tests that give false confidence, pinned as such.
 
