@@ -1053,7 +1053,17 @@ def analyze_entry(
         l6_data = analysis.get("layer_6", {})
         risk_pct = regime_info.get("risk_percent", 1.0)
         analysis["entry_signal"] = {
-            "position_type": "BUY" if bias["bias"] == "BULLISH" else "SELL",
+            # D-6OF-2A: the order direction must be the one the geometry was
+            # built for. `entry_price`, `stop_loss` and `take_profit` below all
+            # come from `entry`, which L8 produced for `side` -- the effective
+            # direction after any L2 BOS reversal. `bias` is the *pre-reversal*
+            # label and is never updated by the flip, so deriving the order side
+            # from it meant a reversed decision would have opened a trade in the
+            # original direction carrying a stop and target for the opposite one.
+            # `replay_engine` reads this field and nothing else to set the side.
+            # Never observed: no reversal has reached a signal. See
+            # docs/PHASE_6OF_2_SIDE_BIAS_STATE_AUDIT.md.
+            "position_type": side,
             "entry_price": entry.get("entry_price", 0),
             "stop_loss": entry.get("stop_loss", 0),
             "take_profit": entry.get("take_profit", 0),
