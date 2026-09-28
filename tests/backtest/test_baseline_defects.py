@@ -215,17 +215,25 @@ class TestEntryTriggerNoLongerRequiresValidRr(unittest.TestCase):
 
 
 class TestLondonNewYorkIsADeadSessionLabel(unittest.TestCase):
-    """D8: ``detect_regime`` gates on a session name that cannot occur.
+    """D8: a session name that cannot occur -- **partially closed by D-6N-1**.
 
-    ``detect_regime`` admits MICRO_SCALP when the kill zone is active *or* the
-    session is one of ``Asian``, ``London``, ``LondonNewYork``. The last of
-    those is never produced: ``risk_manager.get_current_session`` returns only
-    ``Asian``, ``London``, ``NewYork``, ``Dead`` or ``Closed``. The practical
-    effect is that during the New York session -- the most active gold hours --
-    MICRO_SCALP is reachable only when the kill zone happens to be open.
+    **Original defect.** ``detect_regime`` admitted MICRO_SCALP when the kill
+    zone was active *or* the session was one of ``Asian``, ``London``,
+    ``LondonNewYork``. The last of those is never produced:
+    ``risk_manager.get_current_session`` returns only ``Asian``, ``London``,
+    ``NewYork``, ``Dead`` or ``Closed``. The practical effect was that during
+    the New York session -- the most active gold hours -- MICRO_SCALP was
+    reachable only when the kill zone happened to be open.
 
     Established behaviourally, by enumerating every hour of every weekday under
     a frozen clock, rather than by reading the function.
+
+    **Resolution.** D-6N-1 removed the entire session disjunct from
+    ``detect_regime``, so the dead label no longer gates anything. That part of
+    D8 is closed. The label still exists at two other sites -- ``config.py``
+    (dead configuration) and ``main_production.get_session_name`` (a map entry
+    for a value that never arrives) -- so **D8 is not closed repo-wide**, and
+    those sites are pinned below rather than forgotten.
     """
 
     def test_session_function_never_returns_it(self) -> None:
@@ -247,10 +255,27 @@ class TestLondonNewYorkIsADeadSessionLabel(unittest.TestCase):
             "the set of reachable session names changed; revisit the dead-label claim",
         )
 
-    def test_detect_regime_still_references_it(self) -> None:
-        """If this stops matching, the defect was fixed and D8 can be closed."""
+    def test_detect_regime_no_longer_references_it(self) -> None:
+        """D-6N-1 removed the session disjunct, taking the dead label with it.
+
+        This assertion was inverted by that change, deliberately. Before it, the
+        test asserted the label was **still present** and carried the note "if
+        this stops matching, the defect was fixed and D8 can be closed". It has
+        stopped matching, so it is closed here -- for ``entry_engine`` only.
+        """
         source = ENTRY_ENGINE_SOURCE.read_text(encoding="utf-8")
-        self.assertIn("LondonNewYork", source)
+        self.assertNotIn("LondonNewYork", source)
+
+    def test_the_label_survives_outside_the_regime_classifier(self) -> None:
+        """D8 is not closed repo-wide: two sites still expect a dead value."""
+        root = ENTRY_ENGINE_SOURCE.parent
+        self.assertIn(
+            '"LondonNewYork": 0.70', (root / "config.py").read_text(encoding="utf-8")
+        )
+        self.assertIn(
+            '"LondonNewYork": "LONDON"',
+            (root / "main_production.py").read_text(encoding="utf-8"),
+        )
 
 
 class TestStopBufferIsAppliedInPriceUnits(unittest.TestCase):

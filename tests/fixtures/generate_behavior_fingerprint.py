@@ -5,14 +5,19 @@ Read-only. Calls production functions under the replay clock and reads the froze
 
     python tests/fixtures/generate_behavior_fingerprint.py
 
-Runs for roughly 20 minutes: it recomputes regime, bias and H1 structure for all
+Runs for roughly 40 minutes: it replays ``main_production.analyze_entry`` for all
 15,735 decisions. It is **not** invoked by the test suite -- the tests assert
 against the committed fingerprint and recompute only the cheap fields.
 
-Scope caveat: ``blocked_at`` / ``signal_type`` / ``passed`` come from the frozen
-stream, which was produced at commit ``7b702dd`` and predates U4. The
-reconstructed fields (regime, session, bias, side, structure) are computed with
-whatever code is checked out, and U4 did not touch any of them.
+**Provenance, corrected during D-6N-1.** An earlier version of this script read
+``blocked_at`` / ``signal_type`` / ``effective_side`` from the frozen
+``baseline_005`` stream while recomputing regime, bias and structure from HEAD.
+That mixture is only coherent while HEAD's strategy matches the stream's. When
+D-6N-1 changed the regime classifier it stopped being coherent: HEAD produced a
+side for 887 decisions the stream recorded as blocked at L1, so the derived
+"reversal" count became an artifact of comparing two different strategies rather
+than a measurement of either. Every field is now produced by **one HEAD replay**,
+so the fingerprint is internally consistent by construction.
 """
 
 from __future__ import annotations
@@ -31,6 +36,7 @@ from data.replay_feed import ReplayFeed
 
 import bias_engine
 import entry_engine
+import main_production
 import risk_manager
 import structure_engine
 from indicators import calculate_indicators
@@ -42,6 +48,7 @@ BAR_COUNTS = {
     Timeframe.H4: 100,
     Timeframe.M15: 50,
     Timeframe.M5: 100,
+    Timeframe.M1: 200,
 }
 
 
@@ -52,23 +59,16 @@ def _digest(payload) -> str:
 def collect() -> list[dict]:
     dataset = HistoricalDataset.from_directory(str(REPO_ROOT / "data" / "raw"), "XAUUSD")
     feed = ReplayFeed(dataset, spread_pips=2.0)
-    stream = REPO_ROOT / "baselines" / "baseline_005" / "decisions.jsonl"
-    frozen = {
-        row["t"]: row
-        for row in (json.loads(line) for line in stream.read_text(encoding="utf-8").splitlines())
-    }
 
     records: list[dict] = []
     for raw_time in feed.decision_times(Timeframe.M5, None, None):
         key = pd.Timestamp(raw_time).isoformat()
-        recorded = frozen.get(key)
-        if recorded is None:
-            continue
         moment = pd.Timestamp(raw_time).to_pydatetime()
         frames = {tf: feed.bars(tf, count, moment) for tf, count in BAR_COUNTS.items()}
         if any(len(frame) == 0 for frame in frames.values()):
             continue
 
+        price = feed.price_at(moment)
         with frozen_clock(moment):
             regime_info = entry_engine.detect_regime(
                 frames[Timeframe.M5], frames[Timeframe.M15], frames[Timeframe.H1],
@@ -76,6 +76,12 @@ def collect() -> list[dict]:
             )
             session = risk_manager.get_current_session()
             kill_zone = bool(entry_engine._within_kill_zone())
+            analysis = main_production.analyze_entry(
+                h4_data=frames[Timeframe.H4], h1_data=frames[Timeframe.H1],
+                m15_data=frames[Timeframe.M15], m5_data=frames[Timeframe.M5],
+                m1_data=frames[Timeframe.M1], daily_data=frames[Timeframe.D1],
+                current_price=price or 0.0, regime_info=regime_info,
+            )
 
         regime = str(regime_info.get("regime"))
         uses_fast_bias = regime in ("MICRO_SCALP", "REGIME_SCALP")
@@ -94,7 +100,7 @@ def collect() -> list[dict]:
 
         bias = str(bias_result.get("bias"))
         initial_side = None if bias == "NEUTRAL" else ("BUY" if bias.upper() == "BULLISH" else "SELL")
-        effective_side = recorded.get("side") or None
+        effective_side = analysis.get("direction") or None
 
         structure_type = h1_close = swing_low = swing_high = None
         if initial_side:
@@ -123,11 +129,14 @@ def collect() -> list[dict]:
             "h1_close": h1_close,
             "last_swing_low": swing_low,
             "last_swing_high": swing_high,
-            "blocked": recorded.get("blocked"),
-            "signal": recorded.get("signal"),
-            "passed": recorded.get("passed") or [],
-            "reason": recorded.get("reason", ""),
-            "price": recorded.get("price"),
+            "blocked": analysis.get("layer_failed"),
+            "signal": analysis.get("signal_type"),
+            "passed": analysis.get("layers_passed") or [],
+            "reason": analysis.get("fail_reason", ""),
+            "price": round(float(price), 6) if price else None,
+            "bos_flip": bool(analysis.get("bos_flip")),
+            "style": analysis.get("candidate_entry_style"),
+            "tp_ratio": regime_info.get("tp_ratio"),
         })
         if len(records) % 2000 == 0:
             print(f"  {len(records)}", flush=True)
@@ -175,6 +184,8 @@ def summarise(records: list[dict]) -> dict:
         "l2_structure_type": tally("l2_structure_type"),
         "blocked_at": tally("blocked"),
         "signal_type": tally("signal"),
+        "bos_flip": tally("bos_flip"),
+        "style": tally("style"),
         "reversals": {
             "count": len(reversals),
             "pct_of_sided": round(100 * len(reversals) / sided, 4),

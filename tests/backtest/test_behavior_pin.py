@@ -341,27 +341,58 @@ class PinnedRegimeAndSession(unittest.TestCase):
         with frozen_clock(saturday):
             self.assertTrue(entry_engine._within_kill_zone())
 
-    def test_dead_calm_is_the_else_branch_not_an_atr_test(self) -> None:
-        """A band-B ATR in an ineligible session classifies DEAD_CALM."""
+    def test_band_b_volatility_classifies_micro_scalp_regardless_of_session(self) -> None:
+        """D-6N-1: regime is volatility only; the session disjunct is gone.
+
+        **This assertion was inverted by D-6N-1, deliberately.** Before that
+        change a band-B ATR in an ineligible session produced ``DEAD_CALM``; it
+        now produces ``MICRO_SCALP``.
+
+        The instant is chosen so the premise cannot lapse: 2026-06-26 18:00 UTC
+        is the NewYork session, outside every kill zone, with a measured M5 ATR
+        of 4.337 -- squarely inside band B. The Phase 6P version of this test
+        guarded its assertion with ``if 2.5 <= atr <= 4.5`` at an instant whose
+        ATR is 5.147, so the assertion never ran and the test passed vacuously.
+        The guard is removed here; the band membership is asserted instead.
+        """
         import entry_engine
+        import risk_manager
         from backtest.clock_patch import frozen_clock
 
         feed = ReplayFeed(_dataset(), spread_pips=2.0)
-        # 18:00 UTC on a weekday is NewYork, outside every kill zone.
-        moment = datetime(2026, 8, 5, 18, 0, tzinfo=timezone.utc)
+        moment = datetime(2026, 6, 26, 18, 0, tzinfo=timezone.utc)
         frames = {
             timeframe: feed.bars(timeframe, count, moment)
             for timeframe, count in ((Timeframe.M5, 100), (Timeframe.M15, 50), (Timeframe.H1, 60))
         }
-        if any(len(frame) == 0 for frame in frames.values()):
-            self.skipTest("dataset does not cover the pinned instant")
+        self.assertTrue(all(len(frame) > 0 for frame in frames.values()))
+
         with frozen_clock(moment):
+            session = risk_manager.get_current_session()
+            kill_zone = entry_engine._within_kill_zone()
             info = entry_engine.detect_regime(
                 frames[Timeframe.M5], frames[Timeframe.M15], frames[Timeframe.H1], current_spread=2.0
             )
+
+        # The premise, asserted rather than assumed.
+        self.assertEqual(session, "NewYork")
+        self.assertFalse(kill_zone)
         atr = float(info["m5_atr"])
-        if 2.5 <= atr <= 4.5:
-            self.assertEqual(info["regime"], "DEAD_CALM")
+        self.assertGreaterEqual(atr, 2.5)
+        self.assertLessEqual(atr, 4.5)
+
+        # The contract D-6N-1 established.
+        self.assertEqual(info["regime"], "MICRO_SCALP")
+
+    def test_dead_calm_now_requires_genuinely_low_volatility(self) -> None:
+        """The inverse of the above: DEAD_CALM is reachable only below 2.5."""
+        import entry_engine
+
+        source = (REPO_ROOT / "entry_engine.py").read_text(encoding="utf-8")
+        self.assertIn("if m5_atr >= 2.5 and m5_atr <= 4.5:", source)
+        self.assertNotIn(
+            'and (kill_zone or session in {"Asian", "London", "LondonNewYork"})', source
+        )
 
 
 class PinnedL8Contract(unittest.TestCase):
@@ -419,27 +450,50 @@ class PinnedAggregateFingerprint(unittest.TestCase):
         self.assertEqual(len(self.decisions), 15735)
         self.assertEqual(self.fingerprint["decisions"], 15735)
 
-    def test_regime_distribution_matches_the_frozen_stream(self) -> None:
+    def test_the_frozen_stream_still_describes_baseline_005(self) -> None:
+        """Artifact-integrity check, independent of the fingerprint.
+
+        ``baseline_005`` is frozen at commit ``7b702dd``. These are *its* numbers
+        and they must never move. The fingerprint is no longer compared against
+        them: since D-6N-1 the fingerprint is a HEAD replay, and HEAD's strategy
+        differs from the one that produced this stream.
+        """
         import collections
 
-        counted = dict(collections.Counter(row["regime"] for row in self.decisions))
-        self.assertEqual(counted, self.fingerprint["regime"])
+        regimes = dict(collections.Counter(row["regime"] for row in self.decisions))
+        self.assertEqual(regimes, {
+            "DEAD_CALM": 2312, "INTRADAY_SWING": 1810,
+            "MICRO_SCALP": 5121, "REGIME_SCALP": 6492,
+        })
+        funnel = dict(collections.Counter(str(row.get("blocked")) for row in self.decisions))
+        self.assertEqual(funnel["L8_ENTRY"], 1265)
+        self.assertEqual(funnel["L1_BIAS"], 2392)
+        sides = dict(collections.Counter(str(row.get("side") or None) for row in self.decisions))
+        self.assertEqual(sides, {"BUY": 6693, "SELL": 6650, "None": 2392})
 
-    def test_layer_funnel_matches_the_frozen_stream(self) -> None:
-        import collections
+    def test_the_fingerprint_describes_current_head_after_d6n1(self) -> None:
+        """Post-D-6N-1 HEAD values. Every one of these moved, by design.
 
-        counted = dict(collections.Counter(str(row.get("blocked")) for row in self.decisions))
-        self.assertEqual(counted, self.fingerprint["blocked_at"])
+        PRE -> POST: DEAD_CALM 2,312 -> 119; MICRO_SCALP 5,121 -> 7,314;
+        L1_BIAS blocks 2,392 -> 1,505; L8_ENTRY blocks 1,261 -> 1,589.
+        REGIME_SCALP and INTRADAY_SWING are unchanged.
+        """
+        self.assertEqual(self.fingerprint["regime"], {
+            "DEAD_CALM": 119, "INTRADAY_SWING": 1810,
+            "MICRO_SCALP": 7314, "REGIME_SCALP": 6492,
+        })
+        self.assertEqual(self.fingerprint["blocked_at"]["L1_BIAS"], 1505)
+        self.assertEqual(self.fingerprint["blocked_at"]["L8_ENTRY"], 1589)
+        self.assertEqual(self.fingerprint["effective_side"],
+                         {"BUY": 7244, "SELL": 6986, "None": 1505})
 
-    def test_effective_side_matches_the_frozen_stream(self) -> None:
-        import collections
+    def test_the_signal_count_did_not_change(self) -> None:
+        """4 -> 4. A measurement; it is neither good nor bad."""
+        self.assertEqual(self.fingerprint["signal_type"]["ENTRY_SIGNAL"], 4)
 
-        # The frozen stream writes "" for a decision blocked at L1; the fingerprint
-        # records it as "None". Normalise the representation, not the counts.
-        counted = dict(
-            collections.Counter(str(row.get("side") or None) for row in self.decisions)
-        )
-        self.assertEqual(counted, self.fingerprint["effective_side"])
+    def test_the_regime_selects_the_bias_timeframe(self) -> None:
+        """The cascade: 2,193 decisions moved from the H4 engine to the H1 one."""
+        self.assertEqual(self.fingerprint["bias_timeframe"], {"H1": 13806, "H4": 1929})
 
     def test_every_broken_structure_either_flipped_or_is_one_of_the_seven(self) -> None:
         """1,745 BROKEN = 1,738 reversals + 7 L2 blocks. The identity, at scale."""
@@ -464,16 +518,21 @@ class PinnedAggregateFingerprint(unittest.TestCase):
             self.fingerprint["reversals"]["count"],
         )
 
-    def test_the_seven_l2_blocks_are_one_market_event(self) -> None:
-        self.assertEqual(self.fingerprint["l2_blocks"]["decisions"], 7)
+    def test_the_l2_blocks_are_still_one_market_event(self) -> None:
+        """7 -> 12 decisions, but the same single H1 state and reason string."""
+        self.assertEqual(self.fingerprint["l2_blocks"]["decisions"], 12)
         self.assertEqual(self.fingerprint["l2_blocks"]["distinct_h1_states"], 1)
         self.assertEqual(len(self.fingerprint["l2_blocks"]["distinct_reasons"]), 1)
 
     def test_reversals_are_runs_not_independent_events(self) -> None:
-        """1,738 M5 reversals correspond to 153 distinct H1 states."""
+        """Post-D-6N-1: 1,845 M5 reversals over 157 distinct H1 states.
+
+        Was 1,738 over 153. The rise follows from 887 more decisions passing L1
+        and therefore reaching L2 at all -- not from any change to L2 itself.
+        """
         reversals = self.fingerprint["reversals"]
-        self.assertEqual(reversals["count"], 1738)
-        self.assertEqual(reversals["distinct_h1_states"], 153)
+        self.assertEqual(reversals["count"], 1845)
+        self.assertEqual(reversals["distinct_h1_states"], 157)
         self.assertEqual(reversals["run_length"]["max"], 12)
 
     def test_the_reversal_mechanism_rebalances_the_side_mix(self) -> None:
@@ -505,18 +564,22 @@ class PinnedCorrectedL2Population(unittest.TestCase):
         )
 
     def test_sided_decision_count(self) -> None:
+        """13,343 -> 14,230: 887 fewer L1 blocks under the H1 bias engine."""
         sides = self.fingerprint["effective_side"]
-        self.assertEqual(sides["BUY"] + sides["SELL"], 13343)
+        self.assertEqual(sides["BUY"] + sides["SELL"], 14230)
 
     def test_reversal_count_and_rate(self) -> None:
-        self.assertEqual(self.fingerprint["reversals"]["count"], 1738)
-        self.assertAlmostEqual(self.fingerprint["reversals"]["pct_of_sided"], 13.0256, places=3)
+        """1,738 -> 1,845, while the rate barely moves: 13.03% -> 12.97%."""
+        self.assertEqual(self.fingerprint["reversals"]["count"], 1845)
+        self.assertAlmostEqual(self.fingerprint["reversals"]["pct_of_sided"], 12.9656, places=3)
 
     def test_broken_count(self) -> None:
-        self.assertEqual(self.fingerprint["l2_structure_type"]["BROKEN"], 1745)
+        """1,745 -> 1,857."""
+        self.assertEqual(self.fingerprint["l2_structure_type"]["BROKEN"], 1857)
 
     def test_rescue_failure_count(self) -> None:
-        self.assertEqual(self.fingerprint["blocked_at"]["L2_STRUCTURE"], 7)
+        """7 -> 12 decisions, still one H1 state."""
+        self.assertEqual(self.fingerprint["blocked_at"]["L2_STRUCTURE"], 12)
 
     def test_the_three_numbers_reconcile(self) -> None:
         """1,745 BROKEN = 1,738 reversals + 7 rescue failures. No third outcome."""
@@ -527,9 +590,9 @@ class PinnedCorrectedL2Population(unittest.TestCase):
         )
 
     def test_decision_level_reversals_are_not_market_events(self) -> None:
-        """The distinction the brief requires: 1,738 decisions, ~153 H1 states."""
+        """The distinction that must survive: 1,845 decisions, 157 H1 states."""
         reversals = self.fingerprint["reversals"]
-        self.assertEqual(reversals["distinct_h1_states"], 153)
+        self.assertEqual(reversals["distinct_h1_states"], 157)
         self.assertLess(
             reversals["distinct_h1_states"], reversals["count"] / 10,
             "distinct H1 states should be an order of magnitude below the decision count",
@@ -542,7 +605,7 @@ class PinnedCorrectedL2Population(unittest.TestCase):
         self.assertEqual(run_length["median"], 12)
         self.assertGreaterEqual(run_length["min"], 1)
 
-    def test_the_seven_rescue_failures_share_one_h1_state(self) -> None:
+    def test_the_rescue_failures_share_one_h1_state(self) -> None:
         self.assertEqual(self.fingerprint["l2_blocks"]["distinct_h1_states"], 1)
 
 

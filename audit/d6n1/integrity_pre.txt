@@ -1,0 +1,6 @@
+=== PRE-CHANGE INTEGRITY REFERENCE ===
+HEAD: 1560c90
+baseline_004: run_fingerprint=1276a31f673a5a82b2879ea5113b12e486da0d2491d0
+baseline_005: run_fingerprint=1276a31f673a5a82b2879ea5113b12e486da0d2491d0
+"dataset_hash": "433b7e2713babdef2ea69909a8bc6a515292dc70b0db434c0b63c256a970b07c"
+git status baselines/ data/: 0 entries

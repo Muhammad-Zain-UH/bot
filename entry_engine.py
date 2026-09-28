@@ -72,7 +72,24 @@ def detect_regime(
 
         max_spread_pips = 10.0
 
-        if m5_atr >= 2.5 and m5_atr <= 4.5 and (kill_zone or session in {"Asian", "London", "LondonNewYork"}):
+        # D-6N-1: regime is a volatility classification, session is a separate
+        # eligibility question. The session disjunct that used to sit here made
+        # them one test, and its failure did not produce "not eligible" -- it fell
+        # through to the else and produced DEAD_CALM, a *different volatility
+        # claim*. Measured over the frozen dataset, 2,193 of DEAD_CALM's 2,312
+        # decisions were band-B volatility in an ineligible session, so the label
+        # was wrong for 94.85% of the regime.
+        #
+        # `architecture.txt` classifies every regime on "M5 ATR Cond." alone and
+        # puts session eligibility at L0; the disjunct appears in no document.
+        # This restores that separation and nothing else. Session and kill zone
+        # remain computed, remain in the returned dict, and remain in the
+        # reasoning string; MOMENTUM entries are still kill-zone gated, which is
+        # what actually keeps out-of-session bars from triggering.
+        #
+        # See docs/PHASE_6N_REGIME_SESSION_CONTRACT_DECISION.md and
+        # docs/D_6N_1_REGIME_SESSION_SEPARATION.md.
+        if m5_atr >= 2.5 and m5_atr <= 4.5:
             regime = "MICRO_SCALP"
             risk = 0.75
             tp_ratio = 1.5
