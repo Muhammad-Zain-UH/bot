@@ -124,7 +124,8 @@ def collect() -> list[dict]:
             "l1_initial_side": initial_side,
             "effective_side": effective_side,
             "reversed": bool(initial_side and effective_side and initial_side != effective_side),
-            "bias_side_used_by_l3": initial_side,
+            # D-6OF-2B: L3 receives the effective post-L2 direction.
+            "bias_side_used_by_l3": effective_side,
             "l2_structure_type": structure_type,
             "h1_close": h1_close,
             "last_swing_low": swing_low,

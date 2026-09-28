@@ -16,13 +16,13 @@
   "blocked_at": {
     "L1_BIAS": 1505,
     "L2_STRUCTURE": 12,
-    "L3_PULLBACK": 5066,
-    "L4_LIQUIDITY": 743,
-    "L5_SWEEP": 3060,
-    "L5_SWEEP_WAIT": 1936,
+    "L3_PULLBACK": 5094,
+    "L4_LIQUIDITY": 725,
+    "L5_SWEEP": 3037,
+    "L5_SWEEP_WAIT": 1935,
     "L6_POI": 1,
-    "L7_CONFIDENCE": 1825,
-    "L8_ENTRY": 1583,
+    "L7_CONFIDENCE": 1833,
+    "L8_ENTRY": 1589,
     "None": 4
   },
   "bos_flip": {
@@ -30,8 +30,8 @@
     "True": 1845
   },
   "checksums": {
-    "full_record": "1fd5c41ca35b7e22abbafc436d9a57f3e0f4707d1d185b14d5271d3a60079109",
-    "layer_outcome": "31483740e3dc547416835282e8a925e66bf87a0f6f4fd7eeca7fc5a0829a8b8b",
+    "full_record": "561510d090b6dadf0f6f80c03748b64c8f40584b39942014da4cdbd4d728d809",
+    "layer_outcome": "3587bf85188eef1c31af38152bfed0ebee66f9cfb8b405c0c833d5f744d589a0",
     "regime_session_side": "41c1f31ad68113a5a24467437656d2320fad67ad00f15d46c7b483daa84d70dd",
     "reversal_set": "28ddba838a42b37ff2878a39739030874a69950f27a650b2605568875930cf3a"
   },
@@ -100,12 +100,12 @@
       "min": 1
     },
     "terminal_layer": {
-      "L3_PULLBACK": 872,
-      "L4_LIQUIDITY": 163,
-      "L5_SWEEP": 254,
-      "L5_SWEEP_WAIT": 129,
-      "L7_CONFIDENCE": 183,
-      "L8_ENTRY": 244
+      "L3_PULLBACK": 900,
+      "L4_LIQUIDITY": 145,
+      "L5_SWEEP": 231,
+      "L5_SWEEP_WAIT": 128,
+      "L7_CONFIDENCE": 191,
+      "L8_ENTRY": 250
     }
   },
   "session": {
@@ -117,9 +117,9 @@
   },
   "side_state_matrix": {
     "L1=BUY|EFF=BUY|L3=BUY": 6169,
-    "L1=BUY|EFF=SELL|L3=SELL": 770,
+    "L1=BUY|EFF=SELL|L3=BUY": 770,
     "L1=None|EFF=None|L3=None": 1505,
-    "L1=SELL|EFF=BUY|L3=BUY": 1075,
+    "L1=SELL|EFF=BUY|L3=SELL": 1075,
     "L1=SELL|EFF=SELL|L3=SELL": 6216
   },
   "signal_type": {
@@ -129,7 +129,7 @@
   "style": {
     "MOMENTUM": 6824,
     "None": 1505,
-    "PULLBACK": 2328,
-    "PULLBACK / MOMENTUM": 5078
+    "PULLBACK": 2300,
+    "PULLBACK / MOMENTUM": 5106
   }
 }

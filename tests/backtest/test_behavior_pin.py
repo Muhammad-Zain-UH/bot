@@ -88,8 +88,17 @@ class PinnedSideStateConsistency(unittest.TestCase):
             "update this pin deliberately",
         )
 
-    def test_l3_is_called_with_the_stale_bias(self) -> None:
-        """L3 receives `bias["bias"]`, not `side`, so it sees the pre-flip direction."""
+    def test_l3_is_called_with_the_effective_direction(self) -> None:
+        """D-6OF-2B: L3 evaluates the direction the pipeline is actually trading.
+
+        **This assertion was inverted by D-6OF-2B, deliberately.** It previously
+        asserted that L3 received ``bias["bias"]`` -- the pre-L2 label the BOS flip
+        never updates -- and was named ``test_l3_is_called_with_the_stale_bias``.
+
+        The contract now: ``architecture.txt`` documents the flip as flipping the
+        bias (760-761) and L3's purpose as *"identify quality pullbacks in the
+        direction of the bias"* (765). The two compose to the effective side.
+        """
         calls = [
             ast.unparse(node)
             for node in ast.walk(self.analyze)
@@ -99,10 +108,32 @@ class PinnedSideStateConsistency(unittest.TestCase):
         ]
         self.assertTrue(calls, "get_m15_pullback is no longer called from analyze_entry")
         for call in calls:
-            self.assertIn(
-                "bias['bias']", call.replace('"', "'"),
-                f"L3 no longer reads the stale bias: {call}",
+            normalised = call.replace('"', "'")
+            self.assertNotIn(
+                "bias['bias']", normalised,
+                f"L3 is reading the stale bias again: {call}",
             )
+            self.assertIn(
+                "effective_bias_label", normalised,
+                f"L3 is not reading the effective direction: {call}",
+            )
+
+    def test_the_effective_label_is_derived_from_side(self) -> None:
+        """The bridge must come from ``side``, not from a second direction state."""
+        assignments = [
+            ast.unparse(node)
+            for node in ast.walk(self.analyze)
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(t, ast.Name) and t.id == "effective_bias_label"
+                for t in node.targets
+            )
+        ]
+        self.assertEqual(len(assignments), 1, f"expected one derivation, got {assignments}")
+        normalised = assignments[0].replace('"', "'")
+        self.assertIn("side == 'BUY'", normalised)
+        self.assertIn("'BULLISH'", normalised)
+        self.assertIn("'BEARISH'", normalised)
 
     def test_layer_1_record_is_not_corrected_by_the_flip(self) -> None:
         """`analysis["layer_1"]` keeps the original bias after a reversal."""
@@ -474,16 +505,19 @@ class PinnedAggregateFingerprint(unittest.TestCase):
     def test_the_fingerprint_describes_current_head_after_d6n1(self) -> None:
         """Post-D-6N-1 HEAD values. Every one of these moved, by design.
 
-        PRE -> POST: DEAD_CALM 2,312 -> 119; MICRO_SCALP 5,121 -> 7,314;
+        D-6N-1: DEAD_CALM 2,312 -> 119; MICRO_SCALP 5,121 -> 7,314;
         L1_BIAS blocks 2,392 -> 1,505; L8_ENTRY blocks 1,261 -> 1,589.
-        REGIME_SCALP and INTRADAY_SWING are unchanged.
+        D-6OF-2B then moved the L3-and-downstream funnel without touching regime
+        or L1: L3 5,094 -> 5,066, L4 725 -> 743, L5 3,037 -> 3,060,
+        L7 1,833 -> 1,825, L8 1,589 -> 1,583.
         """
         self.assertEqual(self.fingerprint["regime"], {
             "DEAD_CALM": 119, "INTRADAY_SWING": 1810,
             "MICRO_SCALP": 7314, "REGIME_SCALP": 6492,
         })
         self.assertEqual(self.fingerprint["blocked_at"]["L1_BIAS"], 1505)
-        self.assertEqual(self.fingerprint["blocked_at"]["L8_ENTRY"], 1589)
+        self.assertEqual(self.fingerprint["blocked_at"]["L8_ENTRY"], 1583)
+        self.assertEqual(self.fingerprint["blocked_at"]["L3_PULLBACK"], 5066)
         self.assertEqual(self.fingerprint["effective_side"],
                          {"BUY": 7244, "SELL": 6986, "None": 1505})
 
@@ -502,16 +536,20 @@ class PinnedAggregateFingerprint(unittest.TestCase):
         l2_blocks = self.fingerprint["blocked_at"]["L2_STRUCTURE"]
         self.assertEqual(broken, reversals + l2_blocks)
 
-    def test_l3_always_sees_the_pre_flip_side(self) -> None:
-        """For every reversal: L1 != EFFECTIVE, and L3 == L1. No exceptions."""
+    def test_l3_always_sees_the_effective_side(self) -> None:
+        """D-6OF-2B: for every reversal L1 != EFFECTIVE, and **L3 == EFFECTIVE**.
+
+        Inverted by D-6OF-2B. It previously asserted ``L3 == L1`` and was named
+        ``test_l3_always_sees_the_pre_flip_side``.
+        """
         matrix = self.fingerprint["side_state_matrix"]
         reversed_keys = [
             key for key in matrix
             if key.startswith("L1=BUY|EFF=SELL") or key.startswith("L1=SELL|EFF=BUY")
         ]
         self.assertEqual(sorted(reversed_keys), [
-            "L1=BUY|EFF=SELL|L3=BUY",
-            "L1=SELL|EFF=BUY|L3=SELL",
+            "L1=BUY|EFF=SELL|L3=SELL",
+            "L1=SELL|EFF=BUY|L3=BUY",
         ])
         self.assertEqual(
             sum(matrix[key] for key in reversed_keys),
@@ -609,13 +647,18 @@ class PinnedCorrectedL2Population(unittest.TestCase):
         self.assertEqual(self.fingerprint["l2_blocks"]["distinct_h1_states"], 1)
 
 
-class PinnedSideStateInconsistencyHasZeroExceptions(unittest.TestCase):
-    """Phase 6Q Part F: the stale-bias inconsistency, pinned exhaustively.
+class PinnedSideStateConsistencyHasZeroExceptions(unittest.TestCase):
+    """D-6OF-2B: L3 now follows the effective side, on every decision.
 
-    For **every** reversal: ``L1_INITIAL_SIDE != EFFECTIVE_SIDE`` and
-    ``BIAS_SIDE_USED_BY_L3 == L1_INITIAL_SIDE``. This is pinned so that a future
-    state-consistency repair (D-6OF-2) fails here and is recognised as an
-    intentional behavioural change rather than drift.
+    **This class was inverted by D-6OF-2B, deliberately.** It previously asserted
+    the inconsistency -- ``BIAS_SIDE_USED_BY_L3 == L1_INITIAL_SIDE`` on every
+    reversal -- and was named ``PinnedSideStateInconsistencyHasZeroExceptions``.
+
+    It now asserts the repaired contract: ``BIAS_SIDE_USED_BY_L3 ==
+    L2_EFFECTIVE_SIDE`` with no exceptions. ``bias`` and ``bias_strength`` are
+    still **not** reassigned by the flip -- that remains open as D-6OF-2 model 2/3
+    -- so ``analysis["layer_1"]`` and L7's ``bias_strength`` still carry the
+    pre-flip values. Only L3's direction input changed.
     """
 
     @classmethod
@@ -636,21 +679,21 @@ class PinnedSideStateInconsistencyHasZeroExceptions(unittest.TestCase):
     def test_every_combination_present_is_one_of_exactly_five(self) -> None:
         self.assertEqual(len(self.matrix), 5)
 
-    def test_l3_always_equals_l1_with_no_exception(self) -> None:
+    def test_l3_always_equals_the_effective_side_with_no_exception(self) -> None:
         for key, count in self.matrix.items():
-            initial, _effective, used_by_l3 = self._parse(key)
+            initial, effective, used_by_l3 = self._parse(key)
             with self.subTest(key=key, count=count):
                 self.assertEqual(
-                    used_by_l3, initial,
-                    "L3 now sees a side other than L1's -- D-6OF-2 may have been applied",
+                    used_by_l3, effective,
+                    "L3 is not tracking the effective side -- D-6OF-2B regressed",
                 )
 
-    def test_no_combination_exists_where_l3_tracks_the_effective_side(self) -> None:
+    def test_no_combination_exists_where_l3_tracks_the_abandoned_side(self) -> None:
         offenders = [
             key for key in self.matrix
-            if (lambda triple: triple[1] != triple[0] and triple[2] == triple[1])(self._parse(key))
+            if (lambda triple: triple[1] != triple[0] and triple[2] == triple[0])(self._parse(key))
         ]
-        self.assertEqual(offenders, [])
+        self.assertEqual(offenders, [], "L3 is reading the pre-flip direction again")
 
     def test_the_reversed_combinations_account_for_every_reversal(self) -> None:
         import json

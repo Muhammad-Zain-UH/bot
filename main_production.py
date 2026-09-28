@@ -794,7 +794,18 @@ def analyze_entry(
         # ============ LAYER 3: M15 PULLBACK ============
         bypass_l3 = bool(regime_info.get("bypass_l3", False)) if regime_info else False
 
-        pullback = get_m15_pullback(m15_data, bias["bias"]) if callable(get_m15_pullback) and m15_data is not None else None
+        # D-6OF-2B: L3 evaluates the direction the pipeline is actually trading.
+        # `bias` is L1's pre-L2 label and the BOS flip never updates it, so before
+        # this change a reversed decision asked L3 to find a retracement of an
+        # impulse in the direction the pipeline had just abandoned. `architecture.txt`
+        # documents the flip as flipping the bias (760-761) and L3's purpose as
+        # "identify quality pullbacks in the direction of the bias" (765); the two
+        # compose to the effective side. The BUY/SELL -> BULLISH/BEARISH mapping is
+        # the same one the flip block already uses at line 764.
+        # This is a strategy-contract change, not a correctness repair. See
+        # docs/PHASE_6OF_2_SIDE_BIAS_STATE_AUDIT.md and D-6OB-1/2, D-6OF-2C.
+        effective_bias_label = "BULLISH" if side == "BUY" else "BEARISH"
+        pullback = get_m15_pullback(m15_data, effective_bias_label) if callable(get_m15_pullback) and m15_data is not None else None
         pullback_quality = pullback.get("pullback_quality", 0.0) if pullback else 0.0
         pullback_detected = pullback.get("pullback_detected", False) if pullback else False
         pullback_reason = pullback.get("reasoning", "No pullback details available") if pullback else "No pullback details available"
