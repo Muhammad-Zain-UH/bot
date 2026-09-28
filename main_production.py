@@ -809,6 +809,19 @@ def analyze_entry(
         pullback_quality = pullback.get("pullback_quality", 0.0) if pullback else 0.0
         pullback_detected = pullback.get("pullback_detected", False) if pullback else False
         pullback_reason = pullback.get("reasoning", "No pullback details available") if pullback else "No pullback details available"
+        # HISTORICAL RESIDUE -- INERT AT HEAD. Do not read this as an active
+        # independent threshold, and do not tune it.
+        #   Origin: the gate at c3cf4df was `not pullback or quality < 1.5`, with
+        #   1.5 the operative threshold and `pullback_detected` NOT a gate (it
+        #   only chose the PRE_ENTRY log line). The value was itself the result of
+        #   a deliberate lowering ("FIX #2 (PHASE 5)").
+        #   Why it is now inert: the gate below also requires pullback_detected,
+        #   and detection requires 0.236 <= retracement <= 0.786, which floors the
+        #   base quality at 4.0 with only non-negative bonuses on top. So reaching
+        #   the `< MIN_PULLBACK_QUALITY` comparison guarantees quality >= 4.0 and
+        #   it can never fire -- measured 0 times in 15,735 decisions (L3-D5).
+        #   Retained for historical traceability. The implication that makes it
+        #   inert is pinned by tests/backtest/test_l3_quality_invariant.py.
         MIN_PULLBACK_QUALITY = 1.5
 
         analysis["momentum_fallback"] = False

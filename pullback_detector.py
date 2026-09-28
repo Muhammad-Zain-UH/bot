@@ -1,24 +1,71 @@
 """LAYER 3: M15 PULLBACK PHASE DETECTOR - Identifies retracement opportunities.
 
-Pullback Detection Rules for XAUUSD:
+Evaluates the **effective post-L2 direction** (D-6OF-2B), not L1's pre-flip bias.
 
-IN BULLISH BIAS:
-- M15 closes turn from bullish to bearish (EMA20 cross below EMA50)
-- M15 printing LH/LL temporarily (reversal phase)
-- Volume on down candles < volume on up candles (weak selling)
-- Pullback depth ≤ 0.618 fib of last bullish move (not too deep)
+The rules below describe HEAD. An earlier version of this docstring described an
+EMA20/EMA50 crossover, a directional up-candle/down-candle volume comparison and
+a hard 0.618 depth maximum -- three rules inherited from predecessor modules that
+this module never implemented. They were corrected in D-6OF-2H; the historical
+evidence is in docs/PHASE_6O_B_L3_PULLBACK_DEEP_AUDIT.md and the D-6OF-2D/2E/2F
+investigations. Nothing about the implementation changed.
 
-IN BEARISH BIAS:
-- M15 closes turn from bearish to bullish temporarily
-- M15 printing HH/HL temporarily
-- Volume on up candles < volume on down candles (weak buying)
-- Pullback depth ≤ 0.618 fib of last bearish move
+RETRACEMENT DEPTH
+- Accepted band: 0.236 <= pullback_percent <= 0.786, inclusive at both ends.
+- Ideal zone:       0.382 <= p <= 0.618  -> base quality 5.5
+- Shallow shoulder: 0.236 <= p <  0.382  -> base quality 4.0
+- Deep shoulder:    0.618 <  p <= 0.786  -> base quality 4.0
+- Rejected: p < 0.236 or p > 0.786.
+- **0.618 is NOT a hard rejection boundary.** It is the upper edge of the
+  highest-quality zone only; 0.618-0.786 is accepted and scored 4.0. The
+  predecessor's hard 0.618 gate in technical_engine.py was deliberately made
+  non-blocking (FIX #5) in the same commit that created this module.
+- **0.786 provenance is UNRESOLVED.** The five ratios were inherited wholesale
+  from fibonacci_levels.py as the standard Fibonacci level set, and the accepted
+  band is exactly [min, max] of that set. No repository evidence explains why
+  78.6% was selected as the acceptance ceiling. Do not invent a rationale.
 
-PULLBACK QUALITY SCORING (0-10):
-- Ideal pullback zone (38%-62% retracement): highest score
-- Structure confirmation (LH/LL or HH/HL against the bias): required for a strong score
-- Volume contracting into the pullback: adds confidence
-- RSI stretched into the opposite extreme: adds confidence
+STRUCTURE
+- `is_making_lh_ll` -- counter-trend fractal against the effective direction --
+  contributes +3.0 to quality. It is a bonus, not a requirement.
+
+VOLUME
+- Scored from **temporal contraction across the pullback window**: the mean of
+  the window's last 3 bars against the mean of its first 3 (`_volume_context`).
+  declining (< 0.9x) -> +1.5 | stable -> +0.5 | rising (> 1.1x) -> +0.0
+- It is **direction-blind**. It does not compare up-candle volume against
+  down-candle volume, and no such comparison exists in this module.
+- Volume is **not a standalone gate**. `volume_warning` is emitted for reporting
+  only; nothing in the production path (main_production.py) reads it.
+
+RSI
+- RSI stretched into the opposite extreme (overbought/oversold) -> +1.0
+
+EMA
+- When `ema20` and `ema50` are both present on the frame, alignment of
+  (ema20 vs ema50) and (close vs ema20) with the expected direction adds +0.5.
+- This is an **alignment bonus, not an EMA20/EMA50 crossover gate.** No crossover
+  condition is implemented anywhere in this module.
+- It is **currently inert**: the raw M15 frame L3 receives carries no
+  `ema20`/`ema50` columns, so the branch does not fire in the production path.
+
+PULLBACK DETECTION
+    pullback_detected = (0.236 <= p <= 0.786)
+                        AND (is_making_lh_ll OR quality >= 5.0)
+- Detection is **not purely structural**. Since FIX (PULLBACK-1) a sufficiently
+  high composite quality substitutes for the fractal confirmation, so the flag is
+  structural on one disjunct and quality-derived on the other.
+
+QUALITY (0-10)
+- Base 5.5 / 4.0 / 1.0 (p < 0.236) / 2.5 (p > 0.786), plus the non-negative
+  bonuses above, capped at 10.0. Every early return yields 0.0 with
+  pullback_detected=False.
+- Consequence, pinned by tests/backtest/test_l3_quality_invariant.py:
+  **pullback_detected == True implies pullback_quality >= 4.0**, because the
+  accepted band floors the base score at 4.0 and no bonus is negative.
+
+The downstream admission gate in main_production.py requires a pullback result
+AND pullback_detected AND pullback_quality >= MIN_PULLBACK_QUALITY. That
+both-detection-and-quality gate is intentional; see the note at its definition.
 """
 
 from __future__ import annotations

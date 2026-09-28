@@ -235,10 +235,15 @@ graph TB
 │  │                                                                    │   │
 │  │ Standard Rules (when not bypassed):                                │   │
 │  │ • Detect counter-trend phase on M15                                │   │
-│  │ • Bullish: EMA20 cross below EMA50 + LH/LL printing                │   │
-│  │ • Bearish: EMA20 cross above EMA50 + HH/HL printing                │   │
-│  │ • Volume declining into pullback (good)                            │   │
-│  │ • Fib depth 38%-62% ideal                                          │   │
+│  │ • Retracement accepted 23.6%-78.6% of the last impulse             │   │
+│  │ • Ideal zone 38.2%-61.8% -> top base score (5.5)                   │   │
+│  │ • 61.8% is the ideal-zone edge, NOT a rejection cutoff             │   │
+│  │ • 61.8%-78.6% accepted, scored 4.0                                 │   │
+│  │ • Structure LH/LL / HH/HL: +3.0 bonus, NOT required                │   │
+│  │ • Volume contraction over window: +1.5/+0.5/+0.0                   │   │
+│  │   (temporal, direction-blind; not a standalone gate)               │   │
+│  │ • EMA alignment +0.5 -- NOT an EMA20/50 crossover;                 │   │
+│  │   inert: raw M15 frame carries no ema20/ema50                      │   │
 │  │                                                                    │   │
 │  │ Output: pullback_detected (bool) + quality (0.0-10.0)              │   │
 │  │         + volume_warning flag                                       │   │
@@ -246,7 +251,7 @@ graph TB
 │                                │                                            │
 │                     NOT DETECTED ────┘                                       │
 │                      BLOCK → return analysis                                 │
-│                      QUALITY < 1.5 → BLOCK                                   │
+│                      QUALITY < 1.5 → inert, cannot fire (L3-D5)              │
 │                      PASS → continue                                         │
 └─────────────────────────────────────────────────────────────────────────────┘
 

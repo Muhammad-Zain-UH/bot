@@ -223,10 +223,15 @@ L3: M15 PULLBACK
   |                                                                  |
   | Standard Rules (when not bypassed):                              |
   | * Detect counter-trend phase on M15                              |
-  | * Bullish: EMA20 cross below EMA50 + LH/LL printing              |
-  | * Bearish: EMA20 cross above EMA50 + HH/HL printing              |
-  | * Volume declining into pullback (good)                          |
-  | * Fib depth 38%-62% ideal                                        |
+  | * Retracement accepted 23.6%-78.6% of the last impulse           |
+  | * Ideal zone 38.2%-61.8% -> top base score (5.5)                 |
+  | * 61.8% is the ideal-zone edge, NOT a rejection cutoff           |
+  | * 61.8%-78.6% accepted, scored 4.0                               |
+  | * Structure LH/LL / HH/HL: +3.0 bonus, NOT required              |
+  | * Volume contraction over the window: +1.5/+0.5/+0.0             |
+  |   (temporal, direction-blind; not a standalone gate)             |
+  | * EMA alignment +0.5 -- NOT an EMA20/50 crossover, and           |
+  |   inert: the raw M15 frame carries no ema20/ema50                |
   |                                                                  |
   | Output: pullback_detected (bool) + quality (0.0-10.0)            |
   |         + volume_warning flag                                     |
@@ -234,7 +239,7 @@ L3: M15 PULLBACK
                                 |
                      NOT DETECTED --+
                       BLOCK -> return analysis
-                      QUALITY < 1.5 -> BLOCK
+                      QUALITY < 1.5 -> inert, cannot fire (L3-D5)
                       PASS -> continue
                                 |
                                 v
@@ -566,8 +571,8 @@ ACTIVE_TRADES_FILE = "active_trades.json"
 | L0    | main_production.py      | check_pre_trade_gates()         | Daily loss OK + session valid          | Daily loss exceeded, DEAD session                |
 | L1    | bias_engine.py          | get_h4_bias()                   | BULLISH or BEARISH                     | NEUTRAL                                          |
 | L2    | structure_engine.py     | get_h1_structure()              | VALID or UNKNOWN                       | BROKEN, DEAD CALM (ATR<8)                        |
-| L3    | pullback_detector.py    | get_m15_pullback()              | detected=True, quality>=1.5 OR        | detected=False, quality<1.5                      |
-|       |                         |                                 | bypass_l3                              |                                                   |
+| L3    | pullback_detector.py    | get_m15_pullback()              | detected=True AND quality>=1.5 (the    | detected=False. quality<1.5 is inert --          |
+|       |                         |                                 | latter is implied), or bypass_l3       | it cannot fire once detected=True (L3-D5).       |
 | L4    | liquidity_engine.py     | assess_liquidity_gate()         | State=PASS                             | State=BLOCK                                      |
 | L5    | sweep_detector.py       | get_sweep_and_structure()       | sweep_confirmed=True, direction        | gate_state=WATCH, not confirmed, wrong direction |
 |       |                         |                                 | matches                                |                                                   |
@@ -768,8 +773,12 @@ L3 - M15 Pullback (pullback_detector.py)
     - Momentum Fallback: REGIME_SCALP without pullback gets a stricter
       momentum check (2+ consecutive M5 closes, volume above baseline,
       RSI band 55-75/25-45, distance < 1.2x ATR).
-    - Standard pullback: Fib 38-62% retracement, EMA20/50 cross,
-      volume declining.
+    - Standard pullback: retracement accepted 23.6%-78.6%, with
+      38.2%-61.8% the ideal (highest-scoring) zone -- 61.8% is the edge
+      of that zone, not a maximum. Structure, volume contraction and RSI
+      contribute quality bonuses; none is a standalone gate. The EMA term
+      is an alignment bonus, not an EMA20/50 crossover, and is inert at
+      HEAD. Corrected D-6OF-2H; implementation unchanged.
   Output: pullback_detected (bool) + pullback_quality (0-10).
 
 L4 - Liquidity Pools (liquidity_engine.py)
