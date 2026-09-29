@@ -594,7 +594,7 @@ def _check_regime_scalp_momentum(m5_data, side: str, break_reference: float | No
     if break_reference is not None and m5_atr:
         pip_size = 0.10  # XAUUSD real pip, matches SPREAD-1 fix convention
         distance_pips = abs(last_close - break_reference) / pip_size
-        max_allowed_pips = 1.2 * m5_atr
+        max_allowed_pips = 1.2 * m5_atr / pip_size
         if distance_pips > max_allowed_pips:
             return False, f"Price extended {distance_pips:.1f} pips from break level, exceeds {max_allowed_pips:.1f} pip cap (1.2x M5 ATR) - too late to chase"
 
