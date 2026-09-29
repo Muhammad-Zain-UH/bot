@@ -773,6 +773,16 @@ def analyze_entry(
                     )
                     side = flipped_side
                     analysis["direction"] = side
+                    # P8-15 (`bias`): the flip reverses the direction the pipeline
+                    # actually trades, so the L1 label carried forward must reverse
+                    # with it. architecture.txt documents this flip as flipping the
+                    # bias (760-761); until now only `side` moved, leaving
+                    # analysis["layer_1"]["bias"] asserting the abandoned direction.
+                    # Mutated in place because analysis["layer_1"] already holds
+                    # this same dict, so the reported L1 becomes consistent too.
+                    # `bias_strength` is deliberately NOT touched -- that remains
+                    # the separate, open P8-15(`bias_strength`) contract question.
+                    bias["bias"] = flipped_bias_label
                     analysis["bos_flip"] = True
                     analysis["bos_flip_reason"] = struct.get("break_reason", "")
                     struct = restruct

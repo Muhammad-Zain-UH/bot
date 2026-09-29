@@ -79,14 +79,42 @@ class PinnedSideStateConsistency(unittest.TestCase):
         rendered = [ast.unparse(node) for node in assignments]
         self.assertIn("side = flipped_side", rendered)
 
-    def test_the_flip_does_not_reassign_bias(self) -> None:
-        """The defect being pinned: `bias` keeps the pre-flip direction."""
-        rendered = [ast.unparse(node) for node in self._assignments_to("bias")]
-        self.assertNotIn(
-            "bias = flipped_bias_label", rendered,
-            "`bias` is now reassigned on flip -- Phase 6O-F L2-D2 was repaired; "
-            "update this pin deliberately",
+    def test_the_flip_reassigns_the_bias_label(self) -> None:
+        """P8-15: the flip reassigns the L1 label, through a subscript target.
+
+        **Inverted AND made effective by P8-15.** This was
+        ``test_the_flip_does_not_reassign_bias``, which asserted that ``bias``
+        kept the pre-flip direction and tested it with
+        ``assertNotIn("bias = flipped_bias_label", ...)`` over
+        ``_assignments_to("bias")`` -- assignments whose target is the **Name**
+        ``bias``. Production performs the repair as ``bias["bias"] = ...``, a
+        **Subscript** target, which that helper never collects. So the pin passed
+        while the defect it existed to detect had already been repaired, exactly
+        as the source-text pin in ``test_l3_direction_contract`` did.
+
+        This looks for the subscript form, so it can actually see the contract it
+        names. P8-15 changed no decision: the replay was byte-identical to
+        ``baseline_006`` across all 15,735 decisions and all four fingerprints.
+        """
+        subscript_assignments = [
+            ast.unparse(node)
+            for node in ast.walk(self.analyze)
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(t, ast.Subscript)
+                and isinstance(t.value, ast.Name)
+                and t.value.id == "bias"
+                for t in node.targets
+            )
+        ]
+        self.assertIn(
+            "bias['bias'] = flipped_bias_label", subscript_assignments,
+            "the BOS flip no longer reassigns the L1 bias label -- P8-15 regressed",
         )
+        # And it must still not rebind the whole dict, which would detach
+        # analysis["layer_1"] from the object the repair mutates.
+        rendered = [ast.unparse(node) for node in self._assignments_to("bias")]
+        self.assertNotIn("bias = flipped_bias_label", rendered)
 
     def test_l3_is_called_with_the_effective_direction(self) -> None:
         """D-6OF-2B: L3 evaluates the direction the pipeline is actually trading.

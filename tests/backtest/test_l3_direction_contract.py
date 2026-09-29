@@ -22,9 +22,14 @@ L3 failure message embeds the pullback reasoning (and with it the retracement),
 so the test can read back which direction L3 actually evaluated rather than
 inferring it.
 
-**Out of scope, deliberately.** ``bias`` and ``bias_strength`` are still not
-reassigned by the flip, so ``analysis["layer_1"]`` and L7's ``bias_strength``
-still carry the pre-flip values. That is D-6OF-2 models 2/3 and remains open.
+**Updated by P8-15.** ``bias`` **is** now reassigned by the flip
+(``bias["bias"] = flipped_bias_label``), so ``analysis["layer_1"]["bias"]``
+follows the effective side -- D-6OF-2 model 2 is closed. That repair was measured
+to change **no decision**: byte-identical to ``baseline_006`` across all 15,735
+decisions, every layer outcome, all four signals and all four fingerprints.
+``bias_strength`` is **still not reassigned**, so L7 continues to read the
+pre-flip value; that is D-6OF-2 model 3 / P8-15(``bias_strength``) and **remains
+open**.
 The L3 rule discrepancies catalogued in D-6OF-2C -- the unimplemented EMA
 condition, the volume rule, the 0.618/0.786 cap and the redundant
 ``MIN_PULLBACK_QUALITY`` -- are also untouched.
@@ -99,8 +104,11 @@ class ReversalsEvaluateTheEffectiveDirection(unittest.TestCase):
 
         # The reversal really happened.
         self.assertTrue(analysis.get("bos_flip"), "this instant is no longer a reversal")
-        self.assertEqual(analysis["layer_1"]["bias"], stale_bias)
         self.assertEqual(analysis["direction"], effective_side)
+        # P8-15: the flip now reassigns the L1 label too, so it must agree with
+        # the effective side. This asserted ``stale_bias`` before that repair.
+        # ``stale_bias`` is still used below, as the contrasting detector input.
+        self.assertEqual(analysis["layer_1"]["bias"], effective_bias)
 
         # What L3 returns for each reading of the same bars. REGIME_SCALP's L3
         # failure message embeds the detector's own `reasoning` verbatim, so the
@@ -156,9 +164,38 @@ class TheChangeIsScopedToL3(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.source = (REPO_ROOT / "main_production.py").read_text(encoding="utf-8")
 
-    def test_bias_is_still_not_reassigned_by_the_flip(self) -> None:
-        """D-6OF-2 model 2 remains open; only L3's input changed."""
-        self.assertNotIn("bias = flipped_bias_label", self.source)
+    def test_the_flip_reassigns_the_bias_label(self) -> None:
+        """P8-15: after a BOS flip the L1 label follows the effective side.
+
+        **Replaces ``test_bias_is_still_not_reassigned_by_the_flip``, which was
+        both false and ineffective.** It claimed D-6OF-2 model 2 was still open,
+        and it tested that by grepping the source for the literal
+        ``bias = flipped_bias_label``. Production implements the reassignment as
+        ``bias["bias"] = flipped_bias_label``, which does not contain that
+        substring -- so the test kept passing while the very condition it existed
+        to detect had already been repaired. A source-text pin that a correct
+        implementation can walk straight past is not a pin.
+
+        This asserts the contract through the real production path instead.
+        P8-15 changed no decision: the replay was byte-identical to
+        ``baseline_006`` across all 15,735 decisions and all four fingerprints.
+        """
+        for instant, expected_side in (
+            (REVERSAL_SELL_TO_BUY, "BUY"),
+            (REVERSAL_BUY_TO_SELL, "SELL"),
+        ):
+            with self.subTest(instant=instant):
+                analysis, _ = _analyse(instant)
+                self.assertTrue(
+                    analysis.get("bos_flip"),
+                    "this instant is no longer a reversal; the test would prove nothing",
+                )
+                self.assertEqual(analysis["direction"], expected_side)
+                self.assertEqual(
+                    analysis["layer_1"]["bias"],
+                    "BULLISH" if expected_side == "BUY" else "BEARISH",
+                    "the L1 label no longer follows the effective side -- P8-15 regressed",
+                )
 
     def test_l7_still_reads_the_pre_flip_bias_strength(self) -> None:
         """D-6OF-2 model 3 remains open and explicitly out of scope."""

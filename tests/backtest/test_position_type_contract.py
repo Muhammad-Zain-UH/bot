@@ -158,22 +158,29 @@ class SignalDirectionMatchesItsGeometry(unittest.TestCase):
 class ReversedDecisionsCarryTheFlippedSide(unittest.TestCase):
     """Cases 3 and 4, the part that can be measured: the reversal is real.
 
-    These two instants are genuine L2 BOS reversals from the frozen dataset. The
-    pre-L2 bias and the effective direction disagree, which is precisely the
-    condition under which the old ``position_type`` would have contradicted the
-    SL/TP geometry.
+    These two instants are genuine L2 BOS reversals from the frozen dataset.
+
+    **P8-15 update.** Before that repair the pre-L2 bias and the effective
+    direction *disagreed*, and these tests pinned the disagreement. The flip now
+    reassigns the label (``bias["bias"] = flipped_bias_label``), so the corrected
+    contract is that ``layer_1["bias"]`` **agrees** with ``direction``. The
+    reversal itself is established by ``bos_flip``, which is what records it --
+    not by the former inconsistency. P8-15 changed no decision: the replay was
+    byte-identical to ``baseline_006`` across all 15,735 decisions.
     """
 
     def test_sell_to_buy_reversal(self) -> None:
         analysis = _analyse(REVERSAL_SELL_TO_BUY)
         self.assertTrue(analysis.get("bos_flip"), "this instant is no longer a reversal")
-        self.assertEqual(analysis["layer_1"]["bias"], "BEARISH")
+        # P8-15: was "BEARISH" (the abandoned direction) before the repair.
+        self.assertEqual(analysis["layer_1"]["bias"], "BULLISH")
         self.assertEqual(analysis["direction"], "BUY")
 
     def test_buy_to_sell_reversal(self) -> None:
         analysis = _analyse(REVERSAL_BUY_TO_SELL)
         self.assertTrue(analysis.get("bos_flip"), "this instant is no longer a reversal")
-        self.assertEqual(analysis["layer_1"]["bias"], "BULLISH")
+        # P8-15: was "BULLISH" (the abandoned direction) before the repair.
+        self.assertEqual(analysis["layer_1"]["bias"], "BEARISH")
         self.assertEqual(analysis["direction"], "SELL")
 
     def test_a_reversed_decision_would_emit_its_effective_side(self) -> None:
@@ -182,15 +189,30 @@ class ReversedDecisionsCarryTheFlippedSide(unittest.TestCase):
         Asserted through the payload's own expression rather than a fabricated
         signal: ``position_type`` is ``side``, and ``side`` is what
         ``analysis["direction"]`` records.
+
+        **P8-15 update.** This previously proved *"a reversal happened"* by
+        asserting that ``direction`` **disagreed** with the side implied by
+        ``layer_1["bias"]`` -- it used the stale-bias inconsistency itself as its
+        evidence. P8-15 removed that inconsistency, so the proxy is gone. The
+        reversal is now established by ``bos_flip``, which is what actually
+        records it, and the label is asserted to **agree** with the side.
         """
-        for instant in (REVERSAL_SELL_TO_BUY, REVERSAL_BUY_TO_SELL):
+        for instant, expected in (
+            (REVERSAL_SELL_TO_BUY, "BUY"),
+            (REVERSAL_BUY_TO_SELL, "SELL"),
+        ):
             with self.subTest(instant=instant):
                 analysis = _analyse(instant)
                 direction = analysis["direction"]
-                self.assertIn(direction, ("BUY", "SELL"))
-                self.assertNotEqual(
-                    direction,
-                    "BUY" if analysis["layer_1"]["bias"] == "BULLISH" else "SELL",
+                self.assertTrue(
+                    analysis.get("bos_flip"),
+                    "this instant is no longer a reversal; the test would prove nothing",
+                )
+                self.assertEqual(direction, expected)
+                self.assertEqual(
+                    analysis["layer_1"]["bias"],
+                    "BULLISH" if direction == "BUY" else "BEARISH",
+                    "P8-15: the L1 label must follow the effective side after a flip",
                 )
                 signal = analysis.get("entry_signal")
                 if signal:  # never true on this dataset; guards a future one
