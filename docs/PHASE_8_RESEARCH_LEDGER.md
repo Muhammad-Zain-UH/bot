@@ -258,13 +258,156 @@ least one reading.
 |---|---|
 | **Current behaviour** | `_select_stop_anchor` subtracts `buffer_pips = 3.0` directly from a price, producing a **$3.00** buffer where the name implies 3 pips ($0.30) |
 | **Evidence** | PHASE_2_ISSUES U1 (P0); `defect_observations.json` `Q6_stop_buffer_units`, 4 occurrences; confirmed by inspection in Phase 2A.1 (sweep wick 2511.73 → stop 2508.73) |
-| **Classification** | **A** |
-| **Alters production?** | **Yes.** It changes `risk_distance` on every stop-anchored entry, hence TP (built as `risk × tp_ratio`), hence `rr`, hence — via P8-06's equality boundaries — potentially admission itself |
+| **Classification** | ~~**A**~~ **B — strategy-contract question. RECLASSIFIED; see the characterization update below** |
+| **Alters production?** | ~~**Yes.** It changes `risk_distance` … hence `rr`, hence — via P8-06's equality boundaries — potentially admission itself~~ **FACTUALLY INCORRECT — the buffer cannot move `rr` and cannot reach admission. Corrected in the update below** |
 | **Historical intent** | **Established that name and behaviour disagree.** Not established which was intended |
-| **Mechanical or strategy?** | **Mechanical** |
-| **Evidence required first** | Owner decision on the intended buffer. PHASE_4B_FIX_DECISION_MATRIX M6 warns: **rename and convert as one change** — renaming alone leaves the defect, converting alone changes stop construction |
-| **Phase 8 experiment** | Controlled change, single variable, replay, compare. Note the coupling to P8-06 — do not attribute an admission change to the buffer without checking the boundary |
-| **Defer?** | **No**, but it must not be bundled with any other change |
+| **Mechanical or strategy?** | ~~**Mechanical**~~ **Strategy — the inconsistency is mechanical, but no uniquely justified correction exists** |
+| **Evidence required first** | Owner decision on the intended buffer, **and the anchor contract (P8-18)**. PHASE_4B_FIX_DECISION_MATRIX M6 warns: **rename and convert as one change** |
+| **Phase 8 experiment** | ~~Controlled change, single variable, replay, compare~~ **NONE APPROVED. `3.0 -> 0.30` is explicitly NOT approved; see the update below** |
+| **Defer?** | ~~**No**~~ **Yes — deferred behind an owner decision and P8-18** |
+
+### P8-08 characterization update (2026-09-29) — reclassified A -> B
+
+> ## NO EXPERIMENT APPROVED / NONE RUN
+>
+> No production code was changed, no replay was run and no test suite was run for
+> P8-08. This block records read-only characterization only.
+
+**Starting state:** HEAD `e857e37e50907f5da3c1d3b856808c1da2acdae9`, reference
+baseline `baselines/baseline_007`.
+
+#### Evidence classes used below
+
+**OBSERVED** — read directly from `baseline_007` artifacts or from source.
+**PROJECTION** — arithmetic on recorded values; **not** a replay measurement.
+**INFERENCE** — interpretation, including later-auditor wording.
+
+#### The code path — OBSERVED
+
+`entry_engine.py:373-389`, `_select_stop_anchor`, `buffer_pips: float = 3.0`:
+`min(candidates) - buffer_pips` for BUY, `max(candidates) + buffer_pips` for
+SELL. `3.0` is applied to a **price**, so on XAUUSD (`pip_size = 0.10`) the
+buffer is **$3.00 = 30 pips**, where the name says 3 pips. One caller,
+`entry_engine.py:404` inside `calculate_entry_levels`; `buffer_pips` is **never
+passed** anywhere in the repository, so the default always applies.
+
+**History — OBSERVED.** `git log -S"buffer_pips"` returns exactly one production
+commit, `c3cf4df` (2026-07-01). The arithmetic is **byte-identical from creation
+to HEAD**. No commit ever changed, annotated or debated the value or its units.
+
+#### Blast radius — the previous row was factually incorrect
+
+**OBSERVED, by tracing every consumer.** The buffer **cannot** change:
+
+- any **L1-L8 layer verdict**;
+- **side** or **regime**;
+- **POI / setup / candidate selection**;
+- **signal generation**;
+- the **entry price**;
+- **RR admission**.
+
+Because:
+
+- `entry_triggered` is `bool(core_trigger)` / `bool(raw_triggered)` — price-pattern
+  conditions only, with no geometry term;
+- `trigger_quality` is composed from displacement, FVG, momentum and CHoCH
+  qualities plus kill-zone and rejection — **no dependence on stop or risk**;
+- `reward_distance = risk_distance * tp_ratio`, so
+  **`rr = reward_distance / risk_distance` is identically `tp_ratio`** for any
+  non-zero risk (P8-03). The buffer is therefore **invisible** to the RR gate and
+  to P8-06's equality boundary;
+- `_score_entry_candidate` reads only quality, `rr` and style — all invariant.
+
+> **The superseded row claimed the buffer reaches `rr` and "potentially admission
+> itself" via P8-06. That is wrong and is retracted here.**
+
+**The actual direct blast radius:**
+
+| Affected | |
+|---|---|
+| `stop_loss` | stop geometry |
+| `risk_distance` | risk geometry |
+| `take_profit`, `reward_distance` | target / reward geometry |
+| Simulated trade outcomes | via the geometry above |
+| `reasoning` string | diagnostic / reason text |
+
+#### baseline_007 exposure — OBSERVED
+
+**1,589** decisions reach L8 and compute entry levels (1,585 blocked at L8, 4
+signals). **Anchor-path usage per decision is NOT recorded** —
+`defect_observations.json` Q6 states this explicitly: the decision snapshot
+carries no sweep-wick level. Three of the four trades provably used the anchor
+path (stop offset below the 8.0 MOMENTUM fallback floor); the fourth is
+consistent with it. `_select_stop_anchor` is regime-independent.
+
+#### Why `3.0 -> 0.30` is NOT an approved experiment
+
+**PROJECTION** — arithmetic on `baseline_007`'s recorded values, not a replay.
+Applying the arithmetically obvious unit correction to the four trades:
+
+| # | Side | Strategy entry | Stop @ $0.30 | Stop side vs entry |
+|---|---|---|---|---|
+| 1 | SELL | 3983.725 | 3983.390 | **WRONG SIDE** |
+| 2 | BUY | 4257.775 | 4257.810 | **WRONG SIDE** |
+| 3 | BUY | 4413.235 | 4413.150 | correct; risk 2.785 -> 0.085 |
+| 4 | SELL | 4607.795 | 4613.630 | correct; risk 8.535 -> 5.835 |
+
+Measured against the **fill** price, which is what
+`execution/paper_broker.py:186,198` validates, one of the four would be
+**rejected** (*"stop … is at or below the SELL fill"*), and surviving risk
+distances collapse from 2.565 / 2.865 / 2.985 / 8.735 to 0.135 / 0.165 / 0.285 /
+6.035.
+
+**In two of four observed cases the anchor already sits on the wrong side of the
+entry, and the oversized $3.00 buffer is the only thing pushing the stop back to
+the correct side.** The buffer is masking a separate latent defect —
+`PHASE_2_ISSUES` **E11**, *"No check that the stop is on the correct side of
+entry."*
+
+So the unit correction does not repair a clean bug; it **exposes E11** on half the
+observed population. It is therefore **NOT APPROVED**, on four grounds:
+
+1. it produces wrong-side stops in observed cases;
+2. it exposes the separate E11 geometry issue;
+3. the correct anchor contract is unresolved;
+4. **P8-18** is relevant to resolving that contract.
+
+#### Dependency on P8-18 — explicit
+
+> **P8-08 is BLOCKED behind P8-18.** The live question is not which unit the
+> buffer meant, but **what the stop should be anchored to when the MOMENTUM entry
+> price is the FVG midpoint** rather than a bar close. Until that contract is
+> settled, any buffer value is arbitrary. An explicit stop-side check (E11) would
+> also need to exist before a buffer change could be evaluated cleanly, since it
+> would turn the currently-masked cases into visible rejections.
+
+#### Historical intent — preserved, UNRESOLVED
+
+- The parameter name says **`buffer_pips`**.
+- The current arithmetic treats `3.0` as **price units**.
+- **No original-author evidence establishes which interpretation was intended.**
+  The `c3cf4df` docstring (*"Pick the most defensive structure-based stop
+  anchor."*) states no units. `core/units.py`'s wording *"where 3 pips was
+  intended"* is **INFERENCE** — it was written by this rebuild in Phase 1, not by
+  the original author, and treating it as attested intent would be circular.
+- Whether `3.0` was chosen knowing it behaved as $3.00 is **unknown**, the same
+  shape as P8-10's open `1.2` question.
+
+#### Test coverage — OBSERVED
+
+`test_baseline_defects.TestStopBufferIsAppliedInPriceUnits::test_buffer_is_three_price_units_not_three_pips`
+is a **genuine behavioural pin** of current behaviour (2511.73 -> 2508.73); any
+correction fails it by design. Its sibling `test_default_is_still_three` checks
+only the signature default and is **partially ineffective** — a correction
+written as `- buffer_pips * pip_size` keeps the default at `3.0` and slips past
+it, the same failure mode as the two P8-15 pins. `tests/core/test_units.py` tests
+the units library and pins nothing in production.
+
+#### Why B rather than A
+
+A mechanical defect has a determinable right answer. This one does not: the
+intended unit is unrecoverable, and the arithmetically obvious correction
+produces a different defect. **Reclassified B — strategy-contract question.**
 
 ## P8-09 — L3 is one M15 bar stale under replay
 
@@ -806,7 +949,9 @@ Stage 0 measures.
 
 - **P8-18** — entry priced off a stale bar (upstream of the next two).
   Characterised in Stage 0; remains a candidate for controlled research
-- **P8-08** — the `$3.00` stop buffer (rename and convert as one change)
+- ~~**P8-08** — the `$3.00` stop buffer (rename and convert as one change)~~
+  **MOVED TO STAGE 3 by the 2026-09-29 characterization.** Reclassified B; no
+  correction is uniquely justified, and it is blocked behind **P8-18**
 - **P8-09** — L3 replay staleness (expect a large diff; L3 blocks 5,066)
 - **P8-19** — the repainting POI. **BLOCKED** until its frequency and L7
   contribution are measured; `baseline_006` cannot supply them
@@ -821,6 +966,9 @@ experiment become meaningful.
   branch blocks nothing on this dataset but was reachable in b004/005. Hard
   dependency on **P8-05**, soft dependency on **P8-14** (regime classification
   determines whether DEAD_CALM becomes reachable at all)
+- **P8-08** — **moved here 2026-09-29.** What should the stop be anchored to
+  when the MOMENTUM entry is the FVG midpoint? Not a unit question. Blocked
+  behind **P8-18**; `3.0 -> 0.30` is explicitly not approved
 - **P8-05** — is DEAD_CALM a regime or a rejection?
 - **P8-14** — are ATR bands absolute or relative?
 - **P8-03** — should the target stay a fixed multiple of risk, or become
