@@ -285,14 +285,135 @@ least one reading.
 | Field | |
 |---|---|
 | **Current behaviour** | REGIME_SCALP's momentum fallback applies a distance cap that mixes pip and dollar units, making it ~10× too tight |
-| **Evidence** | Phase 6O-B L3-D7: 196 decisions reached it; **≤21 would flip** |
+| **Evidence** | ~~Phase 6O-B L3-D7: 196 decisions reached it; **≤21 would flip**~~ **STALE — measured before D-6N-1 and D-6OF-2B; see the pre-experiment update below** |
 | **Classification** | **A** |
-| **Alters production?** | **Yes, bounded** — ≤21 decisions |
+| **Alters production?** | **Yes, bounded** — ~~≤21 decisions~~ **22 decisions at HEAD; see the pre-experiment update** |
 | **Historical intent** | **NOT established** which unit was intended |
 | **Mechanical or strategy?** | **Mechanical** |
 | **Evidence required first** | Owner decision on the intended unit, same family as P8-07/P8-08 |
-| **Phase 8 experiment** | Controlled change, replay, compare against the pre-declared ≤21 |
+| **Phase 8 experiment** | Controlled change, replay, compare against the pre-declared ~~≤21~~ **22**. Scope and criteria specified in the pre-experiment update |
 | **Defer?** | **No** |
+
+### P8-10 pre-experiment update (2026-09-29) — measured at HEAD
+
+> ## EXPERIMENT NOT YET APPROVED / NOT YET RUN
+>
+> No production code has been changed and no replay has been run for P8-10. This
+> block records characterisation and a *proposed* experiment only.
+
+**Starting state:** HEAD `8f16d8faaf14d3a02340596ef12dfc9bfa484219`, comparison
+baseline `baselines/baseline_006`, dataset SHA
+`433b7e2713babdef2ea69909a8bc6a515292dc70b0db434c0b63c256a970b07c`.
+
+#### The dimensional finding
+
+`_check_regime_scalp_momentum` check 4 (`main_production.py`) compares:
+
+```
+distance_pips    = abs(last_close - break_reference) / pip_size   -> PIPS
+max_allowed_pips = 1.2 * m5_atr                                   -> DOLLARS
+```
+
+`break_reference` is a swing price and `m5_atr` resolves through
+`_atr_from_frame` to `atr_14`, a price-based ATR, so both are quote-currency
+dollars. The left side is correctly converted to pips; the right side is not.
+Rejection therefore occurs at `10·D > 1.2·A` rather than `D > 1.2·A` — **10×
+tighter than a same-unit 1.2×ATR comparison.**
+
+This is a statement about **dimensions only**. It is **not** a claim about what
+the author intended — see the unresolved questions below.
+
+#### Measured on baseline_006 — no replay used
+
+Read directly from `decisions.jsonl`, which stores each decision's verbatim
+`reason`, and check 4's message embeds both operands.
+
+| Quantity | Measured at HEAD |
+|---|---|
+| Decisions reaching check 4 | **201** |
+| Currently **rejected** by check 4 | **195** |
+| Currently **pass** the momentum fallback | **6** |
+| Would pass under the proposed unit correction | **22** |
+
+All 195 are REGIME_SCALP (102 BUY / 93 SELL), as expected — the caller is
+regime-gated. Rounding sensitivity is minimal: the counts derive from the
+message's one-decimal values, and only **one** decision sits within 2% of the
+corrected boundary (ratio 1.0093, still rejected), so the figure is stable to
+±1. Median ratio is 2.86, i.e. typical rejections exceed even the corrected cap
+by roughly 2.9×.
+
+#### Why the old figure is stale
+
+> **The `≤21` bound is no longer the correct pre-declared blast radius at HEAD.**
+> It comes from Phase 6O-B, measured **before** D-6N-1 (which changed the regime
+> population) and D-6OF-2B (which changed L3's direction input). The original
+> statement is preserved above, struck through, because it remains the correct
+> record of what was measured then. Running the experiment against `≤21` would
+> trip its own blocker on a correct result.
+
+#### The proposed one-line experiment
+
+```
+OLD:  max_allowed_pips = 1.2 * m5_atr
+NEW:  max_allowed_pips = 1.2 * m5_atr / pip_size
+```
+
+One line, in `_check_regime_scalp_momentum` check 4. It makes both sides of the
+comparison pips and makes the variable's name true. The `1.2` multiplier, the
+ATR source, the message format and checks 1-3 are untouched.
+
+**Pre-declared blast radius: exactly 22 pre-identified decisions change at L3**,
+all REGIME_SCALP, each moving from blocked at `L3_PULLBACK` to passed via
+`L3_PULLBACK_MOMENTUM`.
+
+> **Downstream behaviour is NOT predictable in advance and must not be
+> pre-declared.** For context only, and explicitly not a prediction: of the 6
+> decisions that currently pass this fallback, 4 terminate at L4 and 2 at L5 —
+> none has reached L6, L7 or L8 — and newly-admitted decisions additionally meet
+> L7's `momentum_fallback` threshold of 75 and its A+ grade demotion.
+
+#### Acceptance / rejection criteria
+
+**Accept:** exactly the 22 pre-identified timestamps change at L3, plus whatever
+downstream consequences those 22 produce.
+
+**Reject / BLOCKER — stop and characterise, do not repair:**
+
+- any decision outside the 22 changes;
+- any MICRO_SCALP, INTRADAY_SWING or DEAD_CALM decision changes;
+- any change to L1, L2, regime or side.
+
+> **Signal count, P&L, win rate, profit factor and drawdown are OBSERVATIONS
+> ONLY. They are not acceptance criteria and may not be used to accept, reject
+> or tune this change.**
+
+#### Test coverage
+
+**There is currently no behavioural test asserting the P8-10 cap.** Nothing pins
+the obsolete 10×-tight behaviour either, so unlike P8-15 there is nothing to
+invert. Any future test should assert the **unit contract behaviourally** — the
+boundary in both units through the production path — **not** by
+implementation/source-text matching, which is the P8-15 lesson.
+
+Noted in passing, not a task: `test_l3_direction_contract.test_scalp_1_is_unchanged`
+does **not** cover this cap despite its name; it asserts two unrelated source
+strings.
+
+#### Unresolved — preserved, not resolved here
+
+1. **The intended unit is not historically established.** The code is
+   dimensionally inconsistent; repository evidence does not establish whether
+   pips or dollars was intended. The proposed correction assumes the docstring
+   (*"still within 1.2x M5 ATR of the structural break level"*) states the
+   intent, which is an inference from prose, not attested intent. Same family as
+   P8-07 and P8-08.
+2. **Whether the `1.2` multiplier was itself calibrated against the accidentally
+   tighter implementation** is unknown. If it was, correcting the units silently
+   changes what `1.2` meant. No evidence either way; no speculation offered.
+
+**Consequence:** the proposed experiment is **mechanically motivated, but
+carries a bounded strategy-contract uncertainty.**
+
 
 ## P8-11 — `MIN_PULLBACK_QUALITY = 1.5` is inert
 
@@ -670,7 +791,8 @@ production behaviour.
 Each alone, each with a pre-declared expectation.
 
 - **P8-15 (`bias` only)** — the documented reassignment; expect zero decision change
-- **P8-10** — momentum-fallback units; pre-declared ≤21
+- **P8-10** — momentum-fallback units; pre-declared ~~≤21~~ **22** (measured on
+  baseline_006 at HEAD; the ≤21 figure predates D-6N-1 and D-6OF-2B). **EXPERIMENT NOT YET APPROVED / NOT YET RUN**
 - **P8-07** — H1 ATR gate units. **Stage 0 quantified this: the 14-bar H1 range
   never falls below 8.0 *or* 0.8 on this dataset, so both readings fire zero times
   and the repair is UNFALSIFIABLE here.** A null replay is not a validation. Carry
