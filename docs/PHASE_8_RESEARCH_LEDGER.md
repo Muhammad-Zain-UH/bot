@@ -7,6 +7,23 @@ fingerprint or baseline was changed in creating this document.**
 `a1029a9c609b2d6788978d2a701eb9da2dc2d309`, installed and committed as
 `9df761f`. Every Phase 8 experiment compares against it.
 
+> ### Stage 0 correction notice — 2026-09-29
+>
+> **Stage 0 discovered that the original ledger overstated what `baseline_006`
+> artifacts could measure for P8-13 and P8-19. Those measurement gaps are now
+> explicitly recorded.**
+>
+> `decisions.jsonl` carries only `t`, `regime`, `side`, `signal`, `blocked`,
+> `passed`, `reason`, `price`. It has no POI fields and no per-decision
+> `risk_distance`, so two questions the original Stage 0 scoping called
+> "read-only" are not answerable from the artifacts at all.
+>
+> Corrections appear as **Stage 0 update** blocks beneath each item. Original
+> rows are retained unaltered except for pointers, so the prior finding and its
+> correction can both be read. **No prior finding has been deleted.** Items
+> corrected: **P8-04, P8-06, P8-07, P8-13, P8-18, P8-19**. **No replay was run**
+> to produce any of it.
+
 **This ledger does not rank anything.** It contains no judgement about which
 item matters most, which change would perform best, or which value any
 undetermined parameter should take. §4's sequence is a *dependency* order, not a
@@ -82,12 +99,59 @@ frozen replay. Determined by inspection where the answer is provable, and marked
 | **Current behaviour** | `evaluate_entry_for_regime` has no DEAD_CALM branch, so DEAD_CALM falls to the default `rr >= 2.0` against a `tp_ratio` of 1.5. `1.5 >= 2.0` is false, so DEAD_CALM is structurally unable to enter |
 | **Evidence** | U9-RR §4; baseline_006: DEAD_CALM 119 decisions, **0 reached L8**, 0 signals |
 | **Classification** | **A** — the absence of a branch is an omission, not a stated rule |
-| **Alters production?** | **Yes, but bounded.** 119 decisions total after D-6N-1. They currently die earlier than L8, so adding a branch alone may change nothing — **UNMEASURED** |
+| **Alters production?** | ~~**Yes, but bounded.** … adding a branch alone may change nothing — **UNMEASURED**~~ **SUPERSEDED — now measured; see Stage 0 update** |
 | **Historical intent** | **NOT established.** No artefact says DEAD_CALM should or should not trade. It is a catch-all `else`, as Phase 6M/6N documented |
 | **Mechanical or strategy?** | **Mechanical** in form (missing branch), **strategy** in consequence (whether DEAD_CALM trades) — see P8-05 |
 | **Evidence required first** | P8-05's answer. The branch cannot be written without knowing what it should say |
-| **Phase 8 experiment** | Measure where DEAD_CALM's 119 decisions currently terminate, to establish whether the RR branch binds at all. Read-only against baseline_006's `decisions.jsonl` — **no replay needed** |
+| **Phase 8 experiment** | ~~Measure where DEAD_CALM's 119 decisions currently terminate~~ — **DONE in Stage 0, no replay used** |
 | **Defer?** | **No** for the measurement; **yes** for any code change |
+
+### Stage 0 update (2026-09-29) — measured; the conclusion inverts
+
+**The RR branch blocked no DEAD_CALM decision in `baseline_006`.** All 119
+terminate before L8:
+
+| Terminal layer | Decisions |
+|---|---|
+| L1_BIAS | **65** |
+| L3_PULLBACK | **46** |
+| L5_SWEEP | **8** |
+| Reached L8 | **0** |
+| Signals | **0** |
+
+The default `rr >= 2.0` branch is therefore **never evaluated** for DEAD_CALM on
+this dataset. The original row's implication — that the branch is what bars
+DEAD_CALM — is wrong for `baseline_006`. Earlier layers are.
+
+**It is not structurally dead code either.** Cross-checked against the earlier
+baselines, where the population was nineteen times larger:
+
+| Baseline | DEAD_CALM decisions | Reached L8 | Signals |
+|---|---|---|---|
+| `baseline_004` | 2,312 | **22** | 0 |
+| `baseline_005` | 2,312 | **22** | 0 |
+| `baseline_006` | 119 | **0** | 0 |
+
+The branch was reachable for 22 decisions before D-6N-1 shrank the population.
+**It is dataset-dependent reachable code**, and its reachability is governed by
+regime classification — hence the new soft dependency on **P8-14**.
+
+**Exception-path inconsistency, discovered in Stage 0.** `detect_regime` assigns
+DEAD_CALM `tp_ratio = 1.5` on its normal path (`entry_engine.py:126`) and
+`tp_ratio = 2.0` on its exception path (`entry_engine.py:160`). Since
+`rr ≡ tp_ratio`, DEAD_CALM is **inadmissible when regime detection succeeds and
+admissible when it errors**. Recorded, not resolved.
+
+**A second contradiction:** DEAD_CALM's reasoning string says *"too low → Will be
+BLOCKED at L2"*. **Zero** of the 119 block at L2. The stated expectation is wrong
+about the layer as well as the mechanism.
+
+**Revised classification:** **B — unresolved contract**, not A. A missing branch
+cannot be called an omission until it is known what the branch should say.
+**The contract question remains P8-05 and is not resolved here.**
+
+**Dependencies:** hard on **P8-05**; soft on **P8-14**. Moves from Stage 0 to
+**Stage 3**.
 
 ## P8-05 — Should DEAD_CALM trade at all? (contract)
 
@@ -114,8 +178,36 @@ frozen replay. Determined by inspection where the answer is provable, and marked
 | **Historical intent** | **NOT established** that the boundary should be an equality test. Nothing records the thresholds being chosen to coincide with the ratios |
 | **Mechanical or strategy?** | **Mechanical.** A gate whose outcome depends on the last bits of a float is not expressing a strategy |
 | **Evidence required first** | None to characterise it; it is proven. A *fix* requires deciding whether the comparison should be `>=` with tolerance, or whether the coincidence of thresholds and ratios should be removed — which touches P8-02 |
-| **Phase 8 experiment** | Measure how many L8-reaching decisions sit within float tolerance of their regime boundary. Read-only against `decisions.jsonl` plus the ledger — **no replay needed** |
+| **Phase 8 experiment** | ~~Measure how many L8-reaching decisions sit within float tolerance~~ — **DONE in Stage 0, no replay used** |
 | **Defer?** | **No** for the measurement. The fix is coupled to P8-02/P8-03 and should not be made in isolation |
+
+### Stage 0 update (2026-09-29) — measured
+
+Recomputed from `trade_ledger.json` for every decision that reached the gate:
+
+| Trade | `risk_distance` | `rr = (rd × 1.5) / rd` | `>= 1.5` | Exactly `1.5`? |
+|---|---|---|---|---|
+| 1 | 2.3649999999997817 | 1.5 | yes | **yes** |
+| 2 | 2.6649999999999636 | 1.5 | yes | **yes** |
+| 3 | 2.785000000000764 | 1.5 | yes | **yes** |
+| 4 | 8.534999999999854 | 1.5 | yes | **yes** |
+
+**All four decisions that reached the RR gate compute exactly 1.5 against a
+threshold of exactly 1.5** — not near the boundary, on it. That is the gate's
+entire input population.
+
+**The gate rejected zero decisions.** All **1,583** L8 blocks carry the single
+reason *"Entry triggers not all confirmed"* — the `entry_triggered` check at
+`main_production.py:1023`, **before** `evaluate_entry_for_regime`. None of the
+gate's own messages appears in `layer_funnel.json`. Of 1,587 decisions reaching
+L8, 1,583 died before the gate and 4 passed it.
+
+**So `baseline_006` contains no evidence of the gate rejecting an ordinary
+decision.** The one historical rejection is the pre-U4 case
+(`rr = 1.4999999999999196`), which `7b1c5f1` removed.
+
+**Remains coupled** to P8-02 and P8-03; must not be repaired in isolation. No
+code altered.
 
 ## P8-07 — U9-H1: H1 ATR gate units
 
@@ -130,6 +222,35 @@ frozen replay. Determined by inspection where the answer is provable, and marked
 | **Evidence required first** | Whether the intended unit was pips. If so the correct value is 0.8, a 10× change |
 | **Phase 8 experiment** | None needed to characterise. Any repair is a controlled change measured against baseline_006 |
 | **Defer?** | **No** — but note it changes nothing measurable here, so it cannot be validated by this dataset |
+
+### Stage 0 update (2026-09-29) — quantified; the repair is unfalsifiable here
+
+**Unit analysis, from source.** `h1_atr = mean(high − low)` over 14 H1 bars
+(`main_production.py:675-676`). `high` and `low` are XAUUSD prices in **quote
+currency**, so the statistic is **dollar-denominated**. With `pip_size = 0.10`,
+the literal `8.0` represents **$8.00 — 80 pips**, while the message at line 737
+formats it as `"< 8.0 pips"`. The gate blocks at **L2_STRUCTURE**, not L1.
+
+**Read-only computation over the frozen H1 frame**, the exact production
+quantity (rolling 14-bar mean of `high − low`):
+
+```
+bars 1,667   min 10.9029   p01 11.5888   median 18.7579   max 39.8286
+count < 8.0 : 0     <- the gate as written
+count < 0.8 : 0     <- the gate if the literal meant pips
+price range : 3942.48 - 4696.73
+```
+
+**This dataset cannot distinguish the two interpretations.** Both fire **zero**
+times. Corroborated twice: `defect_observations.json` records `occurrences: 0`,
+and all 12 L2 blocks in `baseline_006` carry *"HN structure is broken"* — none
+carries *"H1 ATR too calm"*.
+
+**Consequence for experimentation: any repair is currently unfalsifiable.** A
+replay after the change produces a null diff *whichever unit is chosen*. **A null
+replay here is not a validation and must never be recorded as one.** Validating a
+repair needs a dataset whose 14-bar H1 range falls below the threshold under at
+least one reading.
 
 ## P8-08 — Q6 / U1: `$3.00` stop buffer
 
@@ -212,8 +333,41 @@ frozen replay. Determined by inspection where the answer is provable, and marked
 | **Historical intent** | **Not established.** It looks like an intent to prefer higher RR, which the construction defeats |
 | **Mechanical or strategy?** | Residue, with a mechanical edge |
 | **Evidence required first** | Count of candidates with `risk_distance == 0` in the frozen stream |
-| **Phase 8 experiment** | Read-only count — **no replay needed** |
+| **Phase 8 experiment** | ~~Read-only count — **no replay needed**~~ **SUPERSEDED — not obtainable from the artifacts; see Stage 0 update** |
 | **Defer?** | **Yes** for removal; **no** for the count |
+
+### Stage 0 update (2026-09-29) — cancellation confirmed; the count is NOT available
+
+**Cancellation confirmed, by two independent routes.**
+
+1. **`rr ≡ tp_ratio` for both candidates.** They are evaluated at the same
+   `regime_tp_ratio`, so `rr_bonus` is identical and cancels in `max()` — the
+   argument `8c5724c` used when removing `valid_bonus`.
+2. **Most decisions have only one candidate.** `get_entry_trigger` restricts
+   `allowed_styles` to MOMENTUM for MICRO_SCALP and PULLBACK for INTRADAY_SWING,
+   so `max()` is identity and every bonus is irrelevant. That covers **9,124 of
+   15,735** decisions. Only REGIME_SCALP compares two candidates in practice
+   (DEFAULT is unreachable — see P8-04's update).
+
+**The zero-risk edge case stands, unmeasured.** A candidate with
+`risk_distance == 0`, or one returned by `calculate_entry_levels`' exception
+path, scores `rr = 0.0`, so its bonus is 0 against the other's 2.25 and **does**
+discriminate — against the degenerate candidate, which is arguably correct by
+accident. Since `entry_triggered` is now `raw_triggered` alone, such a candidate
+can reach the comparison.
+
+> **The count of such candidates is NOT available from `baseline_006`
+> artifacts.** `decisions.jsonl` carries eight fields and `risk_distance` is not
+> among them; it is persisted only for the four filled trades in
+> `trade_ledger.json`. The original row called this a read-only count. **That was
+> wrong.** **No replay was run to obtain it.**
+
+**Also recorded, not previously in this ledger:** `style_bonus` (0.5 for
+PULLBACK) does **not** cancel — it is a live tiebreak whenever both candidates
+are valid and quality ties. Current behaviour, not a defect.
+
+**Treatment unchanged: documentation only.** Annotate, do not remove; belongs in
+a cleanup-only commit with P8-11 and P8-12.
 
 ## P8-14 — G2 / U10-B: absolute vs relative ATR bands
 
@@ -282,22 +436,109 @@ frozen replay. Determined by inspection where the answer is provable, and marked
 | **Historical intent** | **Not established.** Consistent with B1/B2's staleness, inconsistent with B6 in the same pass |
 | **Mechanical or strategy?** | **Mechanical** |
 | **Evidence required first** | Whether the replay feed's "current price" is already the correct decision-time price, making the `-2` index a double-drop as in P8-09 |
-| **Phase 8 experiment** | Characterise first (read-only), then a controlled change |
+| **Phase 8 experiment** | ~~Characterise first (read-only)~~ — **DONE in Stage 0**, then a controlled change |
 | **Defer?** | **No** — it is upstream of P8-06 and P8-08, and should be understood before either is repaired |
+
+### Stage 0 update (2026-09-29) — one row, two findings
+
+The original row treated this as a single issue. **It is two, with different
+classifications.** Neither is lookahead.
+
+**A. Replay/live staleness — a data-window mismatch, NOT lookahead.**
+`main_production.py:1007` computes
+`confirmed_m5_close = m5_data.iloc[-2]["close"]` and passes it as
+`current_price`. Under replay, `ReplayFeed.bars` returns *"the last `count` bars
+closed at or before `as_of`"* — enforced by `_visible_count`, protected by a
+deliberate `.copy()` so the strategy cannot hold a view onto later rows, and
+directly tested by `test_no_returned_bar_has_closed_after_as_of`. So `iloc[-1]`
+is **already** the last closed bar and `iloc[-2]` is **one bar older than
+necessary**. Live, `get_market_data` may return a forming last bar, where
+`iloc[-2]` is correct. **Replay therefore looks further into the past, never into
+the future** — the same double-drop family as P8-09.
+
+**B. Execution geometry — declared modelling, not a defect by itself.**
+All four baseline trades are MOMENTUM, and that path does not use a bar close as
+its entry price: `entry_engine.py:598-600` sets
+`confirmed_entry_price = fvg["midpoint"]`, which becomes the resting limit price
+(`pending_statistics.json` shows `limit_price` equal to `strategy_entry_price`).
+
+| Side | Strategy entry | Fill | Diff | SL re-anchored? | TP re-anchored? |
+|---|---|---|---|---|---|
+| SELL | 3983.7250 | 3983.5250 | **−0.2000** | No | **Yes** |
+| BUY | 4257.7750 | 4257.9750 | **+0.2000** | No | **Yes** |
+| BUY | 4413.2350 | 4413.4350 | **+0.2000** | No | **Yes** |
+| SELL | 4607.7950 | 4607.5950 | **−0.2000** | No | **Yes** |
+
+Every difference is **exactly ±$0.20 = the declared 2.0-pip spread**, always
+direction-adverse, with nothing else contributing. That is the
+`spread_pips: 2.0` assumption behaving correctly.
+
+**The asymmetry is the finding:** the **stop stays anchored to the strategy
+entry** while the **target is re-anchored to the fill** (commit `97363c7`).
+Intended risk and the realised-R denominator therefore differ — 2.365 against
+2.565 on trade 1, about 8.5%.
+
+> **`baseline_006` contains only MOMENTUM trades and therefore does NOT
+> characterize the pullback / B3 path** — the path that actually prices off
+> `m5[-2]` and then `m1[-2]`. Zero baseline trades exercise it.
+
+**Downstream reach, confirmed:** `strategy_entry_price` → `risk_distance` →
+`take_profit` → `reward_distance` → `rr` → the L8 RR gate, so it anchors the very
+boundary P8-06 describes. **Remains a candidate for controlled research later.**
 
 ## P8-19 — S1: the Fibonacci POI repaints
 
 | Field | |
 |---|---|
-| **Current behaviour** | The "Fibonacci 0.618" POI is built from a rolling `tail(20)` high/low, so the zone repaints every M15 bar. It is generated unconditionally and frequently becomes `best_poi` |
+| **Current behaviour** | The "Fibonacci 0.618" POI is built from a rolling `tail(20)` high/low, so the zone repaints every M15 bar. It is generated unconditionally and ~~frequently becomes `best_poi`~~ **(frequency claim SUPERSEDED — unmeasured; see Stage 0 update)** |
 | **Evidence** | PHASE_2_ISSUES S1 (**P0**) |
 | **Classification** | **A** |
 | **Alters production?** | **UNMEASURED.** L6 blocks only 1 decision in baseline_006, but POI *scoring* feeds L7, which blocks 1,825 |
 | **Historical intent** | **Not established** |
 | **Mechanical or strategy?** | **Mechanical** — a repainting level is not a level |
-| **Evidence required first** | How often the Fib POI is selected as `best_poi`, and what it contributes to L7 scores. Read-only |
+| **Evidence required first** | How often the Fib POI is selected as `best_poi`, and what it contributes to L7 scores. ~~Read-only~~ **SUPERSEDED — not in the artifacts; see Stage 0 update** |
 | **Phase 8 experiment** | Characterise first; repair is a separate controlled change |
 | **Defer?** | **No** for characterisation |
+
+### Stage 0 update (2026-09-29) — repainting confirmed, leakage excluded, reach wider
+
+**Repainting: CONFIRMED.** `poi_engine.py:643-666` builds the zone from
+`m15_data.tail(20)` high/low. Each new M15 bar slides the window, so the level
+recomputes every bar. It is **not a fixed structural level**.
+
+**Future-data leakage: EXCLUDED.** The frame is already truncated at `as_of` by
+the replay feed's tested invariant (see P8-18's update). The computation can
+never see a bar that has not closed.
+
+> **Classification: retrospective signal instability / repainting — NOT
+> future-data leakage.**
+
+**`is_untested` is circular**, new to this ledger:
+`_zone_touched(m15_data, fib_top, fib_bottom, fib_idx)` with
+`fib_idx = len(m15_data) - 20` scans bars *after* that index — the same 20 bars
+that defined the high and low. The 0.618 level of a range has almost always been
+traded through within that range, so the flag is structurally biased to `False`.
+
+**Downstream reach is broader than previously documented.** `identify_poi` runs
+unconditionally at `main_production.py:934`, `best_poi` is assigned **before** the
+`bypass_l6` check, and it reaches L7 as `poi_score` at `main_production.py:972`.
+
+- **L6** consumes it but blocks only **1** decision in `baseline_006`.
+- **L7** consumes it and blocks **1,825**.
+- **The L6 bypass does not insulate MICRO_SCALP.** All 7,314 MICRO_SCALP
+  decisions — including all four signals, whose `passed` lists show
+  `L6_POI_BYPASSED` — still feed `best_poi["score"]` into L7.
+
+The original row implied the bypass limited exposure. **It does not.**
+
+> **No frequency is claimed.** How often the Fibonacci POI wins the sort, and what
+> it contributes to L7 scores, **cannot be measured from `baseline_006`
+> artifacts**: `decisions.jsonl` has no POI fields and `layer_funnel.json` records
+> only the single L6 block. Answering it requires re-executing `identify_poi`
+> across the decision stream — a partial replay. **No replay was run.**
+
+**P8-19 is therefore BLOCKED from experimentation** until that measurement is
+separately authorised.
 
 ## P8-20 — Ambiguous exits under the conservative intrabar policy
 
@@ -411,11 +652,18 @@ items are harder to interpret before earlier ones are settled.
 Answers questions from `baseline_006`'s own artefacts. Nothing here can change
 production behaviour.
 
-- **P8-04** — where DEAD_CALM's 119 decisions actually terminate
-- **P8-06** — how many L8-reaching decisions sit within float tolerance of their boundary
-- **P8-13** — count of `risk_distance == 0` candidates
-- **P8-19** — how often the repainting Fib POI becomes `best_poi`, and its L7 contribution
-- **P8-18** — whether the replay feed already supplies the decision-time price
+**Stage 0 is COMPLETE (2026-09-29). No replay was used.** Outcomes:
+
+- **P8-04** — **DONE.** 0 of 119 reach L8 (65 L1 / 46 L3 / 8 L5); 22 did in
+  b004/005. Reclassified **B**, and **moves to Stage 3**
+- **P8-06** — **DONE.** 4 of 4 gate-reaching decisions compute exactly 1.5; the
+  gate rejected 0. Stays coupled to P8-02/P8-03
+- **P8-13** — **NOT OBTAINABLE.** `risk_distance` is not in `decisions.jsonl`.
+  Cancellation confirmed by other means; the edge-case count remains unmeasured
+- **P8-19** — **NOT OBTAINABLE.** `decisions.jsonl` has no POI fields.
+  **P8-19 is blocked from Stage 2** until the measurement is authorised
+- **P8-18** — **DONE.** The feed supplies only closed bars, so `iloc[-2]` is one
+  bar staler than necessary. Not lookahead. Stays in Stage 2
 
 ### Stage 1 — Mechanical repairs with bounded, predictable blast radius
 
@@ -423,18 +671,23 @@ Each alone, each with a pre-declared expectation.
 
 - **P8-15 (`bias` only)** — the documented reassignment; expect zero decision change
 - **P8-10** — momentum-fallback units; pre-declared ≤21
-- **P8-07** — H1 ATR gate units; expect zero change *on this dataset*, which is
-  precisely why it cannot be validated here
+- **P8-07** — H1 ATR gate units. **Stage 0 quantified this: the 14-bar H1 range
+  never falls below 8.0 *or* 0.8 on this dataset, so both readings fire zero times
+  and the repair is UNFALSIFIABLE here.** A null replay is not a validation. Carry
+  it as an unvalidated correction, or defer to a dataset that can distinguish the
+  units
 
 ### Stage 2 — Mechanical repairs that move the geometry
 
 Larger diffs. Stage 0 must be complete, because these change the quantities
 Stage 0 measures.
 
-- **P8-18** — entry priced off a stale bar (upstream of the next two)
+- **P8-18** — entry priced off a stale bar (upstream of the next two).
+  Characterised in Stage 0; remains a candidate for controlled research
 - **P8-08** — the `$3.00` stop buffer (rename and convert as one change)
 - **P8-09** — L3 replay staleness (expect a large diff; L3 blocks 5,066)
-- **P8-19** — the repainting POI
+- **P8-19** — the repainting POI. **BLOCKED** until its frequency and L7
+  contribution are measured; `baseline_006` cannot supply them
 - **P8-16 (repair only)** — SCALP-1 check-4
 
 ### Stage 3 — Contract decisions requiring the owner, not evidence
@@ -442,6 +695,10 @@ Stage 0 measures.
 No experiment can settle these. They need a decision first; only then does an
 experiment become meaningful.
 
+- **P8-04** — **moved here by Stage 0.** No longer a measurement question: the
+  branch blocks nothing on this dataset but was reachable in b004/005. Hard
+  dependency on **P8-05**, soft dependency on **P8-14** (regime classification
+  determines whether DEAD_CALM becomes reachable at all)
 - **P8-05** — is DEAD_CALM a regime or a rejection?
 - **P8-14** — are ATR bands absolute or relative?
 - **P8-03** — should the target stay a fixed multiple of risk, or become
