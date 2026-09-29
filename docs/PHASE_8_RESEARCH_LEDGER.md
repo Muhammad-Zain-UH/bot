@@ -864,6 +864,151 @@ question of live operation arises. **Phase 8 is decision-path research only.**
 
 ---
 
+# 2.1 Stop-anchor contract — decision record (2026-09-29)
+
+> ## DECISION POINT — NOT A DECISION
+>
+> This section records an **unresolved strategy contract** and the evidence
+> bearing on it. It selects nothing, proposes no parameter value, and is not
+> permission to change any code.
+
+**Reference:** HEAD `363a9219df50585912b47abd2d9239940a9301e7`, population
+`baselines/baseline_007`, dataset
+`433b7e2713babdef2ea69909a8bc6a515292dc70b0db434c0b63c256a970b07c`. All figures
+below come from a **read-only recomputation** over the 1,589 L8-reaching
+decisions — the production functions were imported unmodified, nothing was
+written to the repository, and no replay or experiment was run.
+
+---
+
+## Proven
+
+**OBSERVED — source.** `_select_stop_anchor` never receives the entry price. It
+returns `min(candidates) - buffer` for BUY and `max(candidates) + buffer` for
+SELL, selecting by extremeness alone. Candidates are the sweep wick and, on
+MOMENTUM only, `displacement.origin_low/high`. PULLBACK is passed **no**
+`structure_*` at all.
+
+**OBSERVED — geometry.** Under the current `detect_fvg` construction,
+`displacement.origin_*` **is** the near FVG edge: for BUY `origin_low = m5[-1].low
+= gap_high`; for SELL `origin_high = m5[-1].high = gap_low`. A midpoint entry
+therefore always lies on the far side of it.
+
+**MEASURED — the whole L8 population (1,589):**
+
+| Population | n | Displacement candidate wrong-side | **Selected** anchor wrong-side | Buffered stop wrong-side |
+|---|---|---|---|---|
+| MOMENTUM, all | 1,525 | 150 (9.8 %) | **25 (1.6 %)** | **1 (0.1 %)** |
+| └ FVG present → entry = **midpoint** | **139** | **139 (100.0 %)** | **24 (17.3 %)** | **1 (0.7 %)** |
+| └ no FVG → entry = `m5[-1].close` | 1,386 | 11 (0.8 %) | 1 (0.1 %) | 0 |
+| PULLBACK | 267 | n/a — no structural anchor | **0 (0.0 %)** | **0 (0.0 %)** |
+
+- Selected anchor source, MOMENTUM: **sweep wick 1,393 / 1,525 (91.3 %)**,
+  displacement origin 132 (8.7 %). The sweep-wick candidate is itself wrong-side
+  in only 2 of 1,416 (0.1 %).
+- **The $3.00 buffer rescues 24 of the 25 selected-anchor inversions.** The one
+  survivor is `2026-07-21T18:30 BUY MICRO_SCALP`, where `fvg_size = 7.26` — half
+  the gap (3.63) exceeds the buffer. 137 of 139 gaps are `< $6.00`
+  (median 0.970, p75 1.810, max 7.260).
+- **0 ATR-fallback cases** on either path: a candidate was always available.
+- PULLBACK's 267 anchors were fully reconstructible read-only **despite zero
+  executed PULLBACK trades**.
+- **RR is invariant to entry and stop geometry.** `reward_distance =
+  risk_distance * tp_ratio`, so `rr ≡ tp_ratio`; see the retraction in P8-18 and
+  in P8-08.
+
+### Stating the scale precisely
+
+> **The selected-anchor problem is NOT widespread.** Three different quantities
+> must not be collapsed into one:
+>
+> - **displacement-origin inversion is structurally universal** in the
+>   midpoint sub-population — **139 / 139**;
+> - **selected-anchor inversion is 25 / 1,525 overall**, and **24 / 139** within
+>   the midpoint subset, because the sweep wick usually wins selection;
+> - **buffered-stop inversion is 1 / 1,525.**
+>
+> The first is a property of one *candidate*; only the second and third describe
+> what the system actually does.
+
+### Correction to an earlier extrapolation
+
+> **The earlier inference from the four historical trades was invalid and is
+> retracted.** From 3-of-4 wrong-side anchors it was inferred that selected-anchor
+> inversion was systematic. The full population shows **1.6 %**. Those four trades
+> over-represented displacement-origin wins (2 of 4, against 8.7 % population-wide).
+> The *geometric* claim — that the displacement origin is the near edge and is
+> always wrong-side for a midpoint entry — was correct and is now confirmed at
+> 100 % on exactly the sub-population it described. The extrapolation from four
+> trades to a population rate was not.
+
+---
+
+## Historical evidence
+
+**OBSERVED — original, `c3cf4df` (2026-07-01), byte-identical to HEAD apart from a
+dropped docstring:** `_select_stop_anchor`, its `min`/`max` rule, `buffer_pips =
+3.0`, `structure_* = displacement.origin_*` on MOMENTUM, PULLBACK receiving no
+`structure_*`, and the FVG midpoint as a **candidate** entry. Its docstring reads
+only *"Pick the most defensive structure-based stop anchor."*
+
+**OBSERVED — the original entry was not the midpoint.** At `c3cf4df` the midpoint
+was immediately overridden by the M1 breakout close when CHoCH confirmed.
+
+**OBSERVED — rebuild-era, `8a4e010` (2026-09-17)** removed that override, making
+the midpoint the final entry, and recorded its own measurement: the M1 close was
+*"outside the gap on 13 of 13 occurrences, always on the far side"*. That commit
+states explicitly: *"This changes entry prices and therefore outcomes; **it is not
+a bug fix**."* — a deliberate strategy change, labelled as such.
+
+**ABSENT.** No original-author artifact states the intended relationship between
+the entry and the stop anchor. Historical intent for that relationship is
+**NOT established**.
+
+**INFERENCE, labelled as such.** The original design appears geometrically
+coherent: with an entry outside the gap, the displacement origin was the *far*
+edge and correctly behind the entry. Moving the entry to the midpoint without
+revisiting the anchor is what made it the *near* edge. This follows from
+`8a4e010`'s own 13/13 measurement plus the zone arithmetic; it is not attested.
+
+---
+
+## Unresolved strategy decisions
+
+**Recorded, deliberately unanswered.**
+
+1. For MOMENTUM midpoint entries, should the stop anchor be allowed to be the
+   displacement-origin / near-FVG edge?
+2. Should anchor selection be constrained **relative to the entry**, rather than
+   by extremeness alone?
+3. Is the sweep wick intended to remain the preferred defensive anchor?
+4. Should PULLBACK have a separate anchor contract, given it currently has no
+   structural anchor at all?
+5. Is the buffer meant to be a fixed distance, a pip-defined distance, a
+   gap-relative buffer, an ATR-based buffer, or something else?
+6. Should **E11** become an invariant *after* the anchor contract is selected?
+
+No option among these is endorsed here, and no value is proposed for any of them.
+
+---
+
+## Sequencing
+
+| Item | State |
+|---|---|
+| **P8-08** (`$3.00` buffer) | **BLOCKED** — the buffer's role is undetermined until the anchor contract is settled |
+| **P8-18** implementation | **BLOCKED** |
+| **E11** implementation | **BLOCKED** — a contract-dependent detector, not an independently safe fix. On this evidence it would fire on the inverted candidates rather than repair them |
+| **Anchor experiment** | **BLOCKED** |
+| **Further read-only instrumentation** | **NOT required** unless a new question arises. The population is fully measured |
+
+> ### The next required action is a strategy-owner contract decision.
+>
+> No experiment can substitute for it, and no further measurement is needed to
+> take it.
+
+---
+
 # 3. Experimental rules
 
 **Binding on every Phase 8 experiment.**
