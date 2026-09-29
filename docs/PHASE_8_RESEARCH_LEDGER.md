@@ -746,9 +746,28 @@ Intended risk and the realised-R denominator therefore differ — 2.365 against
 > characterize the pullback / B3 path** — the path that actually prices off
 > `m5[-2]` and then `m1[-2]`. Zero baseline trades exercise it.
 
-**Downstream reach, confirmed:** `strategy_entry_price` → `risk_distance` →
-`take_profit` → `reward_distance` → `rr` → the L8 RR gate, so it anchors the very
-boundary P8-06 describes. **Remains a candidate for controlled research later.**
+**Downstream reach, corrected 2026-09-29.**
+
+> ~~`strategy_entry_price` → `risk_distance` → `take_profit` → `reward_distance`
+> → `rr` → the L8 RR gate, so it anchors the very boundary P8-06 describes.~~
+> **RETRACTED — the final step is false.** This is the same error retracted for
+> P8-08 in `f940c59`.
+
+**The factual relationship.** `strategy_entry_price` does reach `risk_distance`,
+`take_profit` and `reward_distance`, and it reaches **execution validation** —
+`execution/paper_broker.py` compares the stop against the fill. But
+`reward_distance = risk_distance * tp_ratio`, so
+**`rr = reward_distance / risk_distance` is identically `tp_ratio`** for any
+non-zero risk. `rr` is therefore invariant to the entry price and to the stop.
+
+> **P8-18 cannot affect P8-06 admission through RR.** Nor can it change any other
+> L1–L8 verdict: `entry_triggered` is a price-pattern condition and
+> `trigger_quality` is composed from component qualities, neither carrying a
+> geometry term.
+
+**Actual direct blast radius:** stop geometry, `risk_distance`, target/reward
+geometry, execution validation (stop-vs-fill), simulated trade outcomes, and
+diagnostic reason text. **Remains a candidate for controlled research later.**
 
 ## P8-19 — S1: the Fibonacci POI repaints
 
