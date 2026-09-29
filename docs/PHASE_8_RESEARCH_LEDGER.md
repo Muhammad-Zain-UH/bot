@@ -1,0 +1,475 @@
+# Phase 8 — Research Ledger and Experimental Framework
+
+**Framework only. No experiment has been run. No production code, test, pin,
+fingerprint or baseline was changed in creating this document.**
+
+**Reference point:** `baselines/baseline_006` at commit
+`a1029a9c609b2d6788978d2a701eb9da2dc2d309`, installed and committed as
+`9df761f`. Every Phase 8 experiment compares against it.
+
+**This ledger does not rank anything.** It contains no judgement about which
+item matters most, which change would perform best, or which value any
+undetermined parameter should take. §4's sequence is a *dependency* order, not a
+priority order. Anyone reading a preference into it is reading something that was
+deliberately not written.
+
+---
+
+## Classification scheme
+
+| Class | Meaning |
+|---|---|
+| **A — Mechanical defect** | The code does something demonstrably different from what it computes elsewhere or from what its own units imply. Correctness question; has a right answer |
+| **B — Strategy-contract decision** | The code is internally consistent but the intended contract is undetermined. Requires an owner decision, not evidence |
+| **C — Edge hypothesis** | A claim about market behaviour that could in principle be tested. Requires an experiment |
+| **D — Documentation / residual code** | No operational effect. Cleanup or annotation only |
+| **E — Observation only** | Recorded behaviour; no action currently justified by available evidence |
+
+**"Alters production behaviour"** means: would change the decision stream of the
+frozen replay. Determined by inspection where the answer is provable, and marked
+**UNMEASURED** where it is not — an unmeasured answer is not a small one.
+
+---
+
+# 1. Core ledger
+
+## P8-01 — L3 `0.786` acceptance-ceiling provenance
+
+| Field | |
+|---|---|
+| **Current behaviour** | Retracement accepted on `0.236 <= p <= 0.786`. `0.786` is the upper bound |
+| **Evidence** | D-6OF-2F. The five ratios were inherited wholesale from `fibonacci_levels.py` (`a11e405`, 2026-05-13) as the standard Fibonacci set; the accepted band is exactly `[min, max]` of that set. `0.618` carries the annotation *"Golden ratio - most important"*; **`0.786` carries none**. The boundary has never been modified since creation |
+| **Classification** | **B** (contract), with an unresolved-provenance flag |
+| **Alters production?** | **Yes** — any change to the ceiling moves L3 admissions. Phase 6O-B measured 21 decisions in 61.8–78.6% and 363 in 78.6–100% among blocked decisions reporting a retracement |
+| **Historical intent** | **NOT established.** No repository evidence explains why 78.6% was selected as a ceiling. A structural explanation exists (it is the largest member of the inherited set) but that is not intent |
+| **Mechanical or strategy?** | **Strategy choice** |
+| **Evidence required first** | External: what the ceiling is *for*. No repository artefact can supply it |
+| **Phase 8 experiment** | None that settles provenance. A sensitivity sweep would describe what different ceilings admit; it cannot recover intent, and running one risks substituting a preferred outcome for a missing rationale |
+| **Defer?** | **Yes** — pending an owner decision on what the band is meant to express |
+
+## P8-02 — Historical RR numerical minimum unrecoverable
+
+| Field | |
+|---|---|
+| **Current behaviour** | No repository-wide minimum RR exists. Per-regime gate minimums are 1.5 / 2.0 / 2.5 / default 2.0 |
+| **Evidence** | U9-RR, Phase 6K-D. The original design docstring specified **1:3** (*"MINIMUM RR CHECK (Hard Gate) … NO TRADE"*); the code implementing it used **`rr >= 2.0`** and called it *"Minimum 1:2"*. Both DOCUMENTED, same file, same commit `c3cf4df`. The three current gate thresholds have no recovered rationale of any kind |
+| **Classification** | **B** |
+| **Alters production?** | Depends entirely on the value chosen |
+| **Historical intent** | **CONTRADICTORY and therefore not established.** Two documented values disagree |
+| **Mechanical or strategy?** | **Strategy choice** |
+| **Evidence required first** | **P8-03 must be resolved first.** While `rr ≡ tp_ratio`, choosing a minimum is not an RR policy — it is a regime-admissibility policy in RR clothing (Phase 6K-E) |
+| **Phase 8 experiment** | **None while P8-03 stands.** An RR sweep would measure which regimes each value permits, not which RR is appropriate |
+| **Defer?** | **Yes — blocked by P8-03** |
+
+## P8-03 — The surviving RR comparison is mathematically degenerate
+
+| Field | |
+|---|---|
+| **Current behaviour** | `take_profit = entry ± risk_distance × tp_ratio`, then `rr = reward_distance / risk_distance`, so **`rr ≡ tp_ratio` identically**. `evaluate_entry_for_regime` compares that constant against a per-regime constant. The verdict is fixed per regime before any price is read |
+| **Evidence** | U9-RR §4; `entry_engine.py:432-435` carries the comment in-source; `defect_observations.json` E9/E10/Q3 |
+| **Classification** | **B** — structural, not a coding error |
+| **Alters production?** | **Yes, necessarily.** Any construction that makes `rr` price-derived changes which decisions pass L8 |
+| **Historical intent** | **Partially established.** The *designed* intent was a per-opportunity gate (*"Recalculate or wait for better level"*) — DOCUMENTED and never implementable, because TP was always built at the ratio. The *current* structure is a consequence, not a decision |
+| **Mechanical or strategy?** | **Strategy choice.** Making RR meaningful requires a market-derived target (structure, liquidity, measured move), which is a new strategy contract, not a repair |
+| **Evidence required first** | An owner decision on whether the target should remain a fixed multiple of risk or become market-derived. Phase 4B (`PHASE_4B_TARGET_SEMANTICS`) already framed this as market-derived vs fixed-R |
+| **Phase 8 experiment** | **Candidate, and the pivotal one.** Construct a market-derived target as an *alternative* path, replay, compare against baseline_006. Must not replace the existing construction until compared |
+| **Defer?** | **No** — but it requires the owner decision above before an experiment is meaningful |
+
+## P8-04 — DEAD_CALM barred by the surviving RR branch (mechanism)
+
+| Field | |
+|---|---|
+| **Current behaviour** | `evaluate_entry_for_regime` has no DEAD_CALM branch, so DEAD_CALM falls to the default `rr >= 2.0` against a `tp_ratio` of 1.5. `1.5 >= 2.0` is false, so DEAD_CALM is structurally unable to enter |
+| **Evidence** | U9-RR §4; baseline_006: DEAD_CALM 119 decisions, **0 reached L8**, 0 signals |
+| **Classification** | **A** — the absence of a branch is an omission, not a stated rule |
+| **Alters production?** | **Yes, but bounded.** 119 decisions total after D-6N-1. They currently die earlier than L8, so adding a branch alone may change nothing — **UNMEASURED** |
+| **Historical intent** | **NOT established.** No artefact says DEAD_CALM should or should not trade. It is a catch-all `else`, as Phase 6M/6N documented |
+| **Mechanical or strategy?** | **Mechanical** in form (missing branch), **strategy** in consequence (whether DEAD_CALM trades) — see P8-05 |
+| **Evidence required first** | P8-05's answer. The branch cannot be written without knowing what it should say |
+| **Phase 8 experiment** | Measure where DEAD_CALM's 119 decisions currently terminate, to establish whether the RR branch binds at all. Read-only against baseline_006's `decisions.jsonl` — **no replay needed** |
+| **Defer?** | **No** for the measurement; **yes** for any code change |
+
+## P8-05 — Should DEAD_CALM trade at all? (contract)
+
+| Field | |
+|---|---|
+| **Current behaviour** | DEAD_CALM is reached when M5 ATR < 2.5 and the reasoning string says *"too low → Will be BLOCKED at L2"* — but D-6N-1 separated volatility from session, and the population fell from 2,312 to 119 |
+| **Evidence** | Phase 6M/6N: DEAD_CALM is a catch-all `else`, and the author's own reasoning string asserts a block that L2 does not actually perform |
+| **Classification** | **B** |
+| **Alters production?** | **Yes** if DEAD_CALM is made tradeable; **no** if the current bar is made explicit |
+| **Historical intent** | **Ambiguous.** The name and the reasoning string say "do not trade"; no gate implements that directly |
+| **Mechanical or strategy?** | **Strategy choice** |
+| **Evidence required first** | Owner decision: is DEAD_CALM a *regime* or a *rejection*? |
+| **Phase 8 experiment** | None until decided. If the answer is "rejection", the correct change is an explicit block with a stated reason, which is a contract change, not an experiment |
+| **Defer?** | **Yes** |
+
+## P8-06 — MICRO_SCALP / REGIME_SCALP exact-equality RR boundaries
+
+| Field | |
+|---|---|
+| **Current behaviour** | MICRO_SCALP gates `rr >= 1.5` against a `tp_ratio` of 1.5; REGIME_SCALP gates `rr >= 2.0` against 2.0. Admission turns on floating-point equality |
+| **Evidence** | U9-RR §4. U4 (`7b1c5f1`) is the demonstration: the 2026-08-06 candidate computed `rr = 1.4999999999999196`, 8e-14 below the boundary, and was refused. Correcting the reward derivation moved signals **3 → 4**. That candidate is signal #2 in baseline_006 |
+| **Classification** | **A** |
+| **Alters production?** | **Yes — demonstrably.** One signal out of four in the current baseline exists because of this |
+| **Historical intent** | **NOT established** that the boundary should be an equality test. Nothing records the thresholds being chosen to coincide with the ratios |
+| **Mechanical or strategy?** | **Mechanical.** A gate whose outcome depends on the last bits of a float is not expressing a strategy |
+| **Evidence required first** | None to characterise it; it is proven. A *fix* requires deciding whether the comparison should be `>=` with tolerance, or whether the coincidence of thresholds and ratios should be removed — which touches P8-02 |
+| **Phase 8 experiment** | Measure how many L8-reaching decisions sit within float tolerance of their regime boundary. Read-only against `decisions.jsonl` plus the ledger — **no replay needed** |
+| **Defer?** | **No** for the measurement. The fix is coupled to P8-02/P8-03 and should not be made in isolation |
+
+## P8-07 — U9-H1: H1 ATR gate units
+
+| Field | |
+|---|---|
+| **Current behaviour** | `main_production` gates on `h1_atr < 8.0` and reports it as "pips"; the value is quote-currency dollars, so the real threshold is **$8.00 = 80 pips** |
+| **Evidence** | PHASE_2_ISSUES U9; `defect_observations.json` `U9_h1_atr_gate_units`, which records **0 occurrences** on this dataset |
+| **Classification** | **A**, currently with **E** consequences — the defect is real, its effect on this dataset is nil |
+| **Alters production?** | **No on this dataset** (0 firings). **Yes on a dataset at a different price level** — the threshold is absolute USD, so its selectivity tracks gold's price |
+| **Historical intent** | **Established that the label is wrong** (it says pips, the value is dollars). Not established what threshold was intended |
+| **Mechanical or strategy?** | **Mechanical** (unit mislabel) wrapping a **strategy** quantity (the threshold itself) |
+| **Evidence required first** | Whether the intended unit was pips. If so the correct value is 0.8, a 10× change |
+| **Phase 8 experiment** | None needed to characterise. Any repair is a controlled change measured against baseline_006 |
+| **Defer?** | **No** — but note it changes nothing measurable here, so it cannot be validated by this dataset |
+
+## P8-08 — Q6 / U1: `$3.00` stop buffer
+
+| Field | |
+|---|---|
+| **Current behaviour** | `_select_stop_anchor` subtracts `buffer_pips = 3.0` directly from a price, producing a **$3.00** buffer where the name implies 3 pips ($0.30) |
+| **Evidence** | PHASE_2_ISSUES U1 (P0); `defect_observations.json` `Q6_stop_buffer_units`, 4 occurrences; confirmed by inspection in Phase 2A.1 (sweep wick 2511.73 → stop 2508.73) |
+| **Classification** | **A** |
+| **Alters production?** | **Yes.** It changes `risk_distance` on every stop-anchored entry, hence TP (built as `risk × tp_ratio`), hence `rr`, hence — via P8-06's equality boundaries — potentially admission itself |
+| **Historical intent** | **Established that name and behaviour disagree.** Not established which was intended |
+| **Mechanical or strategy?** | **Mechanical** |
+| **Evidence required first** | Owner decision on the intended buffer. PHASE_4B_FIX_DECISION_MATRIX M6 warns: **rename and convert as one change** — renaming alone leaves the defect, converting alone changes stop construction |
+| **Phase 8 experiment** | Controlled change, single variable, replay, compare. Note the coupling to P8-06 — do not attribute an admission change to the buffer without checking the boundary |
+| **Defer?** | **No**, but it must not be bundled with any other change |
+
+## P8-09 — L3 is one M15 bar stale under replay
+
+| Field | |
+|---|---|
+| **Current behaviour** | `pullback_detector` drops the last bar (`recent.iloc[:-1]`) to avoid a forming candle. Under replay the feed already supplies only closed bars, so the drop removes a bar that is not there |
+| **Evidence** | Phase 6O-B L3-D6; PHASE_2_ISSUES B5 (*"double-drop"*) |
+| **Classification** | **A** — a live/replay divergence |
+| **Alters production?** | **Yes in replay** (L3 sees a different window). **No in live**, where the drop is correct. This is the important asymmetry: fixing it makes replay and live *agree*, which changes replay results |
+| **Historical intent** | **Established** — the drop is deliberate and correct for live. The defect is that replay does not need it |
+| **Mechanical or strategy?** | **Mechanical** |
+| **Evidence required first** | Confirmation that `ReplayFeed` supplies only closed bars at every timeframe L3 touches. Partly established by the no-look-ahead invariant work |
+| **Phase 8 experiment** | Controlled change, replay, compare. **Expect a large diff** — it shifts L3's entire input window, and L3 blocks 5,066 decisions |
+| **Defer?** | **No** — but it is a big-diff change and should be run alone |
+
+## P8-10 — L3 momentum-fallback cap compares pips to dollars
+
+| Field | |
+|---|---|
+| **Current behaviour** | REGIME_SCALP's momentum fallback applies a distance cap that mixes pip and dollar units, making it ~10× too tight |
+| **Evidence** | Phase 6O-B L3-D7: 196 decisions reached it; **≤21 would flip** |
+| **Classification** | **A** |
+| **Alters production?** | **Yes, bounded** — ≤21 decisions |
+| **Historical intent** | **NOT established** which unit was intended |
+| **Mechanical or strategy?** | **Mechanical** |
+| **Evidence required first** | Owner decision on the intended unit, same family as P8-07/P8-08 |
+| **Phase 8 experiment** | Controlled change, replay, compare against the pre-declared ≤21 |
+| **Defer?** | **No** |
+
+## P8-11 — `MIN_PULLBACK_QUALITY = 1.5` is inert
+
+| Field | |
+|---|---|
+| **Current behaviour** | Reaching the comparison requires `pullback_detected`, which requires the accepted band, which floors base quality at 4.0 with only non-negative bonuses. So `quality < 1.5` cannot occur |
+| **Evidence** | D-6OF-2G; Phase 6O-B L3-D5 measured **0 firings in 15,735**. Pinned by `tests/backtest/test_l3_quality_invariant.py` (D-6OF-2H) |
+| **Classification** | **D** |
+| **Alters production?** | **No.** Removing it changes 0 decisions — provable without replay |
+| **Historical intent** | **Established.** It was the operative threshold at `c3cf4df` and was rendered inert by the gate change at `4c90b81`. Retained for traceability |
+| **Mechanical or strategy?** | Neither — residue |
+| **Evidence required first** | None |
+| **Phase 8 experiment** | **None.** Nothing to test |
+| **Defer?** | **Yes, indefinitely.** Annotated (D-6OF-2H) and pinned. Deletion would lose history for zero gain |
+
+## P8-12 — `tp_ratio = 3.0` defaults unreachable
+
+| Field | |
+|---|---|
+| **Current behaviour** | Four function signatures default `tp_ratio = 3.0`, and `main_production` uses `regime_info.get("tp_ratio", 3.0)`. `detect_regime` sets the key on both its normal and exception paths, so no default is reachable |
+| **Evidence** | U9-RR §5. Residue of the former `rr_ratio = 3.0`, which *was* the operative universal multiplier at `c3cf4df` |
+| **Classification** | **D** |
+| **Alters production?** | **No** |
+| **Historical intent** | **Established** — it is the fossil of the pre-`4c90b81` design |
+| **Mechanical or strategy?** | Neither — residue |
+| **Evidence required first** | None |
+| **Phase 8 experiment** | **None** |
+| **Defer?** | **Yes.** A misleading-default annotation is the appropriate treatment, not removal |
+
+## P8-13 — `rr_bonus` cancels in candidate selection
+
+| Field | |
+|---|---|
+| **Current behaviour** | `_score_entry_candidate` adds `min(rr, 4.0) × 1.5`. Both candidates in a decision are evaluated at the same `regime_tp_ratio`, so the bonus is identical and cancels in `max()` |
+| **Evidence** | U9-RR §5, by the same argument `8c5724c` made when removing `valid_bonus`. **One exception:** a degenerate `risk_distance == 0` candidate scores `rr = 0` and would not cancel |
+| **Classification** | **D**, with a narrow **A** edge case |
+| **Alters production?** | **No** in the general case. The zero-risk edge case is **UNMEASURED** |
+| **Historical intent** | **Not established.** It looks like an intent to prefer higher RR, which the construction defeats |
+| **Mechanical or strategy?** | Residue, with a mechanical edge |
+| **Evidence required first** | Count of candidates with `risk_distance == 0` in the frozen stream |
+| **Phase 8 experiment** | Read-only count — **no replay needed** |
+| **Defer?** | **Yes** for removal; **no** for the count |
+
+## P8-14 — G2 / U10-B: absolute vs relative ATR bands
+
+| Field | |
+|---|---|
+| **Current behaviour** | `detect_regime` classifies on absolute-USD M5 ATR bands 2.5 / 4.5 / 7.0 |
+| **Evidence** | `defect_observations.json` `G2_U10_absolute_regime_bands`: *"Regime selection on this dataset is a function of gold's price level during the period, not of relative volatility."* U10-A (units) was RESOLVED; **U10-B (absolute vs relative) was not** |
+| **Classification** | **B**, with a testable **C** component |
+| **Alters production?** | **Yes, very substantially.** Regime governs `tp_ratio`, risk, L3/L6 bypass, POI threshold and spread cap. D-6N-1 already showed how far a regime change propagates |
+| **Historical intent** | **NOT established.** No artefact states whether bands were meant to be absolute or ATR-relative |
+| **Mechanical or strategy?** | **Strategy choice**, but the *observation* that classification tracks price level is mechanical and proven |
+| **Evidence required first** | Owner decision on whether regime means absolute volatility or relative. Then: does the dataset span enough price range to distinguish them? Gold moved ~3,900 → ~4,600 in this period, so the bands are not scale-stable across it |
+| **Phase 8 experiment** | **Candidate.** Express bands as a fraction of price or of a longer-horizon ATR, replay, compare. **Must change one definition only**; do not also retune the boundary values, or the result is uninterpretable |
+| **Defer?** | **No**, but it is the widest-blast-radius item here and must be run in isolation |
+
+## P8-15 — `bias` / `bias_strength` not reassigned on the L2 flip
+
+| Field | |
+|---|---|
+| **Current behaviour** | The BOS flip reverses `side` but leaves `bias` and `bias_strength` at their pre-flip values. `analysis["layer_1"]` and L7's `bias_strength` therefore carry the abandoned direction's numbers on every reversal |
+| **Evidence** | D-6OF-2 models 2/3; 1,845 reversals at HEAD over ~157 distinct H1 states. D-6OF-2A fixed `position_type`; D-6OF-2B rebound L3 to the effective side; **these two remain open** |
+| **Classification** | **A** for `bias` (a stale label the flip documents itself as changing); **B** for `bias_strength` (whether a flipped setup inherits the old conviction score is a contract question) |
+| **Alters production?** | **`bias`: no** — it is reporting-only after D-6OF-2B. **`bias_strength`: yes** — L7 consumes it, and L7 blocks 1,825 decisions |
+| **Historical intent** | **Established for `bias`**: `architecture.txt` 760-761 documents the flip as *"flip[s] bias"*. **Not established for `bias_strength`** |
+| **Mechanical or strategy?** | Mixed — see above |
+| **Evidence required first** | For `bias`: none, the doc states it. For `bias_strength`: an owner decision on what conviction a reversed setup should carry |
+| **Phase 8 experiment** | Split them. `bias` reassignment is a zero-decision-change repair (verify by replay). `bias_strength` is a contract change requiring a pre-declared expectation, as D-6OF-2B did |
+| **Defer?** | **No** for `bias`; **yes** for `bias_strength` |
+
+## P8-16 — SCALP-1 check-4
+
+| Field | |
+|---|---|
+| **Current behaviour** | REGIME_SCALP's momentum substitution path contains a broken check-4; separately, it does not extend to the 190 INTRADAY_SWING reversals |
+| **Evidence** | D-6OB-2; D-6OF-2 deferral list |
+| **Classification** | **A** for the broken check; **B** for whether it should extend to INTRADAY_SWING |
+| **Alters production?** | **UNMEASURED** for the repair. **Yes** for the extension (190 decisions in scope) |
+| **Historical intent** | **Not established** that the substitution was meant to be REGIME_SCALP-only |
+| **Mechanical or strategy?** | Mixed |
+| **Evidence required first** | A unit-level characterisation of what check-4 currently evaluates versus what its name implies. **D-6OB-2 explicitly warned against using the broken check-4 as evidence for anything** |
+| **Phase 8 experiment** | Repair first, measure, then treat the extension as a separate contract question |
+| **Defer?** | **No** for the repair; **yes** for the extension |
+
+## P8-17 — Q1 / Q2: reported RR versus realised R
+
+| Field | |
+|---|---|
+| **Current behaviour** | Risk is priced against a strategy entry price the trade is never filled at, so realised R differs from reported RR on every trade |
+| **Evidence** | `defect_observations.json` `Q1_Q2_rr_vs_realised_r`, 4 occurrences, all four with `strategy_rr_ratio = 1.5` against realised R of −1.08, −0.61, +3.30, +1.48 |
+| **Classification** | **E** currently — it is a measurement-validity statement, not a behaviour to change |
+| **Alters production?** | **No** as an observation. Changing *how entry is priced* would, and that is P8-18 |
+| **Historical intent** | **Established** that RR is reported, not judged (`entry_engine.py:433-435` says so in source) |
+| **Mechanical or strategy?** | Neither — it is a caveat on interpreting the artefacts |
+| **Evidence required first** | None |
+| **Phase 8 experiment** | **None.** Its role is to prevent anyone using reported RR as an outcome measure in Phase 8 |
+| **Defer?** | **N/A — standing caveat** |
+
+## P8-18 — Entry priced off a stale bar (B3 / B4)
+
+| Field | |
+|---|---|
+| **Current behaviour** | `_evaluate_pullback_entry` uses `iloc[-2]["close"]` as the entry price, and `main_production`'s `confirmed_m5_close` passes a stale close into L8 as `current_price` |
+| **Evidence** | PHASE_2_ISSUES B3, B4 — both **P0**. Corroborated by baseline_006's ledger: every trade's `strategy_entry_price` differs from its actual fill (e.g. 3983.725 vs 3983.525) |
+| **Classification** | **A** |
+| **Alters production?** | **Yes** — it changes the price every downstream geometry calculation is anchored to |
+| **Historical intent** | **Not established.** Consistent with B1/B2's staleness, inconsistent with B6 in the same pass |
+| **Mechanical or strategy?** | **Mechanical** |
+| **Evidence required first** | Whether the replay feed's "current price" is already the correct decision-time price, making the `-2` index a double-drop as in P8-09 |
+| **Phase 8 experiment** | Characterise first (read-only), then a controlled change |
+| **Defer?** | **No** — it is upstream of P8-06 and P8-08, and should be understood before either is repaired |
+
+## P8-19 — S1: the Fibonacci POI repaints
+
+| Field | |
+|---|---|
+| **Current behaviour** | The "Fibonacci 0.618" POI is built from a rolling `tail(20)` high/low, so the zone repaints every M15 bar. It is generated unconditionally and frequently becomes `best_poi` |
+| **Evidence** | PHASE_2_ISSUES S1 (**P0**) |
+| **Classification** | **A** |
+| **Alters production?** | **UNMEASURED.** L6 blocks only 1 decision in baseline_006, but POI *scoring* feeds L7, which blocks 1,825 |
+| **Historical intent** | **Not established** |
+| **Mechanical or strategy?** | **Mechanical** — a repainting level is not a level |
+| **Evidence required first** | How often the Fib POI is selected as `best_poi`, and what it contributes to L7 scores. Read-only |
+| **Phase 8 experiment** | Characterise first; repair is a separate controlled change |
+| **Defer?** | **No** for characterisation |
+
+## P8-20 — Ambiguous exits under the conservative intrabar policy
+
+| Field | |
+|---|---|
+| **Current behaviour** | 1 of 4 trades in baseline_006 resolved by policy rather than from observed sequence, because M5 bars cannot order a same-bar stop and target |
+| **Evidence** | baseline_006 `exit_statistics.json`; `metrics.json` `ambiguous_exit_fraction: 0.25` |
+| **Classification** | **E** — an assumption, correctly declared, not a defect |
+| **Alters production?** | **No.** It affects outcome attribution, not the decision stream |
+| **Historical intent** | **Established** — the policy is declared in `execution_assumptions` |
+| **Mechanical or strategy?** | Neither — a simulation assumption |
+| **Evidence required first** | M1 data could disambiguate. The dataset has M1 |
+| **Phase 8 experiment** | Optional: re-resolve ambiguous exits at M1 resolution. This changes **outcome measurement only**, never the decision stream, and must be reported as such |
+| **Defer?** | **No**, but note that with 4 trades it moves a statistic that carries no inferential weight either way |
+
+---
+
+# 2. Carried from `PHASE_2_ISSUES.md`, not individually characterised
+
+The following are in the broader defect ledger, touch the **decision path**, and
+therefore belong in Phase 8 scope — but none has been characterised to the
+standard above. **Listing them is not scheduling them.**
+
+| ID | Item | Class (provisional) |
+|---|---|---|
+| U2, U3, U4 | Liquidity scoring/penalty distances declared in pips, applied as dollars | A |
+| U5, U6, U7 | POI zone-size, displacement and body thresholds, same unit family | A |
+| U8 | `sweep_min = max(2.5, atr×0.12)` — $2.50 minimum sweep (**P0**) | A |
+| U11, U12 | Hardcoded `pip_size = 0.10` duplicating broker data | A |
+| B1, B2, B6 | Staleness inconsistency within one pass | A |
+| E11 | No check that the stop is on the correct side of entry | A |
+| E12 | Entry never accounts for spread or slippage; `MAX_SLIPPAGE_PIPS` defined, never referenced | A |
+
+**Explicitly out of Phase 8 research scope:** R1–R9 (risk/sizing), E1–E8
+(execution/broker), E3/E4 (exit logic), and everything behind
+`LIVE_TRADING_ENABLED`. These do not affect the frozen replay's decision stream —
+the baseline uses fixed 0.01 lots and does not size — and several are unreachable
+by design. They remain P0 in their own ledger and must be resolved before any
+question of live operation arises. **Phase 8 is decision-path research only.**
+
+---
+
+# 3. Experimental rules
+
+**Binding on every Phase 8 experiment.**
+
+### 3.1 The baseline is immutable
+
+`baselines/baseline_006` is frozen. No experiment may overwrite, regenerate or
+modify it — **including an experiment that looks better.** The `write_artifacts`
+guard refuses to write into an existing baseline directory; that is the
+mechanism, and it must not be worked around.
+
+`baseline_004` remains the original production record. `baseline_005` remains
+the pre-U4 zero-signal record. Both stay frozen.
+
+### 3.2 Every experiment must
+
+1. **Start from `baseline_006`'s commit** (`a1029a9`) and its dataset
+   (`433b7e27…`). A different dataset is a different question.
+2. **State the hypothesis before running.** Written down, with a pre-declared
+   expected effect and a pre-declared blast radius. D-6OF-2B is the model: *"≈294
+   of 1,070 verdicts change; anything outside that causal path is a BLOCKER."*
+3. **Change exactly one thing.** One parameter, one rule, one construction. Two
+   changes in one replay produce an uninterpretable result, not a faster one.
+4. **Record the exact diff** — commit SHA, file, line, before and after.
+5. **Use the same replay methodology** —
+   `docs/BASELINE_005_PROVENANCE.md` §8, logs redirected,
+   `assert_logs_are_redirected()`, `run_baseline` and `write_artifacts`
+   unmodified, all other arguments at default.
+6. **Compare against `baseline_006`** on: decisions, per-layer funnel, regime and
+   session distribution, side distribution, signal count, exact signal list, and
+   all four fingerprints.
+7. **Get its own baseline identity** if retained — `baseline_007`, `_008`, … A
+   result that changes the decision stream is never folded into an existing
+   baseline.
+8. **Report divergence outside the predicted path as a BLOCKER**, and stop. Do
+   not rationalise an unexplained difference into an expected one.
+
+### 3.3 Prohibited
+
+- Selecting a change because it produces more signals, fewer signals, higher
+  win rate, or better P&L.
+- Tuning any threshold against replay output.
+- Parameter sweeps presented as evidence of intent.
+- Claiming profitability, or that the strategy is "better", from any replay.
+- Inferring a design decision from what is mathematically or technically
+  cleaner.
+- Forcing a classification where the evidence is insufficient — mark
+  **UNRESOLVED** instead.
+
+### 3.4 On sample size
+
+`baseline_006` contains **four trades**. Four is not a sample. No experiment may
+report a win rate, expectancy, profit factor or drawdown as evidence for or
+against a change. Until the number of trades is large enough to support an
+inference — and this framework does not assert what that number is — the only
+admissible comparisons are **structural**: which decisions changed, at which
+layer, and why.
+
+---
+
+# 4. Proposed research sequence
+
+**A dependency order, not a ranking.** Nothing here says an earlier item is more
+important, more promising or more likely to help. The only claim is that later
+items are harder to interpret before earlier ones are settled.
+
+### Stage 0 — Read-only characterisation (no replay, no code change)
+
+Answers questions from `baseline_006`'s own artefacts. Nothing here can change
+production behaviour.
+
+- **P8-04** — where DEAD_CALM's 119 decisions actually terminate
+- **P8-06** — how many L8-reaching decisions sit within float tolerance of their boundary
+- **P8-13** — count of `risk_distance == 0` candidates
+- **P8-19** — how often the repainting Fib POI becomes `best_poi`, and its L7 contribution
+- **P8-18** — whether the replay feed already supplies the decision-time price
+
+### Stage 1 — Mechanical repairs with bounded, predictable blast radius
+
+Each alone, each with a pre-declared expectation.
+
+- **P8-15 (`bias` only)** — the documented reassignment; expect zero decision change
+- **P8-10** — momentum-fallback units; pre-declared ≤21
+- **P8-07** — H1 ATR gate units; expect zero change *on this dataset*, which is
+  precisely why it cannot be validated here
+
+### Stage 2 — Mechanical repairs that move the geometry
+
+Larger diffs. Stage 0 must be complete, because these change the quantities
+Stage 0 measures.
+
+- **P8-18** — entry priced off a stale bar (upstream of the next two)
+- **P8-08** — the `$3.00` stop buffer (rename and convert as one change)
+- **P8-09** — L3 replay staleness (expect a large diff; L3 blocks 5,066)
+- **P8-19** — the repainting POI
+- **P8-16 (repair only)** — SCALP-1 check-4
+
+### Stage 3 — Contract decisions requiring the owner, not evidence
+
+No experiment can settle these. They need a decision first; only then does an
+experiment become meaningful.
+
+- **P8-05** — is DEAD_CALM a regime or a rejection?
+- **P8-14** — are ATR bands absolute or relative?
+- **P8-03** — should the target stay a fixed multiple of risk, or become
+  market-derived?
+- **P8-01** — what is the retracement band meant to express?
+- **P8-15 (`bias_strength`)** — what conviction does a reversed setup carry?
+- **P8-16 (extension)** — should the substitution path reach INTRADAY_SWING?
+
+### Stage 4 — Blocked until Stage 3 resolves
+
+- **P8-02** — the RR minimum. Blocked by **P8-03**: while `rr ≡ tp_ratio`, any
+  minimum is a regime-admissibility policy, not an RR policy
+
+### Never in Stage sequence — documentation only
+
+- **P8-11**, **P8-12** — annotate, do not remove
+- **P8-17**, **P8-20** — standing caveats on interpreting results
+
+---
+
+# 5. Phase 8 status
+
+> ## READY FOR CONTROLLED RESEARCH
+
+`baseline_006` is installed, committed (`9df761f`), verified against the accepted
+HEAD state on every measured dimension, and frozen. The ledger above classifies
+every unresolved item carried out of Phases 6 and 7. The rules in §3 govern every
+experiment that follows.
+
+**No experiment has been run. No item has been ranked. No parameter has been
+selected. No strategy behaviour has changed.**
