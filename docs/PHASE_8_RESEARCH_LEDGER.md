@@ -852,7 +852,7 @@ standard above. **Listing them is not scheduling them.**
 | U8 | `sweep_min = max(2.5, atr×0.12)` — $2.50 minimum sweep (**P0**) | A |
 | U11, U12 | Hardcoded `pip_size = 0.10` duplicating broker data | A |
 | B1, B2, B6 | Staleness inconsistency within one pass | A |
-| E11 | No check that the stop is on the correct side of entry | A |
+| E11 | ~~No check that the stop is on the correct side of entry~~ **CORRECTED 2026-09-30 — see the E11 scope note below** | A |
 | E12 | Entry never accounts for spread or slippage; `MAX_SLIPPAGE_PIPS` defined, never referenced | A |
 
 **Explicitly out of Phase 8 research scope:** R1–R9 (risk/sizing), E1–E8
@@ -1006,6 +1006,51 @@ No option among these is endorsed here, and no value is proposed for any of them
 >
 > No experiment can substitute for it, and no further measurement is needed to
 > take it.
+
+---
+
+## E11 scope note — corrected 2026-09-30
+
+**Documentation only.** Recorded because earlier P8-08, P8-18 and stop-anchor
+entries described E11 as simply absent. That is **too strong**, and the
+correction matters for sequencing.
+
+> **E11 is absent from `entry_engine`, not from the system.** The wrong-side and
+> zero-risk geometry it names is already refused at the **execution boundary**, in
+> two independent places.
+
+**OBSERVED — source:**
+
+- `core/types.py` `PendingOrderIntent.__post_init__` raises `DomainInvariantError`
+  on *"BUY stop … is not below the limit"* and *"SELL stop … is not above the
+  limit"* (and on an inverted zone, or a limit outside its zone). Every MOMENTUM
+  LIMIT_FVG signal builds one of these, so the check is live and exercised —
+  `baseline_007` records 4 intents built and 4 filled.
+- `execution/paper_broker.py:277` raises `DomainInvariantError` when
+  `position.risk_distance <= 0.0`.
+- `execution/paper_broker.py:186,198` additionally reject a fill whose stop has
+  been pushed through the fill price by cost adjustment.
+- `trade_manager.py:60,81` guard with `if risk_distance <= 0: return`.
+- `order_execution.py:96` holds the same guarded division but is **dead** (E1/E2).
+
+**What remains true.** `entry_engine.calculate_entry_levels` itself performs no
+side check — it computes `abs(entry_price - stop_loss)`, so an inverted stop
+yields a positive risk distance and flows onward. `core/types.py` `StopLoss`
+exists to make that unrepresentable and **is not used** by `entry_engine` or
+`main_production`. So the *strategy layer* has no invariant; the *execution layer*
+does.
+
+**Consequence for sequencing, and why the earlier wording mattered.** A
+wrong-side stop reaching a MOMENTUM intent would **raise**, not trade. It would
+surface as a strategy error rather than a silent bad position. `baseline_007`
+records `strategy_errors = 0` and `rejected_orders = 0`, so no such case occurred.
+This makes an `entry_engine`-level E11 check a **defence-in-depth and
+error-message improvement**, not the only thing standing between the strategy and
+an inverted trade — which is how the earlier wording could be read.
+
+**Unchanged by this correction:** E11 implementation remains **BLOCKED** behind
+the stop-anchor contract decision, for the reason already recorded — on the
+measured evidence it would fire on inverted candidates rather than repair them.
 
 ---
 
