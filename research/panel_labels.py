@@ -36,7 +36,7 @@ sys.path.insert(0, str(REPO))
 from core.types import Timeframe
 from data.dataset import load_bars_csv
 
-HORIZONS = (6, 12, 24)        # M5 bars: 30m / 1h / 2h
+HORIZONS = (6, 12, 24, 48)    # M5 bars: 30m / 1h / 2h / 4h (4h secondary)
 
 
 def main() -> None:
