@@ -125,12 +125,18 @@ def calculate_h4_ema_bias(
                 "ema20": ema20,
                 "ema50": ema50,
                 "reasoning": "Missing EMA or close data",
+                "raw_bias_strength": 0.0,
             }
         
         # Calculate EMA distance in price units
         ema_distance = ema20 - ema50
         ema_distance_abs = abs(ema_distance)
-        
+        # DIAGNOSTIC ONLY -- see the note in get_fast_bias. This is the pre-clip
+        # ratio. On this path `strength` may additionally be reduced by the
+        # midpoint and two-candle penalties below, so bias_strength is
+        # min(10, raw) only when neither penalty fires.
+        raw_bias_strength = ema_distance_abs / ema_threshold if ema_threshold else 0.0
+
         # Determine bias based on EMA separation using an ATR-scaled threshold.
         if ema_distance_abs < ema_threshold:
             bias = "NEUTRAL"
@@ -224,6 +230,7 @@ def calculate_h4_ema_bias(
             "ema20": ema20,
             "ema50": ema50,
             "reasoning": full_reason,
+            "raw_bias_strength": raw_bias_strength,   # diagnostic only, never consumed
         }
     
     except Exception as exc:
@@ -238,6 +245,7 @@ def calculate_h4_ema_bias(
             "h4_close": None,
             "ema20": None,
             "ema50": None,
+            "raw_bias_strength": 0.0,
             "reasoning": f"Error: {str(exc)}",
         }
 
@@ -356,10 +364,17 @@ def get_fast_bias(
                 "swing_low": h1_low, "ema_distance": 0.0, "ema_threshold": ema_threshold,
                 "ema20": ema20, "ema50": ema50, "invalidated": False, "flip_reason": "",
                 "full_report": "[FAST_BIAS] Missing H1 EMA or close data",
+                "raw_bias_strength": 0.0,
             }
 
         ema_distance = ema20 - ema50
         ema_distance_abs = abs(ema_distance)
+        # DIAGNOSTIC ONLY. `bias_strength` clamps at 10.0, and 36.2% of evaluated
+        # decisions sit exactly at that clamp, which collapses a measured 10.0-31.6
+        # range into one value. This preserves the pre-clip ratio for analysis.
+        # It is never read by any consumer: bias_strength below is unchanged, and
+        # confidence_engine re-clamps at 10 regardless.
+        raw_bias_strength = ema_distance_abs / ema_threshold if ema_threshold else 0.0
 
         if ema_distance_abs < ema_threshold:
             bias = "NEUTRAL"
@@ -385,6 +400,7 @@ def get_fast_bias(
             "swing_low": swing_low, "ema_distance": ema_distance, "ema_threshold": ema_threshold,
             "ema20": ema20, "ema50": ema50, "invalidated": False, "flip_reason": "",
             "full_report": full_report,
+            "raw_bias_strength": raw_bias_strength,   # diagnostic only, never consumed
         }
     except Exception as exc:
         log_debug(f"Fast H1 bias calculation error: {exc}")
@@ -392,6 +408,7 @@ def get_fast_bias(
             "bias": "NEUTRAL", "bias_strength": 0.0, "swing_high": None, "swing_low": None,
             "ema_distance": 0.0, "ema_threshold": None, "ema20": None, "ema50": None,
             "invalidated": False, "flip_reason": "", "full_report": f"[FAST_BIAS] Error: {exc}",
+            "raw_bias_strength": 0.0,
         }
 
 
@@ -455,6 +472,7 @@ def get_h4_bias(
         "ema_threshold": ema_threshold,
         "ema20": ema20_val,  # ADD THIS
         "ema50": ema50_val,  # ADD THIS
+        "raw_bias_strength": ema_result.get("raw_bias_strength", 0.0),
         "invalidated": was_invalidated,
         "flip_reason": validation["flip_reason"],
         "full_report": full_report,
