@@ -37,7 +37,9 @@ sys.path.insert(0, str(REPO))
 from core.types import Timeframe
 from data.dataset import load_bars_csv
 
-HORIZONS = (6, 12, 24, 48)    # M5 bars: 30m / 1h / 2h / 4h (4h secondary)
+HORIZONS = (1, 3, 6, 12, 24, 48)   # M5 bars: 5m/15m/30m/1h/2h/4h
+"""1 and 3 exist only for the Candidate F "does reversal start immediately?"
+diagnostic; 48 (4h) is secondary throughout."""
 
 
 

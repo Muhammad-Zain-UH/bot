@@ -176,3 +176,117 @@ def candidate_D(m15: pd.DataFrame) -> pd.DataFrame:
     df.attrs["all_breakout_bars"] = int((out_any | out_dn).sum())
     df.attrs["initial_breakouts"] = int((init_up | init_dn).sum())
     return df
+
+
+# ---- Candidate F constants. FIXED BY BRIEF. DO NOT TUNE. ----
+F_MIN_RUN = 3             # >= 3 consecutive same-direction M5 closes
+F_MOVE_ATR = 2.0          # total directional move >= 2.0 * ATR(M5)
+F_WICK_RATIO = 0.5        # final bar's wick AGAINST the move >= 0.5 of its range
+F_RSI_HIGH = 70.0         # upward exhaustion -> SELL
+F_RSI_LOW = 30.0          # downward exhaustion -> BUY
+
+
+def candidate_F(m5: pd.DataFrame, m15: pd.DataFrame) -> pd.DataFrame:
+    """Momentum exhaustion -> reversal. One row per qualifying event.
+
+    Sequence definition
+    -------------------
+    A run is a maximal stretch of consecutive M5 bars over which
+    ``sign(close[i] - close[i-1])`` is constant. Its LENGTH is the number of
+    such increments, so a run of length 3 spans four closes. The total move is
+    ``close[end] - close[run_start]``.
+
+    Uniqueness rule -- and why it is not "the last bar of the run"
+    -------------------------------------------------------------
+    Within one maximal run, the event is the FIRST bar at which all four
+    conditions hold; later qualifying bars in the same run are discarded. Taking
+    the run's final bar instead would be LOOK-AHEAD: knowing a run has ended
+    requires seeing the next bar, which is not available at the decision
+    instant. Runs are disjoint by construction, so two events can never share a
+    final bar.
+
+    Wick
+    ----
+    The wick measured is the one AGAINST the move -- upper wick for an upward
+    run, lower wick for a downward one -- as a fraction of the bar's range.
+    This is deliberately NOT production's ``wick_ratio`` key, which is
+    total-wick ``(range - body) / range`` and carries no direction.
+
+    RSI
+    ---
+    M15 RSI-14 from the last M15 bar to have CLOSED at or before the M5
+    decision bar's close. A decision mid-M15-bar therefore reads the previous
+    completed M15 bar, never the forming one.
+    """
+    t5 = pd.to_datetime(m5["time"], utc=True).to_numpy("datetime64[ns]")
+    o, h, l, c = (m5[k].to_numpy(float) for k in ("open", "high", "low", "close"))
+    atr5 = m5["atr_14"].to_numpy(float)
+    elig5 = m5["feature_eligible"].to_numpy(bool)
+    t15 = pd.to_datetime(m15["time"], utc=True).to_numpy("datetime64[ns]")
+    rsi15 = m15["rsi_14"].to_numpy(float)
+    atr15 = m15["atr_14"].to_numpy(float)
+    FIVE = np.timedelta64(5, "m"); FIFTEEN = np.timedelta64(15, "m")
+
+    step = np.sign(np.diff(c))                      # step[i-1] = dir of close i
+    rng = h - l
+    upper = h - np.maximum(o, c)
+    lower = np.minimum(o, c) - l
+
+    # M15 bar whose close is <= this M5 bar's close
+    m15_close = t15 + FIFTEEN
+    m5_close = t5 + FIVE
+    m15_pos = np.searchsorted(m15_close, m5_close, side="right") - 1
+
+    rows = []
+    n = len(c)
+    i = 1
+    while i < n:
+        d = step[i - 1]
+        if d == 0:
+            i += 1; continue
+        j = i
+        while j + 1 < n and step[j] == d:
+            j += 1
+        # maximal run covers increments i..j, i.e. closes i-1 .. j
+        run_start = i - 1
+        fired = False
+        for k in range(i, j + 1):
+            length = k - run_start                  # increments so far
+            if length < F_MIN_RUN or not elig5[k]:
+                continue
+            a = atr5[k]
+            if not np.isfinite(a) or a <= 0:
+                continue
+            move = (c[k] - c[run_start]) * d
+            if move < F_MOVE_ATR * a:
+                continue
+            if rng[k] <= 0:
+                continue
+            wick = (upper[k] if d > 0 else lower[k]) / rng[k]
+            if wick < F_WICK_RATIO:
+                continue
+            mp = m15_pos[k]
+            if mp < 0 or not np.isfinite(rsi15[mp]):
+                continue
+            r = float(rsi15[mp])
+            if d > 0 and not (r > F_RSI_HIGH):
+                continue
+            if d < 0 and not (r < F_RSI_LOW):
+                continue
+            rows.append({
+                "m5_idx": int(k), "t_event": m5_close[k],
+                "run_dir": "UP" if d > 0 else "DOWN",
+                "side": "SELL" if d > 0 else "BUY",
+                "run_length": int(length), "run_start_idx": int(run_start),
+                "run_maximal_length": int(j - run_start),
+                "move_atr": float(move / a), "wick_ratio_against": float(wick),
+                "rsi15": r, "atr5": float(a), "atr15": float(atr15[mp]),
+                "m15_idx": int(mp),
+            })
+            fired = True
+            break                                   # one event per maximal run
+        i = j + 1
+    df = pd.DataFrame(rows)
+    df.attrs["runs_scanned"] = int(np.sum(np.diff(np.flatnonzero(
+        np.r_[True, step[1:] != step[:-1], True])) >= F_MIN_RUN))
+    return df

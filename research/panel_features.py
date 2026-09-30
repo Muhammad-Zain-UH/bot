@@ -58,9 +58,11 @@ def _causal_m15(high, low, close) -> dict[str, np.ndarray]:
     """
     h, l, c = (pd.Series(x) for x in (high, low, close))
     atr = ta.atr(h, l, c, length=14).to_numpy(float)
+    rsi = ta.rsi(c, length=14).to_numpy(float)
     prior_high = h.rolling(BREAKOUT_LOOKBACK).max().shift(1).to_numpy(float)
     prior_low = l.rolling(BREAKOUT_LOOKBACK).min().shift(1).to_numpy(float)
-    return {"atr_14": atr, "prior_high": prior_high, "prior_low": prior_low}
+    return {"atr_14": atr, "rsi_14": rsi,
+            "prior_high": prior_high, "prior_low": prior_low}
 
 
 def _verify_causal(fn, high, low, close, probes, label):
@@ -91,10 +93,15 @@ def _m15_panel(out_path: Path) -> dict:
                        "high": high, "low": low, **f})
     df["eligible"] = (np.isfinite(f["atr_14"]) & (f["atr_14"] > 0)
                       & np.isfinite(f["prior_high"]) & np.isfinite(f["prior_low"]))
+    # Separate flag on purpose: `eligible` defines the Candidate B/D population
+    # and must not shift because a later candidate needed another column.
+    df["rsi_available"] = np.isfinite(f["rsi_14"])
     df.to_pickle(out_path)
     if not check["exact"]:
         raise SystemExit("M15 CAUSALITY VERIFICATION FAILED")
     return {"rows": int(n), "eligible": int(df["eligible"].sum()),
+            "rsi_available": int(df["rsi_available"].sum()),
+            "eligible_without_rsi": int((df["eligible"] & ~df["rsi_available"]).sum()),
             "causality_prefix_test": check,
             "constants": {"BREAKOUT_LOOKBACK": BREAKOUT_LOOKBACK}}
 
@@ -103,10 +110,11 @@ def main() -> None:
     bars = load_bars_csv(REPO / "data" / "raw" / "XAUUSD_M5.csv", Timeframe.M5)
     t = pd.to_datetime(bars["time"], utc=True)
     high, low, close = (bars[k].to_numpy(float) for k in ("high", "low", "close"))
+    opn = bars["open"].to_numpy(float)
     n = len(bars)
 
     f = _causal_features(high, low, close)
-    df = pd.DataFrame({"idx": np.arange(n), "time": t, "close": close,
+    df = pd.DataFrame({"idx": np.arange(n), "time": t, "open": opn, "close": close,
                        "high": high, "low": low, **f})
 
     # --- feature eligibility: every feature defined, nothing about the future ---
