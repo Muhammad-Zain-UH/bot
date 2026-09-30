@@ -372,18 +372,44 @@ def detect_m1_choch(m1_data: pd.DataFrame, direction: str) -> dict[str, Any]:
 
 def _select_stop_anchor(
     direction: str,
+    entry_price: float,
     sweep_wick_low: float | None = None,
     sweep_wick_high: float | None = None,
     structure_low: float | None = None,
     structure_high: float | None = None,
     buffer_pips: float = 3.0,
 ) -> float | None:
+    """Most defensive structural stop candidate that is valid against the entry.
+
+    ``entry_price`` is required. Selecting by extremeness alone could return a
+    candidate already on the wrong side of the entry -- under a midpoint MOMENTUM
+    entry the displacement origin is the *near* FVG edge and is wrong-side by
+    construction -- leaving the fixed buffer to rescue the geometry or not.
+
+    A candidate is eligible only when **strictly** on the protective side:
+    ``candidate < entry_price`` for BUY, ``candidate > entry_price`` for SELL.
+    Among eligible candidates the original most-defensive ordering is preserved.
+    When none is eligible this returns ``None`` and the caller's existing
+    entry-relative ATR fallback applies, unchanged. The buffer is unchanged and
+    is still applied exactly as before.
+
+    Consequence, relied on by the zero-risk annotation in
+    ``calculate_entry_levels``: an eligible candidate is strictly beyond the
+    entry, so ``risk_distance`` on this path is ``|entry - candidate| +
+    buffer_pips``, hence strictly greater than the buffer.
+    """
     if direction == "BUY":
-        candidates = [v for v in [sweep_wick_low, structure_low] if v is not None]
+        candidates = [
+            v for v in [sweep_wick_low, structure_low]
+            if v is not None and v < entry_price
+        ]
         if candidates:
             return min(candidates) - buffer_pips
     else:
-        candidates = [v for v in [sweep_wick_high, structure_high] if v is not None]
+        candidates = [
+            v for v in [sweep_wick_high, structure_high]
+            if v is not None and v > entry_price
+        ]
         if candidates:
             return max(candidates) + buffer_pips
     return None
@@ -403,6 +429,7 @@ def calculate_entry_levels(
     try:
         stop_anchor = _select_stop_anchor(
             direction,
+            entry_price,
             sweep_wick_low=sweep_wick_low,
             sweep_wick_high=sweep_wick_high,
             structure_low=structure_low,
@@ -434,6 +461,18 @@ def calculate_entry_levels(
         # risk_distance * tp_ratio, so rr IS tp_ratio; the per-candidate gate
         # that compared it to a constant is retired (docs/VALID_RR_CONTRACT.md).
         # The surviving regime gate still compares it -- that is U2/U9, untouched.
+        # DEFENCE IN DEPTH, UNREACHABLE BY CONSTRUCTION. The `else 0` branch
+        # needs risk_distance == 0, i.e. stop_loss == entry_price. Since
+        # _select_stop_anchor became entry-aware, neither path can produce that:
+        # an eligible candidate is strictly beyond the entry, so the anchor path
+        # gives risk > buffer_pips; the ATR fallback gives risk >= 6.0. Before
+        # that change it was reachable only when a candidate sat exactly
+        # buffer_pips on the wrong side of the entry -- measured 0 times in
+        # 15,735 decisions, smallest observed risk 0.555.
+        # Retained deliberately, not deleted: it is the guard that keeps this
+        # division safe if the anchor invariant is ever relaxed, and the same
+        # state is independently refused downstream by
+        # PendingOrderIntent.__post_init__ and PaperBroker.open_position.
         rr = reward_distance / risk_distance if risk_distance > 0 else 0
         reasoning = f"Entry {entry_price:.2f} | SL {stop_loss:.2f} ({risk_distance:.1f}p risk) | TP {take_profit:.2f} ({reward_distance:.1f}p reward) | RR {rr:.1f}:1"
         return {

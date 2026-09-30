@@ -386,21 +386,47 @@ class U4RewardIsTheConstructionQuantity(unittest.TestCase):
                     places=12,
                 )
 
-    def test_the_zero_risk_contract_is_unchanged(self) -> None:
-        """``rr`` is 0 when risk is not positive. Existing semantics, not new.
+    def test_the_former_zero_risk_fixture_now_yields_positive_risk(self) -> None:
+        """The old zero-risk fixture was invalid geometry, and is now rejected.
 
-        Reached when the stop anchor lands exactly on the entry: for a BUY the
-        stop is ``wick - 3.0``, so a wick 3.0 above the entry gives a zero-width
-        stop. U4 changes ``reward_distance`` from ``0.0`` (the old subtraction)
-        to ``0.0`` (``0.0 * tp_ratio``), and the guarded division still yields
-        ``0``. **No new semantics are introduced.**
+        **Converted, not deleted.** This was
+        ``test_the_zero_risk_contract_is_unchanged``, which asserted
+        ``risk_distance == 0.0`` from ``entry 2500.0`` with
+        ``sweep_wick_low = 2503.0``. That fixture puts the only candidate **3.0
+        above a BUY entry** -- wrong-side geometry -- and the old selector, which
+        never saw the entry, subtracted the buffer and landed exactly *on* the
+        entry: a zero-width stop, with take-profit also equal to the entry.
+
+        The entry-aware contract now filters that candidate as ineligible
+        (``candidate < entry_price`` is false), so the existing ATR fallback
+        supplies the stop and risk is strictly positive. U4's coverage is
+        preserved below: ``reward_distance`` is still exactly
+        ``risk_distance * tp_ratio``, and ``rr`` is consistent with positive risk.
+
+        The defensive ``if risk_distance > 0 else 0`` branch is **retained** in
+        production as defence-in-depth; it is unreachable by construction under
+        this invariant, and ``test_stop_anchor_entry_aware`` pins that it still
+        exists.
         """
         levels = entry_engine.calculate_entry_levels(
             entry_price=2500.0, sweep_wick_low=2503.0, direction="BUY", tp_ratio=3.0,
         )
-        self.assertEqual(levels["risk_distance"], 0.0)
-        self.assertEqual(levels["reward_distance"], 0.0)
-        self.assertEqual(levels["reward_to_risk_ratio"], 0)
+        # 1. the former zero-risk fixture now produces strictly positive risk
+        self.assertGreater(levels["risk_distance"], 0.0)
+        # the wrong-side candidate was filtered, so this is the ATR fallback:
+        # entry - max(20.0 * 1.5, 6.0) = 2500.0 - 30.0
+        self.assertEqual(levels["risk_distance"], 30.0)
+        self.assertEqual(levels["stop_loss"], 2470.0)
+        self.assertLess(levels["stop_loss"], levels["entry_price"])
+        # 2. U4's relationship is preserved, exactly
+        self.assertEqual(
+            levels["reward_distance"],
+            levels["risk_distance"] * 3.0,
+            "reward_distance must remain the product, exactly",
+        )
+        # 3. rr is consistent with positive risk, not the defensive zero
+        self.assertAlmostEqual(levels["reward_to_risk_ratio"], 3.0, places=12)
+        self.assertNotEqual(levels["reward_to_risk_ratio"], 0)
 
     def test_a_missing_anchor_still_falls_back_to_the_atr_stop(self) -> None:
         """Unchanged by U4, and pinned because it is easily mistaken for the

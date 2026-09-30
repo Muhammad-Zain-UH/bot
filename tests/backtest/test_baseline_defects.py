@@ -282,7 +282,10 @@ class TestStopBufferIsAppliedInPriceUnits(unittest.TestCase):
     """Q6 / U1: the 'buffer_pips' default is subtracted from a price directly."""
 
     def test_buffer_is_three_price_units_not_three_pips(self) -> None:
-        anchor = entry_engine._select_stop_anchor("BUY", sweep_wick_low=2511.73)
+        # The entry sits above the candidate, so it is eligible under the
+        # entry-aware contract and this still measures the buffer alone. The
+        # assertion is unchanged; only the new required argument was added.
+        anchor = entry_engine._select_stop_anchor("BUY", 2520.0, sweep_wick_low=2511.73)
         self.assertAlmostEqual(anchor, 2508.73, places=9)
 
     def test_default_is_still_three(self) -> None:
