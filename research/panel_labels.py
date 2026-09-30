@@ -31,7 +31,8 @@ import numpy as np, pandas as pd
 from numpy.lib.stride_tricks import sliding_window_view
 
 REPO = Path(__file__).resolve().parents[1]
-FEATURES = Path(sys.argv[1]); OUT = Path(sys.argv[2])
+# argv is parsed inside main() so this module stays importable as a library
+# (evaluate_D imports first_touch_m1 from it).
 sys.path.insert(0, str(REPO))
 from core.types import Timeframe
 from data.dataset import load_bars_csv
@@ -39,7 +40,32 @@ from data.dataset import load_bars_csv
 HORIZONS = (6, 12, 24, 48)    # M5 bars: 30m / 1h / 2h / 4h (4h secondary)
 
 
+
+def first_touch_m1(m1_times, m1_high, m1_low, start, end, level, direction):
+    """First M1 bar touching `level`, as market minutes from the window start.
+
+    LABEL-DOMAIN: deliberately sees the future. `level` is supplied by the
+    caller (a feature), which is the permitted features -> labels direction.
+
+    Args:
+        direction: "UP" if the level is above and reached by a high, "DOWN" if
+            below and reached by a low.
+
+    Returns:
+        (minutes_to_touch | None, covered) -- `covered` is False when M1 does
+        not span the window, so the row can be excluded rather than counted as
+        a non-touch.
+    """
+    a = int(np.searchsorted(m1_times, start, side="left"))
+    z = int(np.searchsorted(m1_times, end, side="left"))
+    if z <= a:
+        return None, False
+    hit = (m1_high[a:z] >= level) if direction == "UP" else (m1_low[a:z] <= level)
+    return (int(np.argmax(hit)) + 1 if hit.any() else None), True
+
+
 def main() -> None:
+    FEATURES = Path(sys.argv[1]); OUT = Path(sys.argv[2])
     feats = pd.read_pickle(FEATURES)
     atr = feats["atr_14"].to_numpy(float)          # barrier distance only
 
