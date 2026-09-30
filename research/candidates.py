@@ -290,3 +290,74 @@ def candidate_F(m5: pd.DataFrame, m15: pd.DataFrame) -> pd.DataFrame:
     df.attrs["runs_scanned"] = int(np.sum(np.diff(np.flatnonzero(
         np.r_[True, step[1:] != step[:-1], True])) >= F_MIN_RUN))
     return df
+
+
+# ============================================================================
+# SESSION-OPEN DIRECTIONAL SHAPE DIAGNOSTIC
+#
+# NOT Candidate H. Candidate H has no specification -- N, the direction rule and
+# the event scope were never declared, and nothing here declares them. These
+# constants exist only to make a power/shape surface reproducible, and must not
+# be read as a predeclared H specification.
+# ============================================================================
+PRECURSOR_SESSION_HOURS = (1, 7, 13, 22)   # UTC session starts
+PRECURSOR_K_GRID = (3, 6, 12)              # opening-window lengths in M5 bars
+
+
+def session_open_events(m5: pd.DataFrame) -> pd.DataFrame:
+    """One row per (session occurrence, k) with a defined opening direction.
+
+    Opening direction is ``sign(close[s+k-1] - open[s])`` -- the diagnostic rule
+    fixed by the brief, not a candidate rule. Zero is recorded as UNDEFINED and
+    reported rather than dropped silently.
+
+    The decision instant is the close of the kth window bar, so the forward
+    window begins at ``s+k`` and cannot contain any opening-window bar.
+
+    Window contiguity is checked: a window whose bars are not consecutive in
+    time (an intraday outage) is flagged, never silently treated as continuous.
+    """
+    t = pd.to_datetime(m5["time"], utc=True)
+    tn = t.to_numpy("datetime64[ns]")
+    o, c = m5["open"].to_numpy(float), m5["close"].to_numpy(float)
+    hi, lo = m5["high"].to_numpy(float), m5["low"].to_numpy(float)
+    elig = m5["feature_eligible"].to_numpy(bool)
+    atr = m5["atr_14"].to_numpy(float)
+    hour, minute = t.dt.hour.to_numpy(), t.dt.minute.to_numpy()
+    FIVE = np.timedelta64(5, "m")
+
+    rows = []
+    for hh in PRECURSOR_SESSION_HOURS:
+        for s in np.flatnonzero((hour == hh) & (minute == 0)):
+            # gap immediately before the session open (22:00 is always a reopen)
+            pre_gap = (float((tn[s] - tn[s - 1]) / np.timedelta64(1, "m"))
+                       if s > 0 else float("nan"))
+            for k in PRECURSOR_K_GRID:
+                d = s + k - 1                      # decision bar
+                if d >= len(c):
+                    continue
+                span = tn[d] - tn[s]
+                contiguous = span == FIVE * (k - 1)
+                move = c[d] - o[s]
+                if move > 0:
+                    side, dirlab = "BUY", "UP"
+                elif move < 0:
+                    side, dirlab = "SELL", "DOWN"
+                else:
+                    side, dirlab = None, "UNDEFINED"
+                a = atr[d]
+                rows.append({
+                    "session": int(hh), "k": int(k), "open_idx": int(s),
+                    "decision_idx": int(d), "t_open": tn[s], "t_decision": tn[d] + FIVE,
+                    "pre_gap_min": pre_gap, "window_contiguous": bool(contiguous),
+                    "open_dir": dirlab, "side": side,
+                    "open_move": float(move),
+                    "open_move_atr": float(move / a) if np.isfinite(a) and a > 0 else np.nan,
+                    "open_abs_move_atr": float(abs(move) / a) if np.isfinite(a) and a > 0 else np.nan,
+                    "open_range": float(hi[s:d + 1].max() - lo[s:d + 1].min()),
+                    "open_range_atr": (float((hi[s:d + 1].max() - lo[s:d + 1].min()) / a)
+                                       if np.isfinite(a) and a > 0 else np.nan),
+                    "atr5": float(a) if np.isfinite(a) else np.nan,
+                    "decision_eligible": bool(elig[d]),
+                })
+    return pd.DataFrame(rows)
