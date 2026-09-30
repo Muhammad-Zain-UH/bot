@@ -99,8 +99,9 @@ def main() -> None:
         wall[:m] = (end_close - start_open) / np.timedelta64(1, "m")
         gapped = np.zeros(n, bool); gapped[:m] = wall[:m] > h * 5
 
-        # ---- M1 barrier touch at +/- 1 ATR ----
+        # ---- M1 barrier touch at +/- 1 ATR and +/- 2 ATR ----
         t_up = np.full(n, np.nan); t_dn = np.full(n, np.nan)
+        t_up2 = np.full(n, np.nan); t_dn2 = np.full(n, np.nan)
         m1_ok = np.zeros(n, bool)
         lo_i = np.searchsorted(t1, start_open, side="left")
         hi_i = np.searchsorted(t1, end_close, side="left")
@@ -122,8 +123,13 @@ def main() -> None:
             d = wl1 <= ref - b
             if u.any(): t_up[i] = int(np.argmax(u)) + 1      # market minutes
             if d.any(): t_dn[i] = int(np.argmax(d)) + 1
+            u2 = wh1 >= ref + 2.0 * b
+            d2 = wl1 <= ref - 2.0 * b
+            if u2.any(): t_up2[i] = int(np.argmax(u2)) + 1
+            if d2.any(): t_dn2[i] = int(np.argmax(d2)) + 1
         out[h] = dict(up=up, dn=dn, has_window=has_window, wall=wall,
-                      gapped=gapped, t_up=t_up, t_dn=t_dn, m1_ok=m1_ok)
+                      gapped=gapped, t_up=t_up, t_dn=t_dn,
+                      t_up2=t_up2, t_dn2=t_dn2, m1_ok=m1_ok)
 
     cols = {"idx": np.arange(n)}
     for h, d in out.items():
