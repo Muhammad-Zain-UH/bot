@@ -38,3 +38,8 @@ data/raw/
 # fully regenerable, and its content is covered by decisions_fingerprint in
 # run_fingerprint.txt, so excluding it loses no verifiability.
 baselines/*/decisions.jsonl
+
+# Research panels are large generated artefacts, regenerated from data/raw
+research/*.pkl
+research/*.meta.json
+research/results.json
