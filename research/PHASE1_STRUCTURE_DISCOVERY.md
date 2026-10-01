@@ -1,3 +1,18 @@
+> # RETRACTED -- see PHASE2_REGIME_COST_REPORT.md
+>
+> **The headline conclusion of this report is withdrawn.** Phase 2A-2C established
+> that the Q5-Q1 statistic used throughout was computed as an **unweighted mean of
+> per-block means**, which is biased here because the number of Q1/Q5 observations
+> inside a 16-bar block is endogenous to the outcome.
+>
+> Under the correct estimator -- non-overlapping observations with disjoint forward
+> windows -- `disp_4_lag1` gives spread **-0.158, t = -1.07, CI [-0.446, +0.130]**,
+> and the H1 analogue over 16 years and 23,422 independent observations gives
+> **+0.029, t = +0.89**. There is **no robust conditional structure**.
+>
+> The original text is preserved below unaltered, as the record of what was done.
+> Every t-statistic in it is unreliable.
+
 # Phase 1 — Conditional Structure Discovery
 
 ## ONE ROBUST CANDIDATE STRUCTURE DETECTED
