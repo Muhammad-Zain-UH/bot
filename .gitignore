@@ -43,3 +43,7 @@ baselines/*/decisions.jsonl
 research/*.pkl
 research/*.meta.json
 research/results.json
+
+# Frozen research dataset: raw market data, same convention as data/raw/.
+# Integrity is guaranteed by research/accessible_bar_dataset_fingerprints.json.
+data/research_v1/

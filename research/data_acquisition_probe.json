@@ -1,0 +1,983 @@
+{
+  "probe_utc": "2026-10-01T05:41:14.177652+00:00",
+  "prior_maxbars_recorded": 100000,
+  "cached_history_inventory": {
+    "note": "filenames and sizes only; .hcc/.tkc contents never read",
+    "Default/history": {
+      "files": [
+        {
+          "name": "2026.hcc",
+          "bytes": 15144,
+          "mtime": "2026-04-07T11:15:50"
+        }
+      ],
+      "count": 1,
+      "total_bytes": 15144
+    },
+    "Default/History": {
+      "files": [
+        {
+          "name": "2026.hcc",
+          "bytes": 15144,
+          "mtime": "2026-04-07T11:15:50"
+        }
+      ],
+      "count": 1,
+      "total_bytes": 15144
+    },
+    "MetaQuotes-Demo/history": {
+      "files": [
+        {
+          "name": "2004.hcc",
+          "bytes": 4817304,
+          "mtime": "2026-07-24T14:29:53"
+        },
+        {
+          "name": "2005.hcc",
+          "bytes": 8504472,
+          "mtime": "2026-07-24T14:29:51"
+        },
+        {
+          "name": "2006.hcc",
+          "bytes": 10038183,
+          "mtime": "2026-07-24T14:29:47"
+        },
+        {
+          "name": "2007.hcc",
+          "bytes": 14578137,
+          "mtime": "2026-07-24T14:29:42"
+        },
+        {
+          "name": "2008.hcc",
+          "bytes": 18992346,
+          "mtime": "2026-07-24T14:29:37"
+        },
+        {
+          "name": "2009.hcc",
+          "bytes": 19821297,
+          "mtime": "2026-07-24T14:29:31"
+        },
+        {
+          "name": "2010.hcc",
+          "bytes": 19063128,
+          "mtime": "2026-07-24T14:29:24"
+        },
+        {
+          "name": "2011.hcc",
+          "bytes": 19451808,
+          "mtime": "2026-07-24T14:29:18"
+        },
+        {
+          "name": "2012.hcc",
+          "bytes": 19859277,
+          "mtime": "2026-07-24T14:29:10"
+        },
+        {
+          "name": "2013.hcc",
+          "bytes": 20982726,
+          "mtime": "2026-07-24T14:29:00"
+        },
+        {
+          "name": "2014.hcc",
+          "bytes": 20971626,
+          "mtime": "2026-07-24T14:28:50"
+        },
+        {
+          "name": "2015.hcc",
+          "bytes": 20867046,
+          "mtime": "2026-07-24T14:28:41"
+        },
+        {
+          "name": "2016.hcc",
+          "bytes": 21078906,
+          "mtime": "2026-07-24T14:28:31"
+        },
+        {
+          "name": "2017.hcc",
+          "bytes": 21006717,
+          "mtime": "2026-07-24T14:28:22"
+        },
+        {
+          "name": "2018.hcc",
+          "bytes": 21047706,
+          "mtime": "2026-07-24T14:28:14"
+        },
+        {
+          "name": "2019.hcc",
+          "bytes": 21035046,
+          "mtime": "2026-07-24T14:28:08"
+        },
+        {
+          "name": "2020.hcc",
+          "bytes": 21139575,
+          "mtime": "2026-07-24T14:28:02"
+        },
+        {
+          "name": "2021.hcc",
+          "bytes": 21125466,
+          "mtime": "2026-07-24T14:27:55"
+        },
+        {
+          "name": "2022.hcc",
+          "bytes": 21237906,
+          "mtime": "2026-07-24T14:27:49"
+        },
+        {
+          "name": "2023.hcc",
+          "bytes": 21229077,
+          "mtime": "2026-05-08T09:25:42"
+        },
+        {
+          "name": "2024.hcc",
+          "bytes": 21404475,
+          "mtime": "2026-05-08T09:25:36"
+        },
+        {
+          "name": "2025.hcc",
+          "bytes": 21173166,
+          "mtime": "2026-04-13T17:01:36"
+        },
+        {
+          "name": "2026.hcc",
+          "bytes": 18144795,
+          "mtime": "2026-10-01T10:14:11"
+        }
+      ],
+      "count": 23,
+      "total_bytes": 427570185
+    },
+    "MetaQuotes-Demo/ticks": {
+      "files": [
+        {
+          "name": "202505.tkc",
+          "bytes": 1708049,
+          "mtime": "2026-10-01T10:34:28"
+        },
+        {
+          "name": "202506.tkc",
+          "bytes": 8898506,
+          "mtime": "2026-10-01T10:34:27"
+        },
+        {
+          "name": "202507.tkc",
+          "bytes": 8098285,
+          "mtime": "2026-10-01T10:34:15"
+        },
+        {
+          "name": "202508.tkc",
+          "bytes": 7422291,
+          "mtime": "2026-10-01T10:34:08"
+        },
+        {
+          "name": "202509.tkc",
+          "bytes": 10069543,
+          "mtime": "2026-10-01T10:33:58"
+        },
+        {
+          "name": "202510.tkc",
+          "bytes": 13468840,
+          "mtime": "2026-10-01T10:33:27"
+        },
+        {
+          "name": "202511.tkc",
+          "bytes": 11063022,
+          "mtime": "2026-10-01T10:33:23"
+        },
+        {
+          "name": "202512.tkc",
+          "bytes": 51146321,
+          "mtime": "2026-10-01T10:33:21"
+        },
+        {
+          "name": "202601.tkc",
+          "bytes": 79276962,
+          "mtime": "2026-10-01T10:32:20"
+        },
+        {
+          "name": "202602.tkc",
+          "bytes": 77407841,
+          "mtime": "2026-10-01T10:31:13"
+        },
+        {
+          "name": "202603.tkc",
+          "bytes": 74298307,
+          "mtime": "2026-10-01T10:30:09"
+        },
+        {
+          "name": "202604.tkc",
+          "bytes": 51278686,
+          "mtime": "2026-10-01T10:29:17"
+        },
+        {
+          "name": "202605.tkc",
+          "bytes": 56741777,
+          "mtime": "2026-10-01T10:28:44"
+        },
+        {
+          "name": "202606.tkc",
+          "bytes": 59285295,
+          "mtime": "2026-10-01T10:28:16"
+        },
+        {
+          "name": "202607.tkc",
+          "bytes": 56222777,
+          "mtime": "2026-10-01T10:27:34"
+        },
+        {
+          "name": "202608.tkc",
+          "bytes": 48040437,
+          "mtime": "2026-10-01T10:23:12"
+        },
+        {
+          "name": "202609.tkc",
+          "bytes": 48148983,
+          "mtime": "2026-10-01T10:18:56"
+        },
+        {
+          "name": "202610.tkc",
+          "bytes": 537390,
+          "mtime": "2026-10-01T10:39:25"
+        },
+        {
+          "name": "ticks.dat",
+          "bytes": 123312,
+          "mtime": "2026-09-17T18:00:59"
+        }
+      ],
+      "count": 19,
+      "total_bytes": 663236624
+    },
+    "MetaQuotes-Demo/History": {
+      "files": [
+        {
+          "name": "2004.hcc",
+          "bytes": 4817304,
+          "mtime": "2026-07-24T14:29:53"
+        },
+        {
+          "name": "2005.hcc",
+          "bytes": 8504472,
+          "mtime": "2026-07-24T14:29:51"
+        },
+        {
+          "name": "2006.hcc",
+          "bytes": 10038183,
+          "mtime": "2026-07-24T14:29:47"
+        },
+        {
+          "name": "2007.hcc",
+          "bytes": 14578137,
+          "mtime": "2026-07-24T14:29:42"
+        },
+        {
+          "name": "2008.hcc",
+          "bytes": 18992346,
+          "mtime": "2026-07-24T14:29:37"
+        },
+        {
+          "name": "2009.hcc",
+          "bytes": 19821297,
+          "mtime": "2026-07-24T14:29:31"
+        },
+        {
+          "name": "2010.hcc",
+          "bytes": 19063128,
+          "mtime": "2026-07-24T14:29:24"
+        },
+        {
+          "name": "2011.hcc",
+          "bytes": 19451808,
+          "mtime": "2026-07-24T14:29:18"
+        },
+        {
+          "name": "2012.hcc",
+          "bytes": 19859277,
+          "mtime": "2026-07-24T14:29:10"
+        },
+        {
+          "name": "2013.hcc",
+          "bytes": 20982726,
+          "mtime": "2026-07-24T14:29:00"
+        },
+        {
+          "name": "2014.hcc",
+          "bytes": 20971626,
+          "mtime": "2026-07-24T14:28:50"
+        },
+        {
+          "name": "2015.hcc",
+          "bytes": 20867046,
+          "mtime": "2026-07-24T14:28:41"
+        },
+        {
+          "name": "2016.hcc",
+          "bytes": 21078906,
+          "mtime": "2026-07-24T14:28:31"
+        },
+        {
+          "name": "2017.hcc",
+          "bytes": 21006717,
+          "mtime": "2026-07-24T14:28:22"
+        },
+        {
+          "name": "2018.hcc",
+          "bytes": 21047706,
+          "mtime": "2026-07-24T14:28:14"
+        },
+        {
+          "name": "2019.hcc",
+          "bytes": 21035046,
+          "mtime": "2026-07-24T14:28:08"
+        },
+        {
+          "name": "2020.hcc",
+          "bytes": 21139575,
+          "mtime": "2026-07-24T14:28:02"
+        },
+        {
+          "name": "2021.hcc",
+          "bytes": 21125466,
+          "mtime": "2026-07-24T14:27:55"
+        },
+        {
+          "name": "2022.hcc",
+          "bytes": 21237906,
+          "mtime": "2026-07-24T14:27:49"
+        },
+        {
+          "name": "2023.hcc",
+          "bytes": 21229077,
+          "mtime": "2026-05-08T09:25:42"
+        },
+        {
+          "name": "2024.hcc",
+          "bytes": 21404475,
+          "mtime": "2026-05-08T09:25:36"
+        },
+        {
+          "name": "2025.hcc",
+          "bytes": 21173166,
+          "mtime": "2026-04-13T17:01:36"
+        },
+        {
+          "name": "2026.hcc",
+          "bytes": 18144795,
+          "mtime": "2026-10-01T10:14:11"
+        }
+      ],
+      "count": 23,
+      "total_bytes": 427570185
+    }
+  },
+  "mt5_python_package": "5.0.5640",
+  "terminal_info": {
+    "community_account": false,
+    "community_connection": false,
+    "connected": true,
+    "dlls_allowed": false,
+    "trade_allowed": false,
+    "tradeapi_disabled": false,
+    "email_enabled": false,
+    "ftp_enabled": false,
+    "notifications_enabled": false,
+    "mqid": true,
+    "build": 5739,
+    "maxbars": 100000,
+    "codepage": 0,
+    "ping_last": 144131,
+    "community_balance": 0.0,
+    "retransmission": 0.003454802545695933,
+    "company": "MetaQuotes Ltd.",
+    "name": "MetaTrader 5",
+    "language": "English",
+    "path": "C:\\Program Files\\MetaTrader 5",
+    "data_path": "C:\\Users\\admin\\AppData\\Roaming\\MetaQuotes\\Terminal\\D0E8209F77C8CF37AD8BF550E51FF075",
+    "commondata_path": "C:\\Users\\admin\\AppData\\Roaming\\MetaQuotes\\Terminal\\Common"
+  },
+  "account_info": {
+    "login": 5056046608,
+    "trade_mode": 0,
+    "leverage": 100,
+    "limit_orders": 200,
+    "margin_so_mode": 0,
+    "trade_allowed": true,
+    "trade_expert": true,
+    "margin_mode": 2,
+    "currency_digits": 2,
+    "fifo_close": false,
+    "balance": 100000.0,
+    "credit": 0.0,
+    "profit": 0.0,
+    "equity": 100000.0,
+    "margin": 0.0,
+    "margin_free": 100000.0,
+    "margin_level": 0.0,
+    "margin_so_call": 50.0,
+    "margin_so_so": 30.0,
+    "margin_initial": 0.0,
+    "margin_maintenance": 0.0,
+    "assets": 0.0,
+    "liabilities": 0.0,
+    "commission_blocked": 0.0,
+    "name": "Zain Jutt",
+    "server": "MetaQuotes-Demo",
+    "currency": "USD",
+    "company": "MetaQuotes Ltd."
+  },
+  "maxbars": {
+    "before_recorded": 100000,
+    "current_common_ini": 100000,
+    "live_from_terminal_info": 100000,
+    "raised": false,
+    "evidence": "all four timeframes returned exactly 99,999 rows -- the cap, not server depth"
+  },
+  "symbol_info": {
+    "custom": false,
+    "chart_mode": 0,
+    "select": true,
+    "visible": true,
+    "session_deals": 0,
+    "session_buy_orders": 0,
+    "session_sell_orders": 0,
+    "volume": 0,
+    "volumehigh": 0,
+    "volumelow": 0,
+    "time": 1790844073,
+    "digits": 2,
+    "spread": 55,
+    "spread_float": true,
+    "ticks_bookdepth": 32,
+    "trade_calc_mode": 4,
+    "trade_mode": 4,
+    "start_time": 0,
+    "expiration_time": 0,
+    "trade_stops_level": 0,
+    "trade_freeze_level": 0,
+    "trade_exemode": 2,
+    "swap_mode": 1,
+    "swap_rollover3days": 3,
+    "margin_hedged_use_leg": true,
+    "expiration_mode": 15,
+    "filling_mode": 3,
+    "order_mode": 127,
+    "order_gtc_mode": 0,
+    "option_mode": 0,
+    "option_right": 0,
+    "bid": 4188.11,
+    "bidhigh": 4192.68,
+    "bidlow": 4133.95,
+    "ask": 4188.66,
+    "askhigh": 4193.25,
+    "asklow": 4139.57,
+    "last": 0.0,
+    "lasthigh": 0.0,
+    "lastlow": 0.0,
+    "volume_real": 0.0,
+    "volumehigh_real": 0.0,
+    "volumelow_real": 0.0,
+    "option_strike": 0.0,
+    "point": 0.01,
+    "trade_tick_value": 0.1,
+    "trade_tick_value_profit": 0.1,
+    "trade_tick_value_loss": 0.1,
+    "trade_tick_size": 0.01,
+    "trade_contract_size": 100.0,
+    "trade_accrued_interest": 0.0,
+    "trade_face_value": 0.0,
+    "trade_liquidity_rate": 0.0,
+    "volume_min": 0.01,
+    "volume_max": 100.0,
+    "volume_step": 0.01,
+    "volume_limit": 0.0,
+    "swap_long": -12.6,
+    "swap_short": -4.6,
+    "margin_initial": 0.0,
+    "margin_maintenance": 0.0,
+    "session_volume": 0.0,
+    "session_turnover": 0.0,
+    "session_interest": 0.0,
+    "session_buy_orders_volume": 0.0,
+    "session_sell_orders_volume": 0.0,
+    "session_open": 4274.42,
+    "session_close": 4272.74,
+    "session_aw": 0.0,
+    "session_price_settlement": 0.0,
+    "session_price_limit_min": 0.0,
+    "session_price_limit_max": 0.0,
+    "margin_hedged": 100.0,
+    "price_change": -1.9807000000000001,
+    "price_volatility": 0.0,
+    "price_theoretical": 0.0,
+    "price_greeks_delta": 0.0,
+    "price_greeks_theta": 0.0,
+    "price_greeks_gamma": 0.0,
+    "price_greeks_vega": 0.0,
+    "price_greeks_rho": 0.0,
+    "price_greeks_omega": 0.0,
+    "price_sensitivity": 0.0,
+    "basis": "",
+    "category": "",
+    "currency_base": "XAU",
+    "currency_profit": "USD",
+    "currency_margin": "USD",
+    "bank": "",
+    "description": "Gold vs US Dollar",
+    "exchange": "XCCY",
+    "formula": "",
+    "isin": "",
+    "name": "XAUUSD",
+    "page": "https://www.mql5.com/en/quotes/metals/xauusd",
+    "path": "Metals\\XAUUSD"
+  },
+  "bars": {
+    "M1": {
+      "timeframe": "M1",
+      "error": "no rates; last_error=(-2, 'Terminal: Invalid params')"
+    },
+    "M5": {
+      "timeframe": "M5",
+      "error": "no rates; last_error=(-2, 'Terminal: Invalid params')"
+    },
+    "M15": {
+      "timeframe": "M15",
+      "error": "no rates; last_error=(-2, 'Terminal: Invalid params')"
+    },
+    "H1": {
+      "timeframe": "H1",
+      "error": "no rates; last_error=(-2, 'Terminal: Invalid params')"
+    }
+  },
+  "ticks": {
+    "window_hours": 6,
+    "probes": [
+      {
+        "age_days": 1,
+        "from_utc": "2026-09-29T23:41:14.340042+00:00",
+        "to_utc": "2026-09-30T05:41:14.340042+00:00",
+        "count": 61063,
+        "first_utc": "2026-09-30T01:00:00+00:00",
+        "last_utc": "2026-09-30T05:41:13+00:00",
+        "dtype_fields": [
+          "time",
+          "bid",
+          "ask",
+          "last",
+          "volume",
+          "time_msc",
+          "flags",
+          "volume_real"
+        ],
+        "field_population": {
+          "time": {
+            "nonzero": 61063,
+            "pct": 100.0
+          },
+          "bid": {
+            "nonzero": 61063,
+            "pct": 100.0
+          },
+          "ask": {
+            "nonzero": 61063,
+            "pct": 100.0
+          },
+          "last": {
+            "nonzero": 0,
+            "pct": 0.0
+          },
+          "volume": {
+            "nonzero": 0,
+            "pct": 0.0
+          },
+          "time_msc": {
+            "nonzero": 61063,
+            "pct": 100.0
+          },
+          "flags": {
+            "nonzero": 61063,
+            "pct": 100.0
+          },
+          "volume_real": {
+            "nonzero": 0,
+            "pct": 0.0
+          }
+        },
+        "spread": {
+          "median": 0.41,
+          "p99": 0.74,
+          "min": 0.08,
+          "crossed_or_zero": 0
+        }
+      },
+      {
+        "age_days": 7,
+        "from_utc": "2026-09-23T23:41:14.340042+00:00",
+        "to_utc": "2026-09-24T05:41:14.340042+00:00",
+        "count": 58927,
+        "first_utc": "2026-09-24T01:00:00+00:00",
+        "last_utc": "2026-09-24T05:41:13+00:00",
+        "dtype_fields": [
+          "time",
+          "bid",
+          "ask",
+          "last",
+          "volume",
+          "time_msc",
+          "flags",
+          "volume_real"
+        ],
+        "field_population": {
+          "time": {
+            "nonzero": 58927,
+            "pct": 100.0
+          },
+          "bid": {
+            "nonzero": 58927,
+            "pct": 100.0
+          },
+          "ask": {
+            "nonzero": 58927,
+            "pct": 100.0
+          },
+          "last": {
+            "nonzero": 0,
+            "pct": 0.0
+          },
+          "volume": {
+            "nonzero": 0,
+            "pct": 0.0
+          },
+          "time_msc": {
+            "nonzero": 58927,
+            "pct": 100.0
+          },
+          "flags": {
+            "nonzero": 58927,
+            "pct": 100.0
+          },
+          "volume_real": {
+            "nonzero": 0,
+            "pct": 0.0
+          }
+        },
+        "spread": {
+          "median": 0.5,
+          "p99": 0.81,
+          "min": 0.08,
+          "crossed_or_zero": 0
+        }
+      },
+      {
+        "age_days": 30,
+        "from_utc": "2026-08-31T23:41:14.340042+00:00",
+        "to_utc": "2026-09-01T05:41:14.340042+00:00",
+        "count": 77097,
+        "first_utc": "2026-09-01T01:00:00+00:00",
+        "last_utc": "2026-09-01T05:41:13+00:00",
+        "dtype_fields": [
+          "time",
+          "bid",
+          "ask",
+          "last",
+          "volume",
+          "time_msc",
+          "flags",
+          "volume_real"
+        ],
+        "field_population": {
+          "time": {
+            "nonzero": 77097,
+            "pct": 100.0
+          },
+          "bid": {
+            "nonzero": 77097,
+            "pct": 100.0
+          },
+          "ask": {
+            "nonzero": 77097,
+            "pct": 100.0
+          },
+          "last": {
+            "nonzero": 0,
+            "pct": 0.0
+          },
+          "volume": {
+            "nonzero": 0,
+            "pct": 0.0
+          },
+          "time_msc": {
+            "nonzero": 77097,
+            "pct": 100.0
+          },
+          "flags": {
+            "nonzero": 77097,
+            "pct": 100.0
+          },
+          "volume_real": {
+            "nonzero": 0,
+            "pct": 0.0
+          }
+        },
+        "spread": {
+          "median": 0.42,
+          "p99": 0.78,
+          "min": 0.08,
+          "crossed_or_zero": 0
+        }
+      },
+      {
+        "age_days": 90,
+        "from_utc": "2026-07-02T23:41:14.340042+00:00",
+        "to_utc": "2026-07-03T05:41:14.340042+00:00",
+        "count": 97511,
+        "first_utc": "2026-07-03T01:00:00+00:00",
+        "last_utc": "2026-07-03T05:41:13+00:00",
+        "dtype_fields": [
+          "time",
+          "bid",
+          "ask",
+          "last",
+          "volume",
+          "time_msc",
+          "flags",
+          "volume_real"
+        ],
+        "field_population": {
+          "time": {
+            "nonzero": 97511,
+            "pct": 100.0
+          },
+          "bid": {
+            "nonzero": 97511,
+            "pct": 100.0
+          },
+          "ask": {
+            "nonzero": 97511,
+            "pct": 100.0
+          },
+          "last": {
+            "nonzero": 0,
+            "pct": 0.0
+          },
+          "volume": {
+            "nonzero": 0,
+            "pct": 0.0
+          },
+          "time_msc": {
+            "nonzero": 97511,
+            "pct": 100.0
+          },
+          "flags": {
+            "nonzero": 97511,
+            "pct": 100.0
+          },
+          "volume_real": {
+            "nonzero": 0,
+            "pct": 0.0
+          }
+        },
+        "spread": {
+          "median": 0.17,
+          "p99": 0.73,
+          "min": 0.0,
+          "crossed_or_zero": 2512
+        }
+      },
+      {
+        "age_days": 180,
+        "from_utc": "2026-04-03T23:41:14.340042+00:00",
+        "to_utc": "2026-04-04T05:41:14.340042+00:00",
+        "count": 0
+      },
+      {
+        "age_days": 365,
+        "from_utc": "2025-09-30T23:41:14.340042+00:00",
+        "to_utc": "2025-10-01T05:41:14.340042+00:00",
+        "count": 17552,
+        "first_utc": "2025-09-30T23:41:14+00:00",
+        "last_utc": "2025-10-01T05:41:13+00:00",
+        "dtype_fields": [
+          "time",
+          "bid",
+          "ask",
+          "last",
+          "volume",
+          "time_msc",
+          "flags",
+          "volume_real"
+        ],
+        "field_population": {
+          "time": {
+            "nonzero": 17552,
+            "pct": 100.0
+          },
+          "bid": {
+            "nonzero": 17552,
+            "pct": 100.0
+          },
+          "ask": {
+            "nonzero": 17552,
+            "pct": 100.0
+          },
+          "last": {
+            "nonzero": 0,
+            "pct": 0.0
+          },
+          "volume": {
+            "nonzero": 0,
+            "pct": 0.0
+          },
+          "time_msc": {
+            "nonzero": 17552,
+            "pct": 100.0
+          },
+          "flags": {
+            "nonzero": 17552,
+            "pct": 100.0
+          },
+          "volume_real": {
+            "nonzero": 0,
+            "pct": 0.0
+          }
+        },
+        "spread": {
+          "median": 0.15,
+          "p99": 0.5,
+          "min": 0.05,
+          "crossed_or_zero": 0
+        }
+      },
+      {
+        "age_days": 730,
+        "from_utc": "2024-09-30T23:41:14.340042+00:00",
+        "to_utc": "2024-10-01T05:41:14.340042+00:00",
+        "count": 0
+      },
+      {
+        "age_days": 1095,
+        "from_utc": "2023-10-01T23:41:14.340042+00:00",
+        "to_utc": "2023-10-02T05:41:14.340042+00:00",
+        "count": 0
+      }
+    ],
+    "fields_ever_populated": {
+      "time": 312150,
+      "bid": 312150,
+      "ask": 312150,
+      "last": 0,
+      "volume": 0,
+      "time_msc": 312150,
+      "flags": 312150,
+      "volume_real": 0
+    }
+  },
+  "earliest_tick": {
+    "status": "bisected",
+    "deepest_age_with_ticks_days": 2828,
+    "shallowest_age_without_ticks_days": 2829,
+    "approx_earliest_utc": "2019-01-03T05:41:16.933321+00:00",
+    "approx_years": 7.74
+  },
+  "status": "MANUAL_ACTION_STILL_REQUIRED",
+  "probe_completed_utc": "2026-10-01T05:48:32.944020+00:00",
+  "ipc": {
+    "initialize": true,
+    "note": "succeeded with bounded timeout=60000 once the tick download settled; unbounded initialize() had hung past 300s"
+  },
+  "bars_measured": {
+    "note": "copy_rates_from_pos; 10,000,000 was rejected as Invalid params, 99,999 succeeded",
+    "M1": {
+      "rows": 99999,
+      "earliest_utc": "2026-06-17",
+      "latest_utc": "2026-10-01",
+      "years": 0.29,
+      "gaps_gt_1_bar": 78
+    },
+    "M5": {
+      "rows": 99999,
+      "earliest_utc": "2025-04-25",
+      "latest_utc": "2026-10-01",
+      "years": 1.43,
+      "gaps_gt_1_bar": 411
+    },
+    "M15": {
+      "rows": 99999,
+      "earliest_utc": "2022-06-30",
+      "latest_utc": "2026-10-01",
+      "years": 4.25,
+      "gaps_gt_1_bar": 1117
+    },
+    "H1": {
+      "rows": 99999,
+      "earliest_utc": "2009-08-31",
+      "latest_utc": "2026-10-01",
+      "years": 17.08,
+      "gaps_gt_1_bar": 4428
+    },
+    "all_capped_by_maxbars": true
+  },
+  "tick_availability": {
+    "method": "24h mid-week copy_ticks_range windows; every empty period re-requested after 45s to rule out async fetch",
+    "blocks_available": [
+      {
+        "range": "2019-01 .. 2020-12",
+        "months": 24,
+        "ticks_per_day_observed": "47k-229k"
+      },
+      {
+        "range": "2025-06 .. 2026-10",
+        "months": 17,
+        "ticks_per_day_observed": "86k-884k"
+      }
+    ],
+    "months_absent": {
+      "2021": 12,
+      "2022": 12,
+      "2023": 12,
+      "2024": 12,
+      "2025-01..04": 4,
+      "total": 52
+    },
+    "absent_confirmed_by": "9 mid-week probes across 2021-2024 all returned 0 on two passes; no .tkc files exist for those months",
+    "2025-05": "tkc file present but 2025-05-21 returned 0; usable floor is 2025-06",
+    "longest_contiguous_months": 24,
+    "most_recent_contiguous_months": 17,
+    "three_years_contiguous": false,
+    "two_years_contiguous": "only in 2019-2020, which is 5-7 years stale",
+    "bisection_retracted": "the earlier 7.74y bisection result is INVALID -- bisection assumes availability is monotonic in age, and it is not"
+  },
+  "tick_field_population": {
+    "sample": "2026-09-24 Thu, 520,012 ticks",
+    "bid": "100%",
+    "ask": "100%",
+    "time_msc": "100%",
+    "flags": "100%",
+    "last": "0%",
+    "volume": "0%",
+    "volume_real": "0%",
+    "implication": "CFD feed carries quotes only; the spec's warning was correct"
+  },
+  "spread_measured": {
+    "sample": "2026-09-24",
+    "median_usd": 0.33,
+    "p99_usd": 0.67,
+    "min_usd": 0.08,
+    "crossed_or_zero": 0,
+    "context": "replay assumes 0.20; the single metadata snapshot said 0.39; first real measurement"
+  },
+  "tick_rate": {
+    "recent_weekday_24h": 520012,
+    "implied_per_year_252d": 131043024,
+    "warning": "density jumps ~5-7x around 2025-12 (70-124k/day before, 440-884k/day after); tick features are NOT comparable across that boundary"
+  },
+  "storage_measured": {
+    "basis": ".tkc file sizes on disk",
+    "2019_12mo_mb": 101.6,
+    "2020_12mo_mb": 182.6,
+    "2025_8mo_mb": 111.9,
+    "2026_10mo_mb": 551.2,
+    "total_42mo_mb": 947.3,
+    "recent_density_mb_per_month": 55.1,
+    "parquet_estimate_per_year_gb": "1.5-2.0 at recent density",
+    "free_disk_gb": 18
+  }
+}
