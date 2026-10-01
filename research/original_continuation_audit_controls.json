@@ -1,0 +1,148 @@
+{
+  "literal_implementation_verification": {
+    "requirement": "test the existing production implementation literally",
+    "L1_get_fast_bias": {
+      "probes": 120,
+      "bias_mismatches": 0,
+      "strength_mismatches": 0,
+      "exact_agreement": true,
+      "method": "vectorised rule compared against bias_engine.get_fast_bias called on real H1 slices"
+    },
+    "displacement_detect_displacement_candle": {
+      "probes": 200,
+      "sides": 2,
+      "checks": 400,
+      "mismatches": 0,
+      "exact_agreement": true,
+      "method": "vectorised rule compared against entry_engine.detect_displacement_candle on real M15 slices"
+    },
+    "L2_get_h1_structure": {
+      "method": "production function called directly per H1 bar, not reimplemented",
+      "calls": "one per eligible H1 bar over TRAIN+DEV"
+    },
+    "documented_deviation": "detect_displacement_candle is called with M15 rather than the production M5, because the authorised primary timeframe for this audit is M15. The function body is timeframe-agnostic. Input frame changed; rule and thresholds unchanged. Declared in the frozen hypothesis before results existed."
+  },
+  "statistical_guardrails": {
+    "headline_estimator": "non-overlapping (observation-weighted, disjoint windows)",
+    "raw_statistics_reported": true,
+    "block_statistics": "secondary, weighting disclosed",
+    "overlap_ratios": {
+      "1h": 4.0,
+      "2h": 7.9,
+      "4h": 15.4,
+      "note": "B family is far less overlapped (1.5-3.3x) because displacement is rare"
+    },
+    "forward_window_audit": "all headline samples disjoint",
+    "estimator_sign_disagreement_cells": 5,
+    "sign_disagreement_note": "5 of 9 cells show the equal-block statistic disagreeing in sign with the raw mean. None is a headline; the headline is non-overlapping throughout.",
+    "multiple_testing": {
+      "n_hypotheses": 9,
+      "alpha": 0.05,
+      "bonferroni_threshold_abs_t": 2.773,
+      "expected_abs_t_ge_2_under_null": 0.41,
+      "observed_abs_t_ge_2": 0,
+      "bonferroni_survivors": 0,
+      "bh_survivors": 0,
+      "max_abs_t": 0.688
+    }
+  },
+  "baseline_results": {
+    "direction_conditioned": {
+      "A_degenerate": "A_bias_alone IS the direction-conditioned population, so its excess is 0.0000 by construction -- a degenerate comparison, stated rather than presented as a null result. A is tested against the unconditional mean.",
+      "B_excess": {
+        "1h": -0.0211,
+        "2h": -0.0305,
+        "4h": -0.0395
+      },
+      "C_excess": {
+        "1h": -0.0004,
+        "2h": -0.0078,
+        "4h": -0.0155
+      },
+      "reading": "displacement and structure confirmation SUBTRACT from bias alone at every horizon"
+    },
+    "displacement_conditioned": {
+      "max_abs_t": 1.44,
+      "reading": "no family adds information beyond recent directional movement"
+    }
+  },
+  "temporal_instability": {
+    "A_bias_alone@4h": {
+      "TRAIN_Q1": 0.001,
+      "TRAIN_Q2": -0.088,
+      "TRAIN_Q3": 0.237,
+      "TRAIN_Q4": 0.015,
+      "DEV": 0.181
+    },
+    "reading": "sign flips across quarters; reported as instability, no period selected"
+  },
+  "h1_regime_finding": {
+    "A_bias_alone@2h": {
+      "H1_BULL": {
+        "mean": 0.124,
+        "t": 3.39,
+        "n": 3774
+      },
+      "H1_NEUTRAL": {
+        "mean": -0.015,
+        "t": -0.18,
+        "n": 877
+      },
+      "H1_BEAR": {
+        "mean": -0.074,
+        "t": -1.96,
+        "n": 2971
+      }
+    },
+    "A_bias_alone@4h": {
+      "H1_BULL": {
+        "mean": 0.242,
+        "t": 3.32,
+        "n": 2003
+      },
+      "H1_BEAR": {
+        "mean": -0.069,
+        "t": -0.95,
+        "n": 1604
+      }
+    },
+    "status": "SECONDARY by the frozen specification -- not counted as discovery, not used to select",
+    "interpretation": "Direction-normalised continuation is POSITIVE in H1 uptrends and NEGATIVE in H1 downtrends. Genuine continuation would be positive in both, since the return is already signed by the predicted direction. A pattern that works long and fails short in a sample whose three arms are all net-positive (+33.6 / +44.2 / +18.2 percent) is the signature of DRIFT, not of a continuation mechanism."
+  },
+  "bias_strength_finding": {
+    "1h": {
+      "low": 0.0191,
+      "mid": -0.0023,
+      "high": -0.0053
+    },
+    "2h": {
+      "low": 0.0571,
+      "mid": -0.0163,
+      "high": -0.0166
+    },
+    "4h": {
+      "low": 0.0784,
+      "mid": 0.0232,
+      "high": 0.0199
+    },
+    "status": "SECONDARY, all |t| <= 1.02",
+    "interpretation": "Continuation does NOT increase with bias_strength; the point estimates run the other way. The production confidence model weights bias_strength and the A+ checklist requires strength >= 8.0, so this is directly relevant to the architecture, though no cell is significant."
+  },
+  "cost_gate": {
+    "run": false,
+    "reason": "no family produced a positive gross effect surviving the corrected threshold",
+    "convention_if_run": "round-turn = 1 x spread ($0.33)"
+  },
+  "power_disclosure": {
+    "A_4h_ci95_upper_atr": 0.17,
+    "round_turn_cost_atr_in_train": 0.158,
+    "note": "the 4h confidence interval's upper bound only just exceeds the cost threshold, so a cost-relevant effect is not excluded -- which is why family A is INCONCLUSIVE rather than NOT SUPPORTED"
+  },
+  "classification": {
+    "A_bias_alone": "INCONCLUSIVE",
+    "B_bias_displacement": "NOT SUPPORTED",
+    "C_bias_structure": "NOT SUPPORTED",
+    "overall": "NOT SUPPORTED"
+  },
+  "no_feature_search": "exactly the 9 pre-declared hypotheses were tested. No new predictor was introduced, no threshold chosen or tuned, no strategy constructed."
+}
