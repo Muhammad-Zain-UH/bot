@@ -39,7 +39,7 @@
  "purge_embargo": {
   "h1_bars": 4,
   "equivalent_hours": 4,
-  "rationale": "the longest GO horizon on H1 is 4h = 4 bars (VIABILITY_REPORT s.2); dropped AFTER each boundary so no forward window spans two arms. The existing TRAIN/DEV gap is 53.2 h, already far larger."
+  "rationale": "the longest GO horizon on H1 is 4h = 4 bars (VIABILITY_REPORT s.2); dropped AFTER each boundary so no forward window spans two arms. The existing TRAIN/DEV gap is 81.0 h, already far larger."
  },
  "viability": {
   "source": "research/VIABILITY_REPORT.md",
@@ -60,57 +60,58 @@
  "arms": {
   "TRAIN": {
    "from_utc": "2009-08-31 19:00:00+00:00",
-   "to_utc": "2024-08-09 18:15:00+00:00",
-   "h1_rows": 87480,
+   "to_utc": "2020-12-31 17:00:00+00:00",
+   "h1_rows": 66147,
    "h1_index_range": [
     0,
-    87479
+    66146
    ],
-   "months": 179.25,
-   "years": 14.94,
-   "blocks_1h": 87480,
-   "blocks_2h": 43740,
-   "blocks_4h": 21870,
-   "net_pct": 155.53,
-   "median_atr_usd": 3.5436,
+   "months": 135.98,
+   "years": 11.33,
+   "blocks_1h": 66147,
+   "blocks_2h": 33073,
+   "blocks_4h": 16536,
+   "net_pct": 99.16,
+   "median_atr_usd": 3.1938,
    "regime": {
-    "years_total": 16,
-    "years_up": 10,
-    "years_down": 6,
+    "years_total": 12,
+    "years_up": 8,
+    "years_down": 4,
     "down_years": [
      2013,
      2014,
      2015,
-     2018,
-     2021,
-     2022
+     2018
     ],
-    "bars_in_down_years": 35279,
-    "pct_bars_in_down_years": 40.33
+    "bars_in_down_years": 23462,
+    "pct_bars_in_down_years": 35.47
    }
   },
   "DEV": {
-   "from_utc": "2024-08-11 23:30:00+00:00",
+   "from_utc": "2021-01-04 02:00:00+00:00",
    "to_utc": "2025-09-02 14:15:00+00:00",
-   "h1_rows": 6256,
+   "h1_rows": 27589,
    "h1_index_range": [
-    87484,
+    66151,
     93739
    ],
-   "months": 12.68,
-   "years": 1.06,
-   "blocks_1h": 6256,
-   "blocks_2h": 3128,
-   "blocks_4h": 1564,
-   "net_pct": 44.59,
-   "median_atr_usd": 7.3001,
+   "months": 55.92,
+   "years": 4.66,
+   "blocks_1h": 27589,
+   "blocks_2h": 13794,
+   "blocks_4h": 6897,
+   "net_pct": 82.57,
+   "median_atr_usd": 4.8613,
    "regime": {
-    "years_total": 2,
-    "years_up": 2,
-    "years_down": 0,
-    "down_years": [],
-    "bars_in_down_years": 0,
-    "pct_bars_in_down_years": 0.0
+    "years_total": 5,
+    "years_up": 3,
+    "years_down": 2,
+    "down_years": [
+     2021,
+     2022
+    ],
+    "bars_in_down_years": 11813,
+    "pct_bars_in_down_years": 42.82
    }
   },
   "FINAL_OOS": {
@@ -150,9 +151,10 @@
  "server_offset_hours": 3.0,
  "enforcement": "research/dataset_access.py raises OOSLockedError on any FINAL_OOS read without the manifest token",
  "regime_warnings": [
-  "TRAIN contains 6 down years [2013, 2014, 2015, 2018, 2021, 2022] and 40.33% of its bars inside them. This is the property the M15 range lacks entirely (0.0%), and the reason this manifest exists.",
-  "DEV is short (1.06 years, 6,256 H1 bars) and contains 0 down years. It can test sign agreement; it cannot independently establish regime robustness.",
+  "TRAIN contains 4 down years [2013, 2014, 2015, 2018] and 35.47% of its bars inside them. This is the property the M15 range lacks entirely (0.0%), and the reason this manifest exists.",
+  "DEV is short (4.66 years, 27,589 H1 bars) and contains 2 down years. It can test sign agreement; it cannot independently establish regime robustness.",
   "TRAIN spans a 4x change in gold's dollar volatility (2009 ~$950 to 2024 ~$2400). An absolute-dollar threshold fitted anywhere in TRAIN meets a very different distribution elsewhere in it. Thresholds must be scale-relative.",
-  "TRAIN is 15 years and DEV is 1 year. A result that holds in TRAIN and fails in DEV may be a DEV sample-size artefact rather than a failure; a result that holds in DEV and fails in TRAIN is almost certainly noise."
+  "TRAIN is 11.33 years and DEV is 4.66 years, and BOTH contain bear markets (35.47% and 42.82% of bars in down years). This is the first split in this programme where a directional result can be tested outside a bull run in both arms.",
+  "The two arms have deliberately different benchmark character, so a rule that beats buy-and-hold in BOTH is robust rather than era-fitted. See research/BENCHMARK_REPORT.md for the per-arm hold benchmark that every candidate is measured against."
  ]
 }

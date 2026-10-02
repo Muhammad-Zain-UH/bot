@@ -40,6 +40,8 @@ M15_MANIFEST = Path(__file__).with_name("research_split_manifest.json")
 OUT = Path(__file__).with_name("research_split_manifest_h1.json")
 
 PURGE_H1_BARS = 4        # longest GO horizon on H1 is 4h = 4 bars (VIABILITY_REPORT section 2)
+# TRAIN/DEV boundary, chosen so BOTH arms contain bear markets (see main()).
+TRAIN_BOUNDARY = pd.Timestamp("2020-12-31T23:59:59+00:00")
 
 
 def arm_stats(h1: pd.DataFrame, lo: pd.Timestamp, hi: pd.Timestamp,
@@ -93,21 +95,32 @@ def main() -> None:
     h1 = load_timeframe("H1")
     h1["atr"] = ta.atr(h1["high"], h1["low"], h1["close"], length=14)
 
-    TRAIN_HI = pd.Timestamp(arms_m15["TRAIN"]["to_utc"])
-    DEV_LO = pd.Timestamp(arms_m15["DEV"]["from_utc"])
-    DEV_HI = pd.Timestamp(arms_m15["DEV"]["to_utc"])
+    # FINAL_OOS is copied verbatim and never recomputed.
     OOS_LO = pd.Timestamp(arms_m15["FINAL_OOS"]["from_utc"])
     OOS_HI = pd.Timestamp(arms_m15["FINAL_OOS"]["to_utc"])
-    TRAIN_LO = h1["time"].min()                      # extend backwards to H1 origin
+
+    # The TRAIN/DEV boundary is set so that BOTH arms contain bear markets. The
+    # M15 boundary (2024-08) leaves DEV with 1.1 years and ZERO down years, which
+    # can only confirm a sign in another bull year. Moving it to end-2020 puts
+    # 2013-15 and 2018 in TRAIN and 2021-22 in DEV. FINAL_OOS is untouched.
+    TRAIN_LO = h1["time"].min()                      # H1 origin, 2009
+    TRAIN_HI = h1.loc[h1["time"] <= TRAIN_BOUNDARY, "time"].max()
+    DEV_HI = pd.Timestamp(arms_m15["DEV"]["to_utc"])  # unchanged: abuts the OOS embargo
+
+    # Embargo: drop the first PURGE_H1_BARS bars after TRAIN ends, so no forward
+    # window spans the boundary. Computed from bar positions, not wall-clock.
+    i_train_end = int(h1.index[h1["time"] == TRAIN_HI][0])
+    DEV_LO = h1["time"].iloc[i_train_end + 1 + PURGE_H1_BARS]
 
     gap_h = (DEV_LO - TRAIN_HI).total_seconds() / 3600
     print(f"[boundaries] TRAIN {TRAIN_LO} -> {TRAIN_HI}")
-    print(f"[boundaries] DEV   {DEV_LO} -> {DEV_HI}   (gap after TRAIN: {gap_h:.2f} h)")
+    print(f"[boundaries] DEV   {DEV_LO} -> {DEV_HI}   (embargo {PURGE_H1_BARS} bars = {gap_h:.1f} h)")
     print(f"[boundaries] OOS   {OOS_LO} -> {OOS_HI}   (copied verbatim, not inspected)")
-    assert gap_h >= PURGE_H1_BARS, "TRAIN/DEV gap is smaller than the H1 embargo"
     assert TRAIN_LO < pd.Timestamp(arms_m15["TRAIN"]["from_utc"]), (
         "TRAIN was not extended backwards; nothing gained")
-    assert TRAIN_HI < OOS_LO, "TRAIN end is at or past the OOS start"
+    assert TRAIN_HI < DEV_LO < DEV_HI < OOS_LO, "arms are not strictly ordered"
+    assert (h1["time"] > TRAIN_HI).sum() - (h1["time"] >= DEV_LO).sum() == PURGE_H1_BARS, (
+        "embargo is not exactly PURGE_H1_BARS bars")
 
     man = {
         "status": "H1 MULTI-REGIME SPLIT -- derived from the frozen M15 manifest",
@@ -179,9 +192,15 @@ def main() -> None:
         ("TRAIN spans a 4x change in gold's dollar volatility (2009 ~$950 to 2024 "
          "~$2400). An absolute-dollar threshold fitted anywhere in TRAIN meets a very "
          "different distribution elsewhere in it. Thresholds must be scale-relative."),
-        ("TRAIN is 15 years and DEV is 1 year. A result that holds in TRAIN and fails "
-         "in DEV may be a DEV sample-size artefact rather than a failure; a result that "
-         "holds in DEV and fails in TRAIN is almost certainly noise."),
+        (f"TRAIN is {tr['years']} years and DEV is {dv['years']} years, and BOTH contain "
+         f"bear markets ({tr['regime']['pct_bars_in_down_years']}% and "
+         f"{dv['regime']['pct_bars_in_down_years']}% of bars in down years). This is the "
+         f"first split in this programme where a directional result can be tested "
+         f"outside a bull run in both arms."),
+        ("The two arms have deliberately different benchmark character, so a rule that "
+         "beats buy-and-hold in BOTH is robust rather than era-fitted. See "
+         "research/BENCHMARK_REPORT.md for the per-arm hold benchmark that every "
+         "candidate is measured against."),
     ]
 
     OUT.write_text(json.dumps(man, indent=1, default=str) + "\n", encoding="utf-8")
