@@ -23,6 +23,7 @@ from typing import Dict, List, Optional, Tuple
 # enforcement must not be silently absent.
 from core.signal_log import SIGNAL_LOG_COLUMNS as CORE_SIGNAL_LOG_COLUMNS
 from core.signal_log import append_signal_row
+from core.safety import LIVE_TRADING_ENABLED, assert_live_trading_disabled
 
 # Try to import MT5 handler (optional for live trading)
 try:
@@ -57,6 +58,25 @@ except ImportError as e:
 # ============================================================
 
 _SHOULD_CONTINUE = True
+
+# ----------------------------------------------------------------- SAFETY
+# `close_all_positions()` used to fire mt5.order_send against EVERY open
+# position on the symbol on Ctrl-C AND on normal loop exit, with no safety
+# guard of any kind -- this module did not even import core.safety.
+#
+# This module has no opening path: `open_trades` below is a local list of
+# dicts and there is no order executor and no opening order_send. So every
+# position the old closer could have found belonged to something else, and
+# closing it was never correct.
+#
+# Closing is now OFF by default, must be enabled deliberately, and even then
+# touches only tickets this process recorded as its own.
+CLOSE_POSITIONS_ON_SHUTDOWN = False
+
+# Tickets opened by THIS process. Nothing populates this today, by design,
+# because main.py cannot open a position -- so the closer has nothing to act
+# on even if the flag above is switched on.
+_OWNED_TICKETS: set[int] = set()
 
 CONFIG = {
     "symbol": "XAUUSD",
@@ -745,8 +765,26 @@ def manage_positions(open_trades: List[Dict], current_prices: Dict) -> List[Dict
 # ============================================================
 
 def close_all_positions() -> bool:
-    """Close all open positions before shutdown."""
+    """Close positions THIS PROCESS opened, and only on deliberate opt-in.
+
+    Four independent guards, any one of which stops every order:
+      1. CLOSE_POSITIONS_ON_SHUTDOWN is False by default;
+      2. core.safety.LIVE_TRADING_ENABLED is False and has no override;
+      3. MT5 must be importable;
+      4. only tickets in _OWNED_TICKETS are ever touched, and main.py has no
+         path that can add one.
+    """
+    if not CLOSE_POSITIONS_ON_SHUTDOWN:
+        logger.info("[SHUTDOWN] position closing disabled "
+                    "(CLOSE_POSITIONS_ON_SHUTDOWN is False); no orders sent")
+        return True
+    if not LIVE_TRADING_ENABLED:
+        logger.info("[SHUTDOWN] live trading disabled by core.safety; no orders sent")
+        return True
     if not MT5_AVAILABLE:
+        return True
+    if not _OWNED_TICKETS:
+        logger.info("[SHUTDOWN] this process opened no positions; no orders sent")
         return True
     
     try:
@@ -758,6 +796,10 @@ def close_all_positions() -> bool:
         logger.info(f"[SHUTDOWN] Closing {len(positions)} position(s)...")
         
         for pos in positions:
+            if pos.ticket not in _OWNED_TICKETS:
+                logger.info(f"[SHUTDOWN] skipping ticket {pos.ticket}: "
+                            "not opened by this process")
+                continue
             close_type = mt5.ORDER_TYPE_SELL if pos.type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
             close_request = {
                 "action": mt5.TRADE_ACTION_DEAL,
@@ -796,6 +838,10 @@ def signal_handler(sig, frame):
 def main():
     """Main bot orchestration loop."""
     global _SHOULD_CONTINUE
+
+    # Tripwire: refuses to start if the live-trading lock has been tampered
+    # with. Mirrors main_production.py:1403.
+    assert_live_trading_disabled()
     
     logger.info("="*70)
     logger.info("10-LAYER TRADING BOT STARTING")

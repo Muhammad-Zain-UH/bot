@@ -97,22 +97,27 @@ APPROVED_BROKER_CALLS: tuple[BrokerCallSite, ...] = (
         operation="CLOSE",
         lineage="LEGACY",
         reachable=True,
-        guards=("MT5_AVAILABLE",),
+        guards=("CLOSE_POSITIONS_ON_SHUTDOWN", "LIVE_TRADING_ENABLED",
+                "MT5_AVAILABLE", "_OWNED_TICKETS"),
         why=(
-            "Shutdown position flattener. Closes every open position on the "
-            "configured symbol -- INCLUDING positions this system did not open. "
-            "main.py imports core.safety NOWHERE: LIVE_TRADING_ENABLED does not "
-            "participate, and there is no startup gate. It is guarded only by "
-            "MT5_AVAILABLE and by the fact that the signal handlers are "
-            "installed inside main(), which runs only under __main__. "
-            "main.py places NO orders -- it has no order executor, no sizing "
-            "and no create_order -- so this is a close-only surface."
+            "Shutdown position flattener, now GATED. It previously closed every "
+            "open position on the configured symbol -- INCLUDING positions this "
+            "system did not open -- on Ctrl-C and on normal loop exit, while "
+            "main.py imported core.safety NOWHERE. It is now guarded four ways, "
+            "any one of which stops every order: CLOSE_POSITIONS_ON_SHUTDOWN is "
+            "False by default; core.safety.LIVE_TRADING_ENABLED is False with no "
+            "override; MT5_AVAILABLE; and only tickets in _OWNED_TICKETS are "
+            "touched. main.py places NO orders -- no order executor, no sizing, "
+            "no create_order -- so it can never populate _OWNED_TICKETS, which "
+            "makes the close path unreachable in practice as well as gated."
         ),
         status=(
-            "TEMPORARY. Phase 6G risk R1, the highest recorded. UNRESOLVED: "
-            "whether main.py is a second entry point or is superseded by "
-            "main_production. Deliberately not guarded here, because adding a "
-            "guard merely to satisfy a test would resolve that question by "
+            "TEMPORARY. Phase 6G risk R1 is MITIGATED (remediation item 3, 'gate "
+            "or remove main.py's close path'). Item 2 -- whether main.py is a "
+            "second entry point or is superseded by main_production -- REMAINS "
+            "OPEN, and the gating was written so as not to presuppose either "
+            "answer: it is correct behaviour whichever way item 2 is decided, "
+            "which is why fixing item 3 first does not resolve item 2 by "
             "accident. See PHASE_6G section 7."
         ),
     ),

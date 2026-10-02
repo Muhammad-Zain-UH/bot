@@ -15,6 +15,10 @@ sys.path.insert(0, str(REPO))
 
 EXPECTED_TOKEN = "OOS-AUTHORISATION-NOT-ISSUED"
 PRODUCTION_FILES = [
+    # main.py was NOT in this list, which is why check 6 never noticed that its
+    # shutdown path could fire mt5.order_send unguarded. Added once that path was
+    # gated, so any future change to it is caught.
+    "main.py",
     "main_production.py", "bias_engine.py", "structure_engine.py",
     "entry_engine.py", "sweep_detector.py", "poi_engine.py",
     "liquidity_engine.py", "pullback_detector.py", "confidence_engine.py",

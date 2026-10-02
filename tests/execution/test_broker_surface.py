@@ -349,13 +349,29 @@ class LegacyClosePathsAreVisible(unittest.TestCase):
                 self.assertTrue(site.reachable)
                 self.assertTrue(site.status.startswith("TEMPORARY"))
 
-    def test_main_py_is_recorded_as_having_no_safety_gate(self) -> None:
-        """Recording it is the point; it is deliberately not fixed here."""
+    def test_main_py_close_path_is_gated(self) -> None:
+        """Phase 6G R1 is mitigated: main.py now imports the safety lock and
+        will not close a position it did not open.
+
+        This test previously asserted the OPPOSITE -- that the gap was unfixed --
+        because the gap was deliberately recorded rather than patched. It is now
+        inverted, and the architectural question it was protecting (item 2:
+        is main.py a second entry point?) is asserted to still be open below.
+        """
         source = (REPO_ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertNotIn("core.safety", source)
-        self.assertNotIn("LIVE_TRADING_ENABLED", source)
+        self.assertIn("core.safety", source)
+        self.assertIn("LIVE_TRADING_ENABLED", source)
+        self.assertIn("CLOSE_POSITIONS_ON_SHUTDOWN = False", source)
+        self.assertIn("_OWNED_TICKETS", source)
         site = next(s for s in APPROVED_BROKER_CALLS if s.module == "main.py")
-        self.assertIn("LIVE_TRADING_ENABLED does not", site.why)
+        self.assertIn("now GATED", site.why)
+        self.assertIn("R1 is MITIGATED", site.status)
+
+    def test_main_py_entry_point_question_is_still_open(self) -> None:
+        """Gating the close path must not quietly claim item 2 is decided."""
+        site = next(s for s in APPROVED_BROKER_CALLS if s.module == "main.py")
+        self.assertIn("REMAINS", site.status)
+        self.assertIn("second entry point", site.status)
 
     def test_no_legacy_path_can_open_a_position_that_is_reachable(self) -> None:
         openers = [s for s in APPROVED_BROKER_CALLS if s.operation == "OPEN"]
