@@ -1,0 +1,158 @@
+{
+ "status": "H1 MULTI-REGIME SPLIT -- derived from the frozen M15 manifest",
+ "derived_from": {
+  "manifest": "research/research_split_manifest.json",
+  "manifest_git_sha": "4aebffd10ca14645b37afd0d09dd0328e32de895",
+  "rationale": "H1 spans 17.08 years and DOES contain bear regimes; it is the designated directional-robustness layer for that reason."
+ },
+ "purpose": "H01-H04 were tested on M15, whose authorised range contains ZERO down years. H1 spans 17 years with 6 down years and the 2013-2015 decline. research/VIABILITY_REPORT.md shows 1h|H1 is the only combination with substantial headroom against spread cost (9.37x).",
+ "FINAL_OOS_LOCKED": true,
+ "oos_authorisation_token": "OOS-AUTHORISATION-NOT-ISSUED",
+ "oos_unlock_requirements": [
+  "explicit written authorisation from the strategy architect",
+  "record the date, the git SHA and the candidate specification SHA at the moment it is opened",
+  "one look only; a revised candidate on a used OOS is a new candidate on a spent arm"
+ ],
+ "oos_prohibitions": [
+  "supplies no quantile cutoff",
+  "supplies no feature selection",
+  "supplies no threshold selection",
+  "supplies no candidate selection",
+  "supplies no parameter tuning"
+ ],
+ "oos_boundaries_unchanged": "FINAL_OOS from_utc and to_utc are copied verbatim from the frozen M15 manifest. TRAIN is extended BACKWARDS only, which cannot reach the OOS window. Asserted at build time.",
+ "primary_timeframe": "H1",
+ "context_timeframe": "H4",
+ "timeframe_roles": {
+  "H1": "primary feature/label research and signal discovery, 2009-2026",
+  "H4": "longer-horizon context and robustness, 2004-2026",
+  "M15": "replication only; its range has no bear regime",
+  "M5": "not usable -- 0.4 years to the DEV boundary",
+  "M1": "not usable -- zero bars in the authorised window"
+ },
+ "binding_range": {
+  "basis": "H1 -- primary and the longest usable intraday history",
+  "from_utc": "2009-08-31 19:00:00+00:00",
+  "to_utc": "2026-10-01 11:30:00+00:00",
+  "years": 17.08
+ },
+ "purge_embargo": {
+  "h1_bars": 4,
+  "equivalent_hours": 4,
+  "rationale": "the longest GO horizon on H1 is 4h = 4 bars (VIABILITY_REPORT s.2); dropped AFTER each boundary so no forward window spans two arms. The existing TRAIN/DEV gap is 53.2 h, already far larger."
+ },
+ "viability": {
+  "source": "research/VIABILITY_REPORT.md",
+  "go_combinations_on_this_manifest": {
+   "1h|H1": {
+    "headroom_x": 9.37,
+    "min_events": 1067,
+    "min_event_rate": 0.0114
+   },
+   "4h|H1": {
+    "headroom_x": 2.37,
+    "min_events": 4163,
+    "min_event_rate": 0.0444
+   }
+  },
+  "binding_constraint": "every hypothesis using this manifest must cite a GO row and declare an expected event rate at or above its minimum"
+ },
+ "arms": {
+  "TRAIN": {
+   "from_utc": "2009-08-31 19:00:00+00:00",
+   "to_utc": "2024-08-09 18:15:00+00:00",
+   "h1_rows": 87480,
+   "h1_index_range": [
+    0,
+    87479
+   ],
+   "months": 179.25,
+   "years": 14.94,
+   "blocks_1h": 87480,
+   "blocks_2h": 43740,
+   "blocks_4h": 21870,
+   "net_pct": 155.53,
+   "median_atr_usd": 3.5436,
+   "regime": {
+    "years_total": 16,
+    "years_up": 10,
+    "years_down": 6,
+    "down_years": [
+     2013,
+     2014,
+     2015,
+     2018,
+     2021,
+     2022
+    ],
+    "bars_in_down_years": 35279,
+    "pct_bars_in_down_years": 40.33
+   }
+  },
+  "DEV": {
+   "from_utc": "2024-08-11 23:30:00+00:00",
+   "to_utc": "2025-09-02 14:15:00+00:00",
+   "h1_rows": 6256,
+   "h1_index_range": [
+    87484,
+    93739
+   ],
+   "months": 12.68,
+   "years": 1.06,
+   "blocks_1h": 6256,
+   "blocks_2h": 3128,
+   "blocks_4h": 1564,
+   "net_pct": 44.59,
+   "median_atr_usd": 7.3001,
+   "regime": {
+    "years_total": 2,
+    "years_up": 2,
+    "years_down": 0,
+    "down_years": [],
+    "bars_in_down_years": 0,
+    "pct_bars_in_down_years": 0.0
+   }
+  },
+  "FINAL_OOS": {
+   "from_utc": "2025-09-02T18:30:00+00:00",
+   "to_utc": "2026-10-01T11:30:00+00:00",
+   "h1_rows": 6257,
+   "h1_index_range": [
+    93744,
+    100000
+   ],
+   "months": 12.91,
+   "years": 1.08,
+   "blocks_1h": 6257,
+   "blocks_2h": 3128,
+   "blocks_4h": 1564,
+   "net_pct": null,
+   "median_atr_usd": null,
+   "regime": null,
+   "market_stats_withheld": "FINAL_OOS is locked; net return, median ATR and regime composition are deliberately NOT computed. Only structural metadata (dates, row count, index range) is recorded, which the lock needs in order to function."
+  }
+ },
+ "dataset_fingerprints": {
+  "H1": {
+   "values_sha256": "a74e0e5b679fc0fe219102d55a64b3b9bbf6aa53f4a5edde345057eb1361c189",
+   "rows": 100001,
+   "first_utc": "2009-08-31T19:00:00+00:00",
+   "last_utc": "2026-10-01T11:00:00+00:00"
+  },
+  "H4": {
+   "values_sha256": "b87154c805cf025bc608eb734aa9e1e513fb97e744fbad2a50ba58bef1262d80",
+   "rows": 34174,
+   "first_utc": "2004-06-11T01:00:00+00:00",
+   "last_utc": "2026-10-01T09:00:00+00:00"
+  }
+ },
+ "dataset_sha256": "9925ff94fb8d8c748e3a4774064b0e7b344da21ffac0efce509d7e3f6ef626ca",
+ "server_offset_hours": 3.0,
+ "enforcement": "research/dataset_access.py raises OOSLockedError on any FINAL_OOS read without the manifest token",
+ "regime_warnings": [
+  "TRAIN contains 6 down years [2013, 2014, 2015, 2018, 2021, 2022] and 40.33% of its bars inside them. This is the property the M15 range lacks entirely (0.0%), and the reason this manifest exists.",
+  "DEV is short (1.06 years, 6,256 H1 bars) and contains 0 down years. It can test sign agreement; it cannot independently establish regime robustness.",
+  "TRAIN spans a 4x change in gold's dollar volatility (2009 ~$950 to 2024 ~$2400). An absolute-dollar threshold fitted anywhere in TRAIN meets a very different distribution elsewhere in it. Thresholds must be scale-relative.",
+  "TRAIN is 15 years and DEV is 1 year. A result that holds in TRAIN and fails in DEV may be a DEV sample-size artefact rather than a failure; a result that holds in DEV and fails in TRAIN is almost certainly noise."
+ ]
+}

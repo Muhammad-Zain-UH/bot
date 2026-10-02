@@ -34,6 +34,11 @@ from data.dataset import load_bars_csv
 DATA_ROOT = REPO / "data" / "research_v1"
 BARS = DATA_ROOT / "bars"
 SPLIT_MANIFEST = Path(__file__).with_name("research_split_manifest.json")
+# H1 multi-regime split: TRAIN extended backwards to 2009, FINAL_OOS boundaries
+# copied verbatim. Built by research/build_h1_split_manifest.py. Opt in by
+# passing manifest=H1_SPLIT_MANIFEST; the default is unchanged, so every
+# existing caller behaves identically.
+H1_SPLIT_MANIFEST = Path(__file__).with_name("research_split_manifest_h1.json")
 FINGERPRINTS = Path(__file__).with_name("accessible_bar_dataset_fingerprints.json")
 
 TF_ENUM = {"M1": Timeframe.M1, "M5": Timeframe.M5, "M15": Timeframe.M15,
@@ -48,8 +53,10 @@ class DatasetIntegrityError(RuntimeError):
     """Raised when a file no longer matches the frozen fingerprint."""
 
 
-def _split() -> dict:
-    return json.loads(SPLIT_MANIFEST.read_text(encoding="utf-8"))
+def _split(manifest: Path | None = None) -> dict:
+    """Load a split manifest. Defaults to the frozen M15 manifest, so callers
+    that pass nothing are unaffected."""
+    return json.loads((manifest or SPLIT_MANIFEST).read_text(encoding="utf-8"))
 
 
 def _fingerprint(df: pd.DataFrame) -> str:
@@ -89,7 +96,8 @@ def verify_dataset(strict: bool = True) -> dict:
     return result
 
 
-def load_arm(tf: str, arm: str, oos_authorisation: str | None = None) -> pd.DataFrame:
+def load_arm(tf: str, arm: str, oos_authorisation: str | None = None,
+             manifest: Path | None = None) -> pd.DataFrame:
     """Load one chronological arm of one timeframe.
 
     Args:
@@ -97,11 +105,15 @@ def load_arm(tf: str, arm: str, oos_authorisation: str | None = None) -> pd.Data
         arm: "TRAIN" | "DEV" | "FINAL_OOS".
         oos_authorisation: required only for FINAL_OOS, and only matches the exact
             token in the split manifest.
+        manifest: which split manifest to use. Defaults to the frozen M15
+            manifest. Pass `H1_SPLIT_MANIFEST` for the H1 multi-regime split,
+            whose FINAL_OOS boundaries and token are identical, so the lock
+            behaves the same way under either.
 
     Raises:
-        OOSLockedError: for FINAL_OOS without the correct token.
+        OOSLockedError: for FINAL_OOS without the correct token, under any manifest.
     """
-    split = _split()
+    split = _split(manifest)
     arms = split["arms"]
     if arm not in arms:
         raise KeyError(f"unknown arm {arm!r}; expected one of {sorted(arms)}")

@@ -28,6 +28,15 @@ def git(*args: str) -> str:
                           text=True, check=False).stdout.strip()
 
 
+def git_raw(*args: str) -> str:
+    """Unstripped stdout. `git status --porcelain` encodes the state in the first
+    two columns, and an unstaged modification begins with a SPACE (" M path").
+    Stripping the whole output removes that space from the first line only, which
+    shifts the path offset and made check 10 report a false failure. Parse raw."""
+    return subprocess.run(["git", *args], cwd=REPO, capture_output=True,
+                          text=True, check=False).stdout
+
+
 def check(n: int, name: str, ok: bool, evidence: str) -> None:
     results.append((n, name, bool(ok), evidence))
 
@@ -100,9 +109,14 @@ check(9, "statistical guardrail self-tests pass", r.returncode == 0,
       f"exit {r.returncode}; {(r.stdout or r.stderr).strip().splitlines()[-1] if (r.stdout or r.stderr).strip() else ''}")
 
 # 10. Working tree contains only intended research changes.
-porcelain = [l for l in git("status", "--porcelain").splitlines() if l.strip()]
+porcelain = [l for l in git_raw("status", "--porcelain").splitlines() if l.strip()]
 allowed_prefixes = ("research/",)
-unintended = [l for l in porcelain if not l[3:].startswith(allowed_prefixes)]
+# columns 0-1 are the status code, column 2 is a separator; the path follows.
+# Renames appear as "old -> new"; take the destination.
+def _path(line: str) -> str:
+    p = line[2:].strip().strip('"')
+    return p.split(" -> ")[-1] if " -> " in p else p
+unintended = [l for l in porcelain if not _path(l).startswith(allowed_prefixes)]
 check(10, "working tree contains only research changes", not unintended,
       f"{len(porcelain)} entries; outside research/: {unintended or 'none'}")
 
