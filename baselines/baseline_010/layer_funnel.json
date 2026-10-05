@@ -1,0 +1,75 @@
+{
+  "blocked_at": {
+    "L1_BIAS": 5950,
+    "L2_STRUCTURE": 7533,
+    "L3_PULLBACK": 962,
+    "L4_LIQUIDITY": 536,
+    "L5_SWEEP": 409,
+    "L7_CONFIDENCE": 208,
+    "L8_ENTRY": 137
+  },
+  "blocked_at_percent": {
+    "L1_BIAS": 37.8138,
+    "L2_STRUCTURE": 47.8742,
+    "L3_PULLBACK": 6.1138,
+    "L4_LIQUIDITY": 3.4064,
+    "L5_SWEEP": 2.5993,
+    "L7_CONFIDENCE": 1.3219,
+    "L8_ENTRY": 0.8707
+  },
+  "blocked_reasons": {
+    "L1_BIAS": {
+      "HN Bias is NEUTRAL | [BIAS] HN EMA-based bias: NEUTRAL (strength: N/N) | [BIAS] EMAN: N | EMAN: N | Distance: N (threshold: N) | [BIAS] Stat": 5878,
+      "HN Fast Bias is NEUTRAL | [FAST_BIAS] HN EMA-based bias: NEUTRAL (strength: N/N) | HN EMAs too close: distance = N (need >=N)": 72
+    },
+    "L2_STRUCTURE": {
+      "HN ATR too calm ($N < $N (= $N at the $N reference, N% of $N)) - no volatility to trade": 7521,
+      "HN structure is broken (Close N > last_high N)": 12
+    },
+    "L3_PULLBACK": {
+      "No confirmed pullback detected": 943,
+      "No pullback (MN pullback on closed candles: retracement=N% (N% fib), structure=False, volume=stable, RSI=N (neutral), duration=N bars | HH=N": 3,
+      "No pullback (MN pullback on closed candles: retracement=N% (N% fib), structure=False, volume=stable, RSI=N (oversold), duration=N bars | HH=": 9,
+      "No pullback (MN pullback on closed candles: retracement=N% (N% fib), structure=True, volume=rising, RSI=N (neutral), duration=N bars | HH=N,": 5,
+      "No pullback (MN pullback on closed candles: retracement=N% (N% fib), structure=True, volume=stable, RSI=N (neutral), duration=N bars | HH=N,": 1,
+      "No pullback (Swing too recent (N bars), waiting for structure) and momentum fallback failed: MN volume (N) below N-candle baseline (N) - mov": 1
+    },
+    "L4_LIQUIDITY": {
+      "Sweep N/N, TP N/N, dist N did not meet liquidity requirements": 536
+    },
+    "L5_SWEEP": {
+      "BUY zone is near liquidity N; closest low N, waiting for wick/close confirmation.": 55,
+      "MN CHoCH not confirmed for BUY": 105,
+      "MN CHoCH not confirmed for SELL": 169,
+      "SELL zone is near liquidity N; closest high N, waiting for wick/close confirmation.": 80
+    },
+    "L7_CONFIDENCE": {
+      "Confidence score too low (N < N)": 208
+    },
+    "L8_ENTRY": {
+      "Entry triggers not all confirmed": 137
+    }
+  },
+  "note": "'reached' counts decisions that passed, were blocked at, or bypassed the layer. Variant labels (L5_SWEEP_WAIT, L3_PULLBACK_MOMENTUM, L6_POI_BYPASSED) are folded into their parent layer.",
+  "reached_layer": {
+    "L1_BIAS": 15735,
+    "L2_STRUCTURE": 9785,
+    "L3_PULLBACK": 2252,
+    "L4_LIQUIDITY": 1290,
+    "L5_SWEEP": 754,
+    "L6_POI": 345,
+    "L7_CONFIDENCE": 345,
+    "L8_ENTRY": 137
+  },
+  "reached_layer_percent": {
+    "L1_BIAS": 100.0,
+    "L2_STRUCTURE": 62.1862,
+    "L3_PULLBACK": 14.312,
+    "L4_LIQUIDITY": 8.1983,
+    "L5_SWEEP": 4.7919,
+    "L6_POI": 2.1926,
+    "L7_CONFIDENCE": 2.1926,
+    "L8_ENTRY": 0.8707
+  },
+  "total_decisions": 15735
+}

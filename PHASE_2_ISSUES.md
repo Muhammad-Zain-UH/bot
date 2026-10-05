@@ -38,18 +38,18 @@ price is therefore **10x** its intended size.
 
 | # | Location | Code | Intended | Actual | Priority |
 |---|---|---|---|---|---|
-| U1 | `entry_engine.py:362` `_select_stop_anchor` | `min(candidates) - buffer_pips` (`buffer_pips=3.0`) | 3 pips | **$3.00 = 30 pips** | **P0** |
-| U2 | `liquidity_engine.py:368` `score_liquidity_pool` | `if distance <= 2.0: score += 25` | 2 pips | **$2.00 = 20 pips** | P1 |
-| U3 | `liquidity_engine.py:374-380` | `if distance > 50 / > 30: penalty` | 50/30 pips | **$50/$30 = 500/300 pips** | P1 |
-| U4 | `liquidity_engine.py:753` `assess_liquidity_gate` | `max_sweep_distance = 60.0` | 60 pips | **$60 = 600 pips — no effective cap** | P1 |
-| U5 | `poi_engine.py:437` `score_poi` | `if 5 <= zone_size <= 15: score += 15` | 5–15 pips | **$5–$15 — essentially never fires** | P1 |
-| U6 | `poi_engine.py:428` `score_poi` | `if displacement >= 20 / >= 10` | 20/10 pips | **$20/$10** | P1 |
-| U7 | `poi_engine.py:194` `detect_order_block` | `if body >= 5` | 5 pips | **$5 M15 body — very rare** | P1 |
-| U8 | `sweep_detector.py:196` `detect_sweep` | `sweep_min = max(2.5, atr*0.12)` | 2.5 pips | **$2.50 = 25 pips minimum sweep** | **P0** |
-| U9 | `main_production.py` L2 gate | ~~`h1_atr < 8.0` described as "pips"~~ **PARTLY FIXED.** The mislabelling is gone: the threshold is now the named `L2_MIN_H1_RANGE_USD` and all operator output prints ATR in dollars. The **value** is unchanged and still absolute-USD, so the price-level dependence below remains open. | 8 pips | **$8.00 = 80 pips** | ~~P1~~ / open |
-| U10 | `entry_engine.py:76-108` `detect_regime` | ATR bands `2.5 / 4.5 / 7.0` labelled "pip" | pips | **dollars** | **P0** |
-| U11 | `main_production.py` `_check_regime_scalp_momentum` | `pip_size = 0.10` hardcoded inline | — | duplicates broker data | P2 |
-| U12 | `mt5_handler.py:150` `get_current_spread` | `XAUUSD_PIP_SIZE = 0.10` hardcoded | — | **correct today**, but breaks silently if the broker changes quote precision | P2 |
+| U1 | `entry_engine.py:362` `_select_stop_anchor` | ~~`min(candidates) - buffer_pips` (`buffer_pips=3.0`)~~ **FIXED.** Typed `STOP_ANCHOR_BUFFER_PIPS = Pips(3.0)`, resolved through the spec to $0.30. | 3 pips | ~~$3.00~~ **$0.30** | ~~P0~~ |
+| U2 | `liquidity_engine.py:368` `score_liquidity_pool` | ~~`if distance <= 2.0`~~ **FIXED.** `PROXIMITY_BONUS_PIPS = Pips(2.0)` -> $0.20. | 2 pips | ~~$2.00~~ **$0.20** | ~~P1~~ |
+| U3 | `liquidity_engine.py:374-380` | ~~`if distance > 50 / > 30`~~ **FIXED.** Typed `Pips(50)` / `Pips(30)` -> $5.00 / $3.00. | 50/30 pips | ~~$50/$30~~ **$5/$3** | ~~P1~~ |
+| U4 | `liquidity_engine.py:753` `assess_liquidity_gate` | ~~`max_sweep_distance = 60.0`~~ **FIXED.** `MAX_SWEEP_DISTANCE_PIPS = Pips(60)` -> $6.00, so the cap can reject something for the first time. | 60 pips | ~~$60~~ **$6.00** | ~~P1~~ |
+| U5 | `poi_engine.py:437` `score_poi` | ~~`if 5 <= zone_size <= 15`~~ **UNIT FIXED, BAND STILL WRONG.** Now $0.50-$1.50. Measured 2022->2026: the as-is band went 4.49% -> 65.79% of bars while the as-intended band went 36.86% -> **0.03%**. Rule 1 moved it to the second, so the bonus is now near-unreachable. **Open.** | 5-15 pips | ~~$5-$15~~ $0.50-$1.50 | **open** |
+| U6 | `poi_engine.py:428` `score_poi` | ~~`if displacement >= 20 / >= 10`~~ **FIXED.** $2.00 / $1.00. It fired on 0.03-3.7% of bars before, i.e. was effectively inert -- see the criterion note in UNIT_MIGRATION_REPORT.md section 2. | 20/10 pips | ~~$20/$10~~ **$2/$1** | ~~P1~~ |
+| U7 | `poi_engine.py:194` `detect_order_block` | ~~`if body >= 5`~~ **FIXED.** `ORDER_BLOCK_MIN_BODY_PIPS = Pips(5)` -> $0.50. Fired on 1.4% of bars before. | 5 pips | ~~$5~~ **$0.50** | ~~P1~~ |
+| U8 | `sweep_detector.py:196` `detect_sweep` | ~~`sweep_min = max(2.5, atr*0.12)`~~ **FIXED -- the best result of the migration.** Typed to $0.25. The constant bound on **98.82%** of bars, so `atr*0.12`, the only scale-invariant term present, was **dead code**; it now binds on **73.74%**. Correcting the unit made the scale-aware branch live with no coefficient invented. Per Rule 4, `0.12` and `2.0` are now live and have never been validated. | 2.5 pips | ~~$2.50~~ **$0.25** | ~~P0~~ |
+| U9 | `main_production.py` L2 gate | ~~described as "pips"~~ **UNIT FIXED; ABSOLUTENESS OPEN.** Named `L2_MIN_H1_RANGE_USD`; all output in dollars. A price-scaled version was built and measured (drift 100.0pp -> 30.1pp) then **REVERTED** -- end to end it took signals 4 -> **0** (`baseline_010`). | 8 pips | $8.00, **absolute** | **open** |
+| U10 | `entry_engine.py:76-108` `detect_regime` | **NOT a 10x error** -- in dollars these bands give a sensible regime spread. They are **absolute**, and open. Scaling was built and measured (DEAD_CALM drift 34.6pp -> 16.2pp) then **REVERTED**: ~85% of bars became DEAD_CALM and signals went to 0. Relatively, the `2.5` edge sat at the **84th** percentile of volatility at $1,544 gold and the **12th** at $4,550 -- it was never one threshold. Fixing it needs the regimes **re-derived**, which is strategy design, not a correctness fix. | pips | dollars, **absolute** | **open (P0)** |
+| U11 | `main_production.py` `_check_regime_scalp_momentum` | ~~`pip_size = 0.10` hardcoded inline~~ **FIXED.** Reads `XAUUSD_SPEC.pip_size`. | - | - | ~~P2~~ |
+| U12 | `mt5_handler.py:150` `get_current_spread` | ~~`XAUUSD_PIP_SIZE = 0.10` hardcoded~~ **FIXED.** Reads `XAUUSD_SPEC.pip_size`, derived from the broker's own `symbol_info`. | - | - | ~~P2~~ |
 
 ### Measured: the L2 gate's selectivity is a function of gold's price, not volatility
 
@@ -97,6 +97,19 @@ selected, and therefore which thresholds, risk and bypasses apply.
 sweep rate, which changes L5/L7 pass rates, which changes everything downstream.
 They should be migrated together onto `core.units`, behind a backtest that can
 measure the result.
+
+> **DONE, and this warning was right -- more right than it knew.** Migrated
+> together under `research/unit_migration_spec.md` (pre-registered before any
+> implementation) and measured as `baseline_010` and `baseline_011` against
+> `baseline_009`.
+>
+> The interaction was not only downstream. Scaling the regime bands changed
+> **L1_BIAS blocks from 1,505 to 5,950** without touching L1 at all, because
+> `use_fast_bias` is true only for the scalp regimes -- so reclassifying bars as
+> DEAD_CALM silently switched L1 from the H1 fast bias to the stricter H4 one.
+> An **upstream** gate moved because a **downstream** classifier changed.
+>
+> Result: `research/UNIT_MIGRATION_REPORT.md`.
 
 ---
 

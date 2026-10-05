@@ -37,6 +37,15 @@ from typing import Any
 import pandas as pd
 from utils import log_debug
 
+from core.symbols import XAUUSD_2DIGIT as XAUUSD_SPEC
+from core.units import Pips
+
+# Sweep wick-depth bounds, in PIPS, as this module's docstring always said.
+# Typed so they cannot silently be compared against a raw price again:
+# Pips(2.5).to_price(spec) is $0.25, while a bare 2.5 was $2.50.
+SWEEP_MIN_PIPS = Pips(2.5)
+SWEEP_MAX_PIPS = Pips(30.0)
+
 
 def _to_float(value: Any) -> float | None:
     """Safely convert to float."""
@@ -193,8 +202,23 @@ def detect_sweep(
         recent = m15_data.tail(15)  # Give the detector a slightly wider memory
         baseline_volume = m15_data["tick_volume"].mean()
         m15_atr = _estimate_m15_atr(m15_data)
-        sweep_min = max(2.5, m15_atr * 0.12)
-        sweep_max = max(30.0, m15_atr * 2.0)
+        # U8 (PHASE_2_ISSUES.md). These were `max(2.5, ...)` and `max(30.0, ...)`
+        # compared against a wick depth in QUOTE CURRENCY, so they acted as
+        # $2.50 and $30.00 -- 25 and 300 pips. This module's own docstring says
+        # the intent: "Wick penetration: 3-8 pips below pool".
+        #
+        # The fix is the unit, and it has a declared answer. Its side effect is
+        # the important part: with the floor at $2.50 the constant bound on
+        # 98.82% of bars, so `m15_atr * 0.12` -- the one scale-invariant term
+        # already written here -- was effectively DEAD CODE. At $0.25 the ATR
+        # term binds on 73.74% of bars instead. Correcting the unit resurrected
+        # the scale-aware branch without inventing any coefficient.
+        #
+        # Recorded per research/unit_migration_spec.md Rule 4: `0.12` and `2.0`
+        # are now the binding parameters and have never been validated against
+        # anything. They were unreachable when they were written.
+        sweep_min = max(SWEEP_MIN_PIPS.to_price(XAUUSD_SPEC).value, m15_atr * 0.12)
+        sweep_max = max(SWEEP_MAX_PIPS.to_price(XAUUSD_SPEC).value, m15_atr * 2.0)
         volume_threshold = 1.4
 
         for idx in range(len(recent) - 1, -1, -1):

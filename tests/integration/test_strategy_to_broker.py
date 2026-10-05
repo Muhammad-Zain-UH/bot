@@ -31,25 +31,44 @@ class ChainReachesTheLedgerTests(unittest.TestCase):
         )
 
     def test_the_strategy_signalled(self) -> None:
-        """Two signals since Step 4, one of which rests rather than filling.
+        """One signal, which fills. Re-pinned for a single identified reason.
 
-        This asserted 1 before `price_in_fvg` was removed from the momentum
-        trigger. Removing it lets the momentum path fire where it previously
-        could not, and on this fixture it fires once more. That second signal is
-        a LIMIT_FVG order resting at 2536.04, formed at 08:05; the fixture runs
-        up to its target and never returns to that level, so the order stays
-        PENDING, opens no position, and the ledger is untouched -- which is why
-        the pinned fingerprint in test_r1_same_bar_regression still holds.
+        History of this count, each change attributed:
+
+        * **1** originally.
+        * **2** when `price_in_fvg` was removed from the momentum trigger. That
+          let the momentum path fire where it could not before, producing a
+          second signal -- a LIMIT_FVG order resting at 2536.04, formed at
+          08:05. The fixture never returned to that level, so it stayed
+          PENDING, opened no position and left the ledger untouched.
+        * **1** again after the U1-U12 unit migration. The momentum trigger
+          takes `sweep_wick_low`/`sweep_wick_high` as inputs, and U8 changed
+          which candles qualify as a sweep (the band moved from $2.50-$30.00 to
+          $0.25-$3.00). The 08:05 decision now reaches L8 and stops there --
+          "waiting for M5/M1 confirmation" -- instead of emitting the resting
+          order.
+
+        The chain contract this class exists for is unaffected: the strategy
+        still signals, the broker still fills, and the ledger still records it.
+        Those are asserted separately below and did not move.
         """
-        self.assertEqual(self.result.signals, 2)
+        self.assertEqual(self.result.signals, 1)
         self.assertEqual(self.result.errors, 0)
 
-    def test_the_second_signal_rested_and_never_filled(self) -> None:
-        """The extra signal must not have become a trade."""
+    def test_no_order_rests_unfilled(self) -> None:
+        """The inverse of what this used to assert, for the reason above.
+
+        It previously required exactly one PENDING order and pinned that it
+        never filled. That order no longer forms, so requiring it would pin a
+        signal the strategy does not produce. What matters for the ledger
+        fingerprint is unchanged either way: nothing rested and then filled
+        behind the one real trade.
+        """
         pending = list(self.result.pending_orders)
-        self.assertEqual(len(pending), 1)
-        self.assertIsNone(pending[0].fill_time)
-        self.assertIsNone(pending[0].first_reached_time)
+        self.assertEqual(
+            len(pending), 0,
+            "the 08:05 LIMIT_FVG no longer forms; see test_the_strategy_signalled",
+        )
 
     def test_the_broker_received_and_filled_it(self) -> None:
         positions = self.broker.closed_positions() + self.broker.open_positions()

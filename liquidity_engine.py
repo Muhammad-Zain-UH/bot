@@ -48,6 +48,23 @@ from typing import Any
 import pandas as pd
 from utils import log_debug
 
+from core.symbols import XAUUSD_2DIGIT as XAUUSD_SPEC
+from core.units import Pips
+
+# U2/U3/U4 (PHASE_2_ISSUES.md). Every one of these was a bare float compared
+# against `abs(level - current_price)`, which is in QUOTE CURRENCY, while
+# every surrounding log message called it pips. They therefore acted at 10x:
+# the 60.0 'pip' sweep cap was $60 = 600 pips, i.e. no cap at all.
+#
+# Typed, so the comparison must now go through to_price() and cannot silently
+# revert. The absoluteness of these distances is NOT addressed here and
+# remains open -- see research/unit_migration_spec.md, Rule 1 applied alone.
+PROXIMITY_BONUS_PIPS = Pips(2.0)      # was 2.0  -> $2.00 (20 pips)
+DISTANCE_PENALTY_FAR_PIPS = Pips(50.0)   # was 50   -> $50 (500 pips)
+DISTANCE_PENALTY_MID_PIPS = Pips(30.0)   # was 30   -> $30 (300 pips)
+MAX_SWEEP_DISTANCE_PIPS = Pips(60.0)     # was 60.0 -> $60 (600 pips)
+MAX_SWEEP_DISTANCE_FALLBACK_PIPS = Pips(100.0)  # was 100.0 -> $100
+
 
 def _to_float(value: Any) -> float | None:
     """Safely convert to float."""
@@ -347,7 +364,7 @@ def score_liquidity_pool(
             distance = abs(level - current_price)
             
             # PROXIMITY BONUS: Sweeps MUST be near price to work
-            if distance <= 2.0:
+            if distance <= PROXIMITY_BONUS_PIPS.to_price(XAUUSD_SPEC).value:
                 proximity_bonus = 25  # Large bonus for near-price pools
                 score += proximity_bonus
                 score_breakdown["proximity_bonus"] = proximity_bonus
@@ -355,12 +372,12 @@ def score_liquidity_pool(
             
             # DISTANCE PENALTY: Only penalize very far pools
             distance_penalty = 0
-            if distance > 50:
+            if distance > DISTANCE_PENALTY_FAR_PIPS.to_price(XAUUSD_SPEC).value:
                 distance_penalty = 20
                 score -= distance_penalty
                 score_breakdown["distance_penalty"] = -distance_penalty
                 confluence_reasons.append(f"Distance penalty: {distance:.1f} pips (too far)")
-            elif distance > 30:
+            elif distance > DISTANCE_PENALTY_MID_PIPS.to_price(XAUUSD_SPEC).value:
                 distance_penalty = 10
                 score -= distance_penalty
                 score_breakdown["distance_penalty"] = -distance_penalty
@@ -751,7 +768,10 @@ def assess_liquidity_gate(
 
     min_sweep_score = 60 if is_fallback else 70
     min_tp_score = 60
-    max_sweep_distance = 100.0 if is_fallback else 60.0
+    max_sweep_distance = (
+        MAX_SWEEP_DISTANCE_FALLBACK_PIPS if is_fallback
+        else MAX_SWEEP_DISTANCE_PIPS
+    ).to_price(XAUUSD_SPEC).value
 
     watch_sweep_score = max(40, min_sweep_score - 30)
     watch_tp_score = 55

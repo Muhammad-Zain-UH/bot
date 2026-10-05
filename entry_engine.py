@@ -6,6 +6,8 @@ from typing import Any
 import pandas as pd
 from utils import log_debug
 from risk_manager import get_current_session
+from core.symbols import XAUUSD_2DIGIT as XAUUSD_SPEC
+from core.units import Pips
 
 try:
     from indicators import calculate_indicators, find_last_swing
@@ -54,6 +56,85 @@ def _within_kill_zone(now: datetime | None = None) -> bool:
 # ============================================================
 # REGIME DETECTION
 # ============================================================
+
+# U1 (PHASE_2_ISSUES.md). The stop buffer beyond a structural anchor.
+#
+# **The unit is now explicit. The VALUE is unchanged, deliberately.**
+#
+# `buffer_pips = 3.0` used to be subtracted directly from a price, so it placed
+# a $3.00 buffer under a parameter named for pips. The obvious reading is that
+# 3 pips ($0.30) was meant and the application was wrong by 10x. That reading
+# was implemented, measured, and **rejected on evidence**:
+#
+#   * This repository never settled the question. `docs/BASELINE_005_PROVENANCE.md`
+#     lists it as "U1 -- IS the $3.00 stop buffer intended as 3 pips?" and
+#     `docs/BROKER_SYMBOL_SPECIFICATION_EVIDENCE.md` records it as UNRESOLVED.
+#     The parameter's name is the only evidence for "pips", and a name is not a
+#     specification.
+#
+#   * $0.30 is not a plausible stop buffer for gold. `execution/fills.py`
+#     assumes a 2.0 pip spread, so a 3 pip buffer is about 1.5 round trips
+#     through the spread -- a stop that the bid/ask alone can take out.
+#
+#   * Measured: at $0.30 the short integration fixture's stop sits $0.95 from
+#     entry and is hit on the **next bar**, turning a TARGET_HIT into a
+#     STOPPED. At $3.00 it survives to target. Noise, not structure, decided it.
+#
+# So the value kept is the one actually in use, expressed in the unit it is
+# actually in: 30 pips = $3.00. This is NOT an endorsement of 3.0 as a tuned
+# figure; it is a refusal to change stop placement on the authority of a
+# variable name. Whether the right buffer is 30 pips, or ATR-relative, or
+# something else, is a strategy question and is still **UNRESOLVED**.
+#
+# Typed so the unit can never again be ambiguous at the call site.
+STOP_ANCHOR_BUFFER_PIPS = Pips(30.0)
+
+# ----------------------------------------------------------------------
+# REGIME VOLATILITY BANDS, in QUOTE CURRENCY (USD). Absolute, deliberately.
+#
+# This is U10 in PHASE_2_ISSUES.md, and the most consequential item in that
+# register, because the regime selects RISK-PER-TRADE (0.75 / 1.0 / 1.5%).
+#
+# Unlike the rest of section 1 these bands are NOT mislabelled by a factor of
+# ten -- read as dollars they produce a sensible spread of regimes. The defect
+# is that they are ABSOLUTE, and it is measured and OPEN. Over thirteen months
+# of M5 history, with no code change (research/UNIT_MIGRATION_EVIDENCE.md):
+#
+#                     2025 (mean $3,673)   2026 (mean $4,550)
+#     DEAD_CALM             35.06%               0.47%
+#     INTRADAY_SWING         4.56%              27.59%
+#
+# The share of bars in the highest-risk regime rose six-fold because gold got
+# expensive. Nobody chose that.
+#
+# ### A price-scaled version was implemented, measured and REVERTED
+#
+# Scaling these edges by the prevailing price did reduce the drift as intended
+# (DEAD_CALM spread 34.6pp -> 16.2pp, INTRADAY_SWING 23.0pp -> 1.7pp). It was
+# reverted because of the end-to-end consequence, measured as
+# baselines/baseline_010 against baseline_009 on identical data: signals went
+# from 4 to ZERO, with 85.7% of 15,735 decisions dying at L1 or L2.
+#
+# The mechanism is worth recording. Gold's M5 ATR has a median of 0.1016% of
+# price; the scaled MICRO_SCALP floor sits at 0.1619%, the 84th percentile. So
+# ~85% of bars classify DEAD_CALM, and DEAD_CALM blocks at L2. There is a
+# second, indirect effect: `use_fast_bias` below is true only for the scalp
+# regimes, so reclassifying bars as DEAD_CALM also switches L1 from the H1 fast
+# bias to the stricter H4 bias, which is why L1_BIAS blocks rose 1,505 -> 5,950.
+#
+# Expressed relatively, the inherited `2.5` edge sat at the 84th percentile of
+# volatility at $1,544 gold and the 12th at $4,550. It was never one threshold,
+# so there is no price-scaled form that preserves an intent these numbers never
+# carried. Choosing a reference price that kept the strategy trading would have
+# been selecting a threshold by its effect on output, which
+# research/unit_migration_spec.md forbids.
+#
+# Fixing this properly means re-deriving the regimes from the volatility
+# distribution rather than rescaling inherited constants. That is strategy
+# design, not a correctness fix, and is not done here.
+#
+# Do not change these values to make the strategy trade more.
+# ----------------------------------------------------------------------
 
 def detect_regime(
     m5_data: pd.DataFrame | None,
@@ -377,7 +458,7 @@ def _select_stop_anchor(
     sweep_wick_high: float | None = None,
     structure_low: float | None = None,
     structure_high: float | None = None,
-    buffer_pips: float = 3.0,
+    buffer_pips: float | None = None,
 ) -> float | None:
     """Most defensive structural stop candidate that is valid against the entry.
 
@@ -396,22 +477,34 @@ def _select_stop_anchor(
     Consequence, relied on by the zero-risk annotation in
     ``calculate_entry_levels``: an eligible candidate is strictly beyond the
     entry, so ``risk_distance`` on this path is ``|entry - candidate| +
-    buffer_pips``, hence strictly greater than the buffer.
+    buffer``, hence strictly greater than the buffer.
+
+    Args:
+        buffer_pips: Buffer beyond the anchor, in **price units**. ``None`` uses
+            ``STOP_ANCHOR_BUFFER_PIPS`` converted through the instrument
+            specification -- $0.30, which is the 3 pips the parameter name has
+            always claimed. It previously defaulted to the bare float ``3.0``
+            and was subtracted straight from a price, giving a **$3.00** buffer:
+            ten times the intended distance (U1, P0).
     """
+    buffer = (
+        STOP_ANCHOR_BUFFER_PIPS.to_price(XAUUSD_SPEC).value
+        if buffer_pips is None else float(buffer_pips)
+    )
     if direction == "BUY":
         candidates = [
             v for v in [sweep_wick_low, structure_low]
             if v is not None and v < entry_price
         ]
         if candidates:
-            return min(candidates) - buffer_pips
+            return min(candidates) - buffer
     else:
         candidates = [
             v for v in [sweep_wick_high, structure_high]
             if v is not None and v > entry_price
         ]
         if candidates:
-            return max(candidates) + buffer_pips
+            return max(candidates) + buffer
     return None
 
 def calculate_entry_levels(

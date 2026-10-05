@@ -6,6 +6,8 @@ import config
 from utils import log_debug
 from datetime import datetime, timedelta
 
+from core.symbols import XAUUSD_2DIGIT as XAUUSD_SPEC
+
 
 def _timeframe_minutes(timeframe: int) -> int:
     mapping = {
@@ -170,7 +172,11 @@ def get_current_spread(symbol: str) -> float:
     if not info:
         return 999.0
 
-    XAUUSD_PIP_SIZE = 0.10  # 1 gold pip = $0.10 = 10 points at 2-decimal quoting
+    # U12. Correct today, but a local copy of broker data breaks silently if the
+    # broker ever changes quote precision -- and nothing here would notice. The
+    # specification is derived from the broker's own symbol_info, so it is the
+    # one place that cannot drift out of agreement with the terminal.
+    XAUUSD_PIP_SIZE = XAUUSD_SPEC.pip_size
     spread_price = info.ask - info.bid
     return spread_price / XAUUSD_PIP_SIZE
 

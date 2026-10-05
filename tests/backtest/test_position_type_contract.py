@@ -46,11 +46,25 @@ BAR_COUNTS = {
     Timeframe.M1: 200, Timeframe.M15: 50, Timeframe.M5: 100,
 }
 
-# The four decisions that produce a signal on the frozen dataset.
+# The decisions that produce a signal on the frozen dataset.
+#
+# Re-derived from `baselines/baseline_011`, the current configuration, after the
+# U1-U12 unit migration changed which decisions reach L8. Previously four, taken
+# from `baseline_008`/`baseline_009`:
+#
+#     2026-07-17T12:40  SELL   -- no longer signals
+#     2026-08-06T08:00  BUY    -- unchanged
+#     2026-08-12T09:25  BUY    -- no longer signals
+#     2026-08-28T08:45  SELL   -- unchanged
+#     2026-08-03T12:20  SELL   -- NEW
+#
+# The contract these instants exercise is unchanged: the emitted order direction
+# must match the geometry built for it. Only the sample moved, because U8's
+# sweep band and U2/U3/U4's liquidity distances now reject different candidates
+# (L4 blocks went 748 -> 2,142, L5 5,000 -> 3,325).
 SIGNAL_INSTANTS = {
-    "2026-07-17T12:40:00+00:00": "SELL",
+    "2026-08-03T12:20:00+00:00": "SELL",
     "2026-08-06T08:00:00+00:00": "BUY",
-    "2026-08-12T09:25:00+00:00": "BUY",
     "2026-08-28T08:45:00+00:00": "SELL",
 }
 
@@ -152,7 +166,20 @@ class SignalDirectionMatchesItsGeometry(unittest.TestCase):
                     self.assertLess(target, entry)
                     self.assertLess(entry, stop)
                 seen[expected] += 1
-        self.assertEqual(seen, {"BUY": 2, "SELL": 2}, "expected two of each side")
+
+        # The point of the tally is that BOTH directions are exercised, so the
+        # geometry assertions above are not all one-sided. It previously pinned
+        # the literal {"BUY": 2, "SELL": 2}, which broke when the unit migration
+        # changed which decisions reach L8 -- a count of the sample, not a
+        # property of it. Derived from SIGNAL_INSTANTS instead.
+        from collections import Counter
+
+        expected_tally = Counter(SIGNAL_INSTANTS.values())
+        self.assertEqual(dict(seen), dict(expected_tally))
+        self.assertEqual(
+            set(seen), {"BUY", "SELL"},
+            "both directions must appear, or the geometry check is one-sided")
+        self.assertEqual(sum(seen.values()), len(SIGNAL_INSTANTS))
 
 
 class ReversedDecisionsCarryTheFlippedSide(unittest.TestCase):

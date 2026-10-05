@@ -53,6 +53,7 @@ from core.risk_limits import (
     overdue_positions,
 )
 from core.signal_log import SIGNAL_LOG_COLUMNS as CORE_SIGNAL_LOG_COLUMNS
+from core.symbols import XAUUSD_2DIGIT as XAUUSD_SPEC
 from core.signal_log import append_signal_row
 from core.units import Percentage
 
@@ -215,6 +216,49 @@ CONFIG = {
 # Track 2. Do not "just lower it".
 # ------------------------------------------------------------------
 L2_MIN_H1_RANGE_USD: float = 8.0
+"""The L2 volatility floor, in QUOTE CURRENCY (USD). Absolute, deliberately.
+
+This is U9 in PHASE_2_ISSUES.md. The unit MISLABELLING is fixed -- the threshold
+is named for what it is and every operator message prints ATR in dollars. The
+ABSOLUTENESS is a known, measured, **open** defect:
+
+    2017, 2018  (gold ~$1,260)  blocks 100.0% of bars
+    2026        (gold  $4,550)  blocks   0.0% of bars
+
+Same code, opposite behaviour, because gold quadrupled. It is not a volatility
+filter; it is a proxy for whether gold has got expensive.
+
+### A price-scaled version was implemented, measured and REVERTED
+
+`core/thresholds.py` exists and works, and scaling this floor by the prevailing
+price did what it was meant to: the best-to-worst-year spread fell from 100.0
+percentage points to 30.1.
+
+It was reverted because of what it did downstream. Measured end to end as
+`baselines/baseline_010` against `baseline_009`, on identical data:
+
+    L2_STRUCTURE blocks      12  ->  7,533
+    L1_BIAS blocks        1,505  ->  5,950   (knock-on: see below)
+    signals                   4  ->      0
+
+Together, 85.7% of 15,735 decisions died at L1 or L2 and the strategy produced
+nothing. The L1 jump is indirect: with most bars reclassified DEAD_CALM, L1
+stops using the H1 fast bias and falls back to the stricter H4 bias, because
+`use_fast_bias` is true only for the scalp regimes.
+
+The reason this is a revert and not a retune: the scaled threshold's selectivity
+depends entirely on the reference price chosen, and no non-arbitrary reference
+exists (see research/unit_migration_spec.md, which records that correction).
+Picking a reference that kept the strategy trading would have been selecting a
+threshold by its effect on output, which is the one thing the migration spec
+forbids. So the honest options were "scale it and produce nothing" or "leave it
+absolute and say so". This is the latter.
+
+Do not change this value to make the strategy trade more. The finding this
+records is that the strategy's thresholds only ever worked because they were
+accidentally calibrated to one price level, and a different number here does not
+fix that.
+"""
 
 # PHASE 0.2: single source of truth for the signal-log schema now lives in
 # core/signal_log.py. This alias is kept so any external reader importing
@@ -304,6 +348,9 @@ def print_market_snapshot(price: float, h1_atr: float, m5_atr: float, session: s
     # L2_MIN_H1_RANGE_USD and drift with the price level the same way; they are
     # display-only and are left numerically unchanged pending Track 2.
     utc_now = datetime.now(timezone.utc).strftime("%H:%M")
+    # Absolute USD bands, matching the L2 gate's own floor -- the display and
+    # the gate must not disagree about what counts as calm. They drift with the
+    # price level exactly as the gate does; see L2_MIN_H1_RANGE_USD.
     if h1_atr < L2_MIN_H1_RANGE_USD:
         vol_status = "DEAD CALM"
     elif h1_atr < 15:
@@ -755,7 +802,11 @@ def _check_regime_scalp_momentum(m5_data, side: str, break_reference: float | No
         return False, f"M5 RSI {rsi:.1f} outside momentum band 25-45 for SELL (too weak or already exhausted)"
 
     if break_reference is not None and m5_atr:
-        pip_size = 0.10  # XAUUSD real pip, matches SPREAD-1 fix convention
+        # U11. Was the bare literal 0.10 with a comment. The value is right for
+        # XAUUSD at 2-decimal quoting, but duplicating broker data inline is how
+        # it ends up disagreeing with the specification elsewhere -- and the
+        # specification is the thing the sizer already trusts.
+        pip_size = XAUUSD_SPEC.pip_size
         distance_pips = abs(last_close - break_reference) / pip_size
         max_allowed_pips = 1.2 * m5_atr / pip_size
         if distance_pips > max_allowed_pips:

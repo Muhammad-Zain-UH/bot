@@ -247,10 +247,41 @@ class PinnedL4ScoreFilterSelfDisables(unittest.TestCase):
         qualifying = [p for p in pools_with_one if p.get("score", 0) >= 60] or pools_with_one
         self.assertEqual(qualifying, [{"score": 75}])
 
-    def test_the_gate_thresholds_are_unchanged(self) -> None:
+    def test_the_score_gate_thresholds_are_unchanged(self) -> None:
+        """The SCORE thresholds are untouched by the unit migration."""
         self.assertIn("min_sweep_score = 60 if is_fallback else 70", LIQUIDITY_SOURCE)
         self.assertIn("min_tp_score = 60", LIQUIDITY_SOURCE)
-        self.assertIn("max_sweep_distance = 100.0 if is_fallback else 60.0", LIQUIDITY_SOURCE)
+
+    def test_the_distance_gate_is_now_in_pips_not_price_units(self) -> None:
+        """U4 -- **FIXED**. This assertion used to pin the defect as source text.
+
+        It asserted the literal ``max_sweep_distance = 100.0 if is_fallback else
+        60.0``, where the value was compared against a distance in QUOTE
+        CURRENCY while every surrounding message called it pips. $60 is 600 pips
+        on XAUUSD, so the cap could not reject anything -- no M15 liquidity pool
+        sits 600 pips from price and still scores.
+
+        Asserted through the constants rather than the source text, so a
+        reformatting cannot break it and a unit regression cannot pass it.
+        """
+        import liquidity_engine
+        from core.units import Pips
+
+        self.assertIsInstance(liquidity_engine.MAX_SWEEP_DISTANCE_PIPS, Pips)
+        self.assertEqual(liquidity_engine.MAX_SWEEP_DISTANCE_PIPS.value, 60.0)
+        self.assertEqual(
+            liquidity_engine.MAX_SWEEP_DISTANCE_FALLBACK_PIPS.value, 100.0)
+
+        spec = liquidity_engine.XAUUSD_SPEC
+        self.assertAlmostEqual(
+            liquidity_engine.MAX_SWEEP_DISTANCE_PIPS.to_price(spec).value,
+            6.00, places=9,
+            msg="60 pips is $6.00 on XAUUSD; it acted as $60.00 before the fix",
+        )
+        self.assertAlmostEqual(
+            liquidity_engine.MAX_SWEEP_DISTANCE_FALLBACK_PIPS.to_price(spec).value,
+            10.00, places=9,
+        )
 
     def test_is_fallback_can_never_be_true(self) -> None:
         """No constructed ``pool_type`` contains "fallback" (Phase 6O-D L4-D12)."""

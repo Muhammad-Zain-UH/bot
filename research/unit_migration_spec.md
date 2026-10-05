@@ -175,6 +175,40 @@ primary measurement exists because of this, and it is the one that carries
 weight. This is a data limit, not a tooling limit: re-exporting does not help,
 because the broker holds no deeper M1.
 
+## 5a. Outcome against this specification (added after execution)
+
+Recorded here so the spec and its result are not read apart. Full detail in
+`research/UNIT_MIGRATION_REPORT.md`.
+
+* **Rule 1 kept at 9 of 10 sites.** U2-U8, U11, U12 migrated to typed `Pips`.
+* **Rule 1 reverted at U1.** Its premise -- that the name carries a declared
+  answer -- does not hold there. Two repo docs already recorded U1 as
+  **UNRESOLVED**, the name was the only evidence, and $0.30 is ~1.5 round trips
+  through the assumed spread. At $0.30 the short fixture's stop sat $0.95 from
+  entry and was hit on the next bar. Value kept at $3.00, unit made explicit.
+* **Rule 2 implemented, measured, reverted.** It met its criterion (U9 drift
+  100.0pp -> 30.1pp) and took signals from 4 to **0** (`baseline_010`). The
+  revert was chosen over picking a reference price that kept the strategy
+  trading, which this document forbids.
+* **Rule 3 achieved by Rule 1 alone.** U8's dead `atr*0.12` branch went from
+  binding on 1.2% of bars to 73.7% once the constant was corrected. No
+  coefficient was invented.
+* **Rule 4 honoured.** U8's `0.12` and `2.0` are recorded in place as newly
+  live and never validated.
+
+### The criterion in §5 was flawed, and the measurement exposed it
+
+> *the spread between a threshold's best and worst year falls*
+
+Met at U8 (60.6 -> 7.1pp), U9 (100.0 -> 30.1pp) and U7 (37.3 -> 31.6pp).
+**Failed at U6** (3.6 -> 57.6pp) -- because at $20.00 that threshold fired on
+0.03-3.7% of bars. It was effectively **inert**, and an inert threshold has
+trivially low drift.
+
+So the criterion cannot distinguish *stable because scale-invariant* from
+*stable because it never fires*. A better one would condition on the threshold
+being active. Recorded rather than quietly dropped.
+
 ## 6. What this cannot establish
 
 The migration makes the thresholds mean what they claim and stop re-tuning

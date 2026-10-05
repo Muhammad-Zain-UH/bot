@@ -279,18 +279,51 @@ class TestLondonNewYorkIsADeadSessionLabel(unittest.TestCase):
 
 
 class TestStopBufferIsAppliedInPriceUnits(unittest.TestCase):
-    """Q6 / U1: the 'buffer_pips' default is subtracted from a price directly."""
+    """Q6 / U1 -- the unit is now explicit; the VALUE is unchanged and UNRESOLVED.
 
-    def test_buffer_is_three_price_units_not_three_pips(self) -> None:
-        # The entry sits above the candidate, so it is eligible under the
-        # entry-aware contract and this still measures the buffer alone. The
-        # assertion is unchanged; only the new required argument was added.
+    This class originally pinned the raw behaviour: ``buffer_pips = 3.0``
+    subtracted straight from a price, giving a $3.00 buffer under a parameter
+    named for pips.
+
+    The obvious correction -- read the name, use $0.30 -- was implemented and
+    then rejected on evidence:
+
+    * This repository never settled it. ``docs/BASELINE_005_PROVENANCE.md``
+      lists "U1 -- IS the $3.00 stop buffer intended as 3 pips?" as an open
+      question and ``docs/BROKER_SYMBOL_SPECIFICATION_EVIDENCE.md`` records it
+      as UNRESOLVED. A variable name is not a specification.
+    * ``execution/fills.py`` assumes a 2.0 pip spread, so a 3 pip buffer is
+      roughly 1.5 round trips -- a stop the bid/ask alone can take out.
+    * Measured: at $0.30 the short integration fixture's stop sits $0.95 from
+      entry and is hit on the **next bar**, turning a TARGET_HIT into a STOPPED.
+
+    So the buffer stays $3.00 and is now a typed ``Pips(30.0)``, which says what
+    it is instead of leaving a bare float to be read either way. These tests pin
+    the value and the type; neither asserts that $3.00 is *correct*.
+    """
+
+    def test_the_buffer_is_three_dollars(self) -> None:
         anchor = entry_engine._select_stop_anchor("BUY", 2520.0, sweep_wick_low=2511.73)
         self.assertAlmostEqual(anchor, 2508.73, places=9)
 
-    def test_default_is_still_three(self) -> None:
-        default = inspect.signature(entry_engine._select_stop_anchor).parameters["buffer_pips"]
-        self.assertEqual(default.default, 3.0)
+    def test_the_buffer_is_typed_so_the_unit_cannot_be_misread(self) -> None:
+        """A bare 3.0 is what let one number mean two things. The value is
+        unchanged; only its ambiguity is gone."""
+        from core.units import Pips
+
+        self.assertIsInstance(entry_engine.STOP_ANCHOR_BUFFER_PIPS, Pips)
+        self.assertEqual(entry_engine.STOP_ANCHOR_BUFFER_PIPS.value, 30.0)
+        self.assertAlmostEqual(
+            entry_engine.STOP_ANCHOR_BUFFER_PIPS.to_price(
+                entry_engine.XAUUSD_SPEC).value,
+            3.00, places=9,
+            msg="30 pips is $3.00 on XAUUSD -- the value that was always in use",
+        )
+
+    def test_the_intent_is_still_recorded_as_unresolved(self) -> None:
+        """Guard against the question being silently treated as answered."""
+        source = inspect.getsource(entry_engine).split("def detect_regime")[0]
+        self.assertIn("UNRESOLVED", source)
 
 
 if __name__ == "__main__":

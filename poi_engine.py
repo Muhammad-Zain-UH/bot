@@ -42,6 +42,27 @@ from typing import Any
 import pandas as pd
 from utils import log_debug
 
+from core.symbols import XAUUSD_2DIGIT as XAUUSD_SPEC
+from core.units import Pips
+
+# U5/U6/U7 (PHASE_2_ISSUES.md). Bare floats compared against quantities in
+# QUOTE CURRENCY while the surrounding comments said pips -- this file's own
+# comment reads "Size bonus (+15 for 5-15 pips)" above a test for $5-$15.
+# At 10x these bonuses essentially never fired: a $5 M15 order-block body or
+# a $20 displacement is rare at any price level below about $3,000.
+#
+# Typed so the comparison must go through to_price(). The absoluteness of
+# these levels is NOT addressed here and remains open; U5 is the clearest
+# case that it matters, because a BAND moves zones through it and out the
+# top as the price level rises (4.49% -> 65.79% of bars inside the as-is
+# band, 2022 -> 2026). See research/unit_migration_spec.md, Rule 1 alone.
+ORDER_BLOCK_MIN_BODY_PIPS = Pips(5.0)      # was 5    -> $5.00  (50 pips)
+DISPLACEMENT_STRONG_PIPS = Pips(20.0)      # was 20   -> $20.00 (200 pips)
+DISPLACEMENT_MODERATE_PIPS = Pips(10.0)    # was 10   -> $10.00 (100 pips)
+ZONE_SIZE_IDEAL_LO_PIPS = Pips(5.0)        # was 5    -> $5.00
+ZONE_SIZE_IDEAL_HI_PIPS = Pips(15.0)       # was 15   -> $15.00
+ZONE_SIZE_ACCEPTABLE_LO_PIPS = Pips(3.0)   # was 3    -> $3.00
+
 
 def _to_float(value: Any) -> float | None:
     """Safely convert to float."""
@@ -188,7 +209,8 @@ def detect_order_block(
                 # Bullish OB: close > open, large body, followed by displacement away.
                 body = c_close - c_open
                 full_range = c_high - c_low
-                if body >= 5 and c_close > c_open:
+                if (body >= ORDER_BLOCK_MIN_BODY_PIPS.to_price(XAUUSD_SPEC).value
+                        and c_close > c_open):
                     displacement = next_close - c_close
                     if displacement < body * 0.8:
                         continue
@@ -226,7 +248,8 @@ def detect_order_block(
                 # Bearish OB: close < open, large body, followed by displacement away.
                 body = c_open - c_close
                 full_range = c_high - c_low
-                if body >= 5 and c_close < c_open:
+                if (body >= ORDER_BLOCK_MIN_BODY_PIPS.to_price(XAUUSD_SPEC).value
+                        and c_close < c_open):
                     displacement = c_close - next_close
                     if displacement < body * 0.8:
                         continue
@@ -424,10 +447,10 @@ def score_poi(
             breakdown["untested"] = 30
         
         # Displacement bonus (+20)
-        if displacement >= 20:
+        if displacement >= DISPLACEMENT_STRONG_PIPS.to_price(XAUUSD_SPEC).value:
             score += 20
             breakdown["displacement"] = 20
-        elif displacement >= 10:
+        elif displacement >= DISPLACEMENT_MODERATE_PIPS.to_price(XAUUSD_SPEC).value:
             score += 10
             breakdown["displacement"] = 10
         
@@ -438,10 +461,13 @@ def score_poi(
         
         # Size bonus (+15 for 5-15 pips)
         zone_size = abs(poi_top - poi_bottom)
-        if 5 <= zone_size <= 15:
+        _zone_lo = ZONE_SIZE_IDEAL_LO_PIPS.to_price(XAUUSD_SPEC).value
+        _zone_hi = ZONE_SIZE_IDEAL_HI_PIPS.to_price(XAUUSD_SPEC).value
+        _zone_acceptable = ZONE_SIZE_ACCEPTABLE_LO_PIPS.to_price(XAUUSD_SPEC).value
+        if _zone_lo <= zone_size <= _zone_hi:
             score += 15
             breakdown["size"] = 15
-        elif 3 <= zone_size < 5:
+        elif _zone_acceptable <= zone_size < _zone_lo:
             score += 8
             breakdown["size"] = 8
         

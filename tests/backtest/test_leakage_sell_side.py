@@ -211,12 +211,21 @@ class SweepIsUnaffectedByFutureData(_MutationHarness):
                         get_sweep_and_structure(b["m15"], b["h1"], level, direction),
                     )
 
-    def test_penetration_band_is_dollars_and_direction_specific(self) -> None:
-        """Pins the $2.50 floor and the polarity, deterministically.
+    def test_penetration_band_is_pips_and_direction_specific(self) -> None:
+        """Pins the penetration band and the polarity, deterministically.
 
-        A wick exactly $2.50 below the level with a close above it is a sweep; a
-        wick $0.50 below is not. Under the documented "3-8 pips" reading the
-        first would be far too deep and the second would qualify.
+        **This test used to pin the defect, and predicted its own inversion.**
+        It asserted a $2.50 floor and noted: "Under the documented '3-8 pips'
+        reading the first would be far too deep and the second would qualify."
+        That reading is now the implemented one (U8, fixed under
+        ``research/unit_migration_spec.md`` Rule 1), so the second case does
+        qualify and the assertions move to the real band edges.
+
+        The band is ``[max(2.5 pips, atr*0.12), max(30 pips, atr*2.0)]``. On this
+        low-volatility fixture (M15 ATR $0.057) the pip floors bind, giving
+        **[$0.25, $3.00]**. Correcting the unit is also what made ``atr*0.12``
+        reachable at all: at the old $2.50 floor the constant bound on 98.8% of
+        real bars, so the one scale-aware term in the module was dead code.
         """
         from sweep_detector import detect_sweep
 
@@ -232,12 +241,33 @@ class SweepIsUnaffectedByFutureData(_MutationHarness):
                          "tick_volume": 300.0})
             return pd.DataFrame(rows)
 
-        deep = detect_sweep(frame(low=3997.50, high=4001.0, close=4000.8), 4000.0, "BUY")
-        self.assertTrue(deep["sweep_confirmed"])
-        self.assertEqual(deep["sweep_type"], "bullish_sweep")
+        # Inside the band: both of the original cases now qualify, which is the
+        # inversion the old docstring anticipated.
+        for depth in (0.25, 0.50, 2.50):
+            result = detect_sweep(
+                frame(low=4000.0 - depth, high=4001.0, close=4000.8), 4000.0, "BUY")
+            self.assertTrue(
+                result["sweep_confirmed"],
+                f"a ${depth:.2f} wick is inside the [$0.25, $3.00] band")
+            self.assertEqual(result["sweep_type"], "bullish_sweep")
 
-        shallow = detect_sweep(frame(low=3999.50, high=4001.0, close=4000.8), 4000.0, "BUY")
-        self.assertFalse(shallow["sweep_confirmed"])
+        # Below the floor: too shallow to have taken any stops.
+        for depth in (0.10, 0.20):
+            result = detect_sweep(
+                frame(low=4000.0 - depth, high=4001.0, close=4000.8), 4000.0, "BUY")
+            self.assertFalse(
+                result["sweep_confirmed"],
+                f"a ${depth:.2f} wick is below the $0.25 floor")
+
+        # Above the ceiling: a break, not a sweep. This edge was $30.00 before
+        # the fix, which no M15 gold candle reaches, so the ceiling never
+        # rejected anything.
+        for depth in (4.00, 6.00):
+            result = detect_sweep(
+                frame(low=4000.0 - depth, high=4001.0, close=4000.8), 4000.0, "BUY")
+            self.assertFalse(
+                result["sweep_confirmed"],
+                f"a ${depth:.2f} wick exceeds the $3.00 ceiling")
 
     def test_a_buy_request_never_returns_a_bearish_sweep(self) -> None:
         from sweep_detector import detect_sweep

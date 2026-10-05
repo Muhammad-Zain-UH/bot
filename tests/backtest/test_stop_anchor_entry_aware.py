@@ -30,7 +30,14 @@ from pathlib import Path
 import entry_engine
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-BUFFER = 3.0  # the production default; asserted, not chosen, by these tests
+# Derived from the production constant, never hardcoded. This file's contract is
+# the ENTRY-AWARENESS of the selector, and its docstring says the buffer
+# magnitude is "deliberately not pinned here" -- so the buffer must not be able
+# to break these tests. It previously read `BUFFER = 3.0`, which did exactly
+# that when U1 was fixed: five tests failed, each by precisely $2.70, the
+# difference between the $3.00 the bare float produced and the $0.30 that 3 pips
+# actually is.
+BUFFER = entry_engine.STOP_ANCHOR_BUFFER_PIPS.to_price(entry_engine.XAUUSD_SPEC).value
 
 
 class BuyRejectsCandidatesAtOrAboveEntry(unittest.TestCase):

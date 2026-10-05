@@ -436,22 +436,70 @@ class PinnedRegimeAndSession(unittest.TestCase):
         # The premise, asserted rather than assumed.
         self.assertEqual(session, "NewYork")
         self.assertFalse(kill_zone)
-        atr = float(info["m5_atr"])
-        self.assertGreaterEqual(atr, 2.5)
-        self.assertLessEqual(atr, 4.5)
 
-        # The contract D-6N-1 established.
-        self.assertEqual(info["regime"], "MICRO_SCALP")
+        # The contract D-6N-1 established: regime is a VOLATILITY claim and the
+        # session is a separate eligibility question, so the same bars must
+        # classify identically whatever the clock says.
+        #
+        # This used to assert `regime == "MICRO_SCALP"` for an M5 ATR inside
+        # [2.5, 4.5]. That coupled the contract to the absolute band values, and
+        # U10's migration made those bands scale with price -- at 2026 gold the
+        # MICRO_SCALP floor is $7.37, so this fixture's ATR is now DEAD_CALM.
+        # The D-6N-1 contract is untouched by that, so it is asserted directly
+        # instead: same bars, different session, same regime.
+        with frozen_clock(moment.replace(hour=2)):   # Asian
+            asian_session = risk_manager.get_current_session()
+            asian = entry_engine.detect_regime(
+                frames[Timeframe.M5], frames[Timeframe.M15], frames[Timeframe.H1],
+                current_spread=2.0,
+            )
+        self.assertNotEqual(
+            asian_session, session,
+            "the two calls must differ in session or this proves nothing")
+        self.assertEqual(
+            info["regime"], asian["regime"],
+            "regime must depend on volatility alone, not on the session")
+        self.assertEqual(float(info["m5_atr"]), float(asian["m5_atr"]))
 
     def test_dead_calm_now_requires_genuinely_low_volatility(self) -> None:
         """The inverse of the above: DEAD_CALM is reachable only below 2.5."""
         import entry_engine
 
         source = (REPO_ROOT / "entry_engine.py").read_text(encoding="utf-8")
-        self.assertIn("if m5_atr >= 2.5 and m5_atr <= 4.5:", source)
+
+        # The real contract: the session disjunct that used to make DEAD_CALM
+        # reachable from an ineligible session is gone, and must stay gone. This
+        # is what D-6N-1 decided.
         self.assertNotIn(
             'and (kill_zone or session in {"Asian", "London", "LondonNewYork"})', source
         )
+
+        # The regime test must be on volatility alone. This previously asserted
+        # the literal source text `if m5_atr >= 2.5 and m5_atr <= 4.5:`, which
+        # pinned the ABSOLUTE band values rather than the contract -- and U10's
+        # migration replaced them with price-scaled edges. Assert the structure
+        # instead: the branch compares m5_atr against the band edges and nothing
+        # else is in the condition.
+        tree = ast.parse(source)
+        regime_fn = next(
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef) and node.name == "detect_regime"
+        )
+        band_tests = [
+            node for node in ast.walk(regime_fn)
+            if isinstance(node, ast.Compare)
+            and any(isinstance(operand, ast.Name) and operand.id == "m5_atr"
+                    for operand in [node.left, *node.comparators])
+        ]
+        self.assertGreaterEqual(
+            len(band_tests), 3,
+            "expected the three volatility band comparisons on m5_atr")
+        for test in band_tests:
+            names = {n.id for n in ast.walk(test) if isinstance(n, ast.Name)}
+            self.assertNotIn("session", names,
+                             "the regime test must not consult the session")
+            self.assertNotIn("kill_zone", names,
+                             "the regime test must not consult the kill zone")
 
 
 class PinnedL8Contract(unittest.TestCase):
