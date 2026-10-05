@@ -35,14 +35,26 @@ except Exception:
 # ============================================================
 from core.safety import (
     ExecutionMode,
+    LIVE_TRADING_ENABLED,
     UnsafeExecutionStateError,
     assert_live_trading_disabled,
     describe_execution_state,
     resolve_execution_mode,
     validate_execution_environment,
 )
+from core.risk_limits import (
+    AccountRiskState,
+    RiskDecision,
+    RiskLimitError,
+    RiskLimits,
+    RiskVerdict,
+    build_state as build_risk_state,
+    evaluate as evaluate_risk,
+    overdue_positions,
+)
 from core.signal_log import SIGNAL_LOG_COLUMNS as CORE_SIGNAL_LOG_COLUMNS
 from core.signal_log import append_signal_row
+from core.units import Percentage
 
 # Indicators (required for bias engine contract)
 try:
@@ -86,7 +98,15 @@ except ImportError as e:
 # ============================================================
 
 try:
-    from trade_persistence import save_active_trades, load_active_trades, save_closed_trade
+    # load_closed_trades was not imported, so the closed-trade history this
+    # module writes could never be read back -- which is why realised P&L had
+    # no source even though trade_persistence had always provided one.
+    from trade_persistence import (
+        load_active_trades,
+        load_closed_trades,
+        save_active_trades,
+        save_closed_trade,
+    )
     PERSISTENCE_AVAILABLE = True
 except ImportError:
     PERSISTENCE_AVAILABLE = False
@@ -120,6 +140,14 @@ except ImportError:
 _SHOULD_CONTINUE = True
 _OPEN_TRADES: List[Dict] = []
 
+# Shutdown must never close a position this process did not open. See the gate in
+# graceful_shutdown(). Closing is opt-in and defaults OFF; flipping this to True
+# is not sufficient on its own, because core.safety.LIVE_TRADING_ENABLED is also
+# False and _OWNED_TICKETS can only be filled by a working opening path, which
+# this module does not have.
+CLOSE_POSITIONS_ON_SHUTDOWN = False
+_OWNED_TICKETS: set[int] = set()
+
 # PHASE 0.2 / 0.4: paths are environment-overridable so that tests can redirect
 # them to a temporary directory instead of writing into production trading data.
 # The defaults are the production paths, so normal operation is unchanged.
@@ -139,6 +167,12 @@ _SIGNAL_LOG_FILE = os.getenv("SIGNAL_LOG_FILE", "signal_log_v2.csv")
 CONFIG = {
     "symbol": "XAUUSD",
     "max_concurrent_trades": 3,
+    # NOT the enforced figure. The enforced daily-loss cap is
+    # config.MAX_DAILY_LOSS_PERCENT, applied through RISK_LIMITS below. This key
+    # is kept only because external readers import main_production.CONFIG; it is
+    # read by nothing in this module. It held 5.0 while the gate that was meant
+    # to apply it could not fire, which is where the belief that the account was
+    # protected came from.
     "max_daily_loss_percent": 5.0,
     "risk_per_trade_a_plus": 1.5,
     "risk_per_trade_a": 1.0,
@@ -147,8 +181,40 @@ CONFIG = {
     "m15_candles_required": 50,
     "m5_candles_required": 100,
     "m1_candles_required": 200,
-    "demo_mode": False,  # Set to False for live trading
+    # SIMULATION is the only mode this process can actually start in.
+    # `False` declares live intent: resolve_execution_mode() maps it to
+    # ExecutionMode.LIVE, which validate_execution_environment() refuses
+    # unconditionally, so main() raised before reaching the loop. The refusal
+    # message at core/safety.py:201-206 prescribes exactly this setting.
+    #
+    # This does NOT re-enable live trading and cannot: LIVE_TRADING_ENABLED is
+    # a Final False with no override, and no send_order path exists anywhere in
+    # the repo. Flipping this back to False does not enable trading either -- it
+    # only restores the startup refusal.
+    "demo_mode": True,
 }
+
+# ------------------------------------------------------------------
+# L2 volatility floor, in QUOTE CURRENCY (USD), not pips.
+#
+# Named so there is exactly one place to change it. The value 8.0 is carried
+# over unchanged from the inline literal it replaced -- this is not a retune.
+#
+# It is absolute USD, which makes it price-level dependent rather than a
+# volatility measurement. Measured on data/research_v1/bars/XAUUSD_H1.csv
+# (14-bar mean high-low range vs this floor):
+#
+#     2017, 2018  (gold ~$1,260)  100.0% of bars blocked
+#     2009-2023   ($1,075-1,943)   81-100% blocked
+#     2025        ($3,443)             31.4% blocked
+#     2026        ($4,550)              0.0% blocked
+#
+# Same code, opposite behaviour, purely because gold quadrupled. That is
+# PHASE_2_ISSUES.md U9/U10/P2 (P0). Replacing this with a scale-invariant
+# form is a behavioural change and is measured separately -- see the plan's
+# Track 2. Do not "just lower it".
+# ------------------------------------------------------------------
+L2_MIN_H1_RANGE_USD: float = 8.0
 
 # PHASE 0.2: single source of truth for the signal-log schema now lives in
 # core/signal_log.py. This alias is kept so any external reader importing
@@ -156,6 +222,44 @@ CONFIG = {
 # longer duplicated here -- the duplication is how the file's header and its
 # rows came to disagree.
 SIGNAL_LOG_COLUMNS = list(CORE_SIGNAL_LOG_COLUMNS)
+
+# ------------------------------------------------------------------
+# ACCOUNT-LEVEL RISK LIMITS
+#
+# Built once from config.py so there is a single declared source. Before this,
+# every account-level control in the system was unreachable: the daily-loss
+# breaker was called without its loss argument and evaluated `0 < -500` forever
+# (PHASE_2_ISSUES.md R3), and no drawdown, consecutive-loss or exposure limit
+# existed at all (R7, R8).
+#
+# `max_hold` makes config.INTRADAY_MAX_HOLD_MINUTES mean something; it has been
+# defined and enforced nowhere since it was written (R9).
+# `max_lots_per_position` applies config.INTRADAY_LOT_SIZE_MAX, which
+# core.sizing does not -- it caps at the BROKER's volume_max, a far larger
+# limit (R6).
+# ------------------------------------------------------------------
+# `config` is imported inside a try below, so construction is guarded. On
+# failure RISK_LIMITS stays None, and the gate treats un-evaluable limits as a
+# block -- never as permission. That is the same rule the module itself applies
+# to unknown account state.
+try:
+    RISK_LIMITS: RiskLimits | None = RiskLimits(
+        max_daily_loss=Percentage(config.MAX_DAILY_LOSS_PERCENT),
+        max_drawdown=Percentage(config.MAX_DRAWDOWN_PERCENT),
+        max_concurrent_positions=CONFIG["max_concurrent_trades"],
+        max_open_lots=config.MAX_OPEN_LOTS,
+        max_lots_per_position=config.INTRADAY_LOT_SIZE_MAX,
+        max_consecutive_losses=config.MAX_CONSECUTIVE_LOSSES,
+        max_hold=timedelta(minutes=config.INTRADAY_MAX_HOLD_MINUTES),
+    )
+except (NameError, AttributeError, RiskLimitError) as _exc:
+    RISK_LIMITS = None
+    # `logger` is not built until later in this module, so this uses print --
+    # the same pattern the layer-import guard above uses at module scope.
+    print(
+        f"[CRITICAL] Could not build the account risk limits: {_exc}. "
+        f"Every pre-trade gate will BLOCK until this is resolved."
+    )
 
 # ============================================================
 # LOGGING SETUP
@@ -194,8 +298,13 @@ logger.addHandler(stream_handler)
 # ============================================================
 
 def print_market_snapshot(price: float, h1_atr: float, m5_atr: float, session: str, spread: float) -> None:
+    # `h1_atr` and `m5_atr` arrive in QUOTE CURRENCY (USD). `spread` really is
+    # pips (mt5_handler.get_current_spread divides by pip size), so only the ATR
+    # labels below were wrong. These bands are the same absolute-USD scale as
+    # L2_MIN_H1_RANGE_USD and drift with the price level the same way; they are
+    # display-only and are left numerically unchanged pending Track 2.
     utc_now = datetime.now(timezone.utc).strftime("%H:%M")
-    if h1_atr < 8:
+    if h1_atr < L2_MIN_H1_RANGE_USD:
         vol_status = "DEAD CALM"
     elif h1_atr < 15:
         vol_status = "LOW-MEDIUM"
@@ -213,7 +322,7 @@ def print_market_snapshot(price: float, h1_atr: float, m5_atr: float, session: s
 
     print("\n" + "█" * 120)
     print(f"  📊 MARKET SNAPSHOT │ {utc_now} UTC │ Price: {price:.2f} │ Session: {session:10s} │ Spread: {spread:.1f}pip ({spread_status:10s})")
-    print(f"  🎯 Volatility      │ H1 ATR: {h1_atr:.1f}pip ({vol_status:15s}) │ M5 ATR: {m5_atr:.1f}pip │ Trend: {'UP' if m5_atr > 5 else 'NORMAL'}")
+    print(f"  🎯 Volatility      │ H1 ATR: ${h1_atr:.2f} ({vol_status:15s}) │ M5 ATR: ${m5_atr:.2f} │ Trend: {'UP' if m5_atr > 5 else 'NORMAL'}")
     print("█" * 120)
 
 def print_regime_detection(regime_info: Dict) -> None:
@@ -240,7 +349,7 @@ def print_regime_detection(regime_info: Dict) -> None:
     else:
         bypass_msg = "(Full L1-L8)"
 
-    print(f"\n  {regime_symbol} REGIME: {regime:15s} │ M5 ATR: {m5_atr:5.1f}pip │ Risk: {risk_pct:.2f}% │ TP Target: {tp_ratio:.1f}R │ POI: {poi_threshold:.0f}%")
+    print(f"\n  {regime_symbol} REGIME: {regime:15s} │ M5 ATR: ${m5_atr:6.2f} │ Risk: {risk_pct:.2f}% │ TP Target: {tp_ratio:.1f}R │ POI: {poi_threshold:.0f}%")
     print(f"     Spread: {spread_indicator:35s} │ Confidence: 70% threshold │ {bypass_msg}")
 
 def print_trade_context(analysis: Dict) -> None:
@@ -483,28 +592,80 @@ def _extract_intraday_rsi(m15_data=None, m5_data=None) -> float | None:
 # ============================================================
 
 def check_pre_trade_gates(
-    account_balance: float = 10000,
-    current_daily_loss: float = 0,
     regime_info: Dict = None,
+    *,
+    risk: Optional[RiskDecision] = None,
 ) -> Dict:
+    """Layer 0. Account-level risk, spread and session, before any analysis.
+
+    Args:
+        regime_info: The regime snapshot, supplying the spread and its
+            regime-specific tolerance.
+        risk: A pre-computed risk decision. Computed here when omitted, so that
+            a bare ``check_pre_trade_gates()`` is safe rather than permissive.
+
+    Returns:
+        The gate result, including ``risk_verdict`` and ``max_new_lots`` so the
+        caller can size within the remaining exposure headroom.
+
+    The two parameters this replaced -- ``account_balance: float = 10000`` and
+    ``current_daily_loss: float = 0`` -- were the system's worst defect class.
+    The only caller invoked ``check_pre_trade_gates(regime_info=...)``, so both
+    took their defaults on every one of 39,709 production cycles. The breaker
+    evaluated ``0 < -500`` forever and reported "Daily loss OK (0.00 / 500.00)"
+    while having no access to the account at all (``PHASE_2_ISSUES.md`` R2, R3).
+
+    They are gone rather than corrected, because a defaulted risk input is an
+    assertion the function cannot support. The replacement either reads the real
+    state or reports HALT.
+    """
     gates_passed = []
     gates_failed = []
 
-    # Daily loss check
-    max_daily_loss = (account_balance * CONFIG["max_daily_loss_percent"] / 100) if account_balance > 0 else 1000
-    if current_daily_loss < -max_daily_loss:
-        gates_failed.append(f"DAILY_LOSS: {current_daily_loss:.2f} > {max_daily_loss:.2f}")
+    # --- Account-level risk: daily loss, drawdown, exposure, streak ---
+    if risk is None:
+        if RISK_LIMITS is None:
+            risk = RiskDecision(
+                RiskVerdict.HALT,
+                ("RISK LIMITS UNAVAILABLE: see the startup log",), 0.0)
+        else:
+            risk = evaluate_risk(account_risk_state(), RISK_LIMITS)
+    if risk.verdict is RiskVerdict.ALLOW:
+        gates_passed.append(
+            f"Account risk OK (headroom {risk.max_new_lots:.2f} lots)")
     else:
-        gates_passed.append(f"Daily loss OK ({abs(current_daily_loss):.2f} / {max_daily_loss:.2f})")
+        gates_failed.extend(f"{risk.verdict.value}: {b}" for b in risk.breaches)
 
-    # Spread check using regime_info
+    # --- Spread -------------------------------------------------------
+    # This computed both figures and then compared nothing: the body was
+    # replaced by the comment "# DISABLED SPREAD CHECK" and an unconditional
+    # pass labelled "[CHECK DISABLED]". Spread is the one cost the strategy
+    # pays on every entry and exit, and the regime classifier already publishes
+    # a per-regime tolerance (5.0 pip MICRO_SCALP, 7.0 REGIME_SCALP, 10.0
+    # INTRADAY_SWING) that nothing consulted.
+    #
+    # `current_spread` genuinely IS in pips -- mt5_handler.get_current_spread
+    # divides by pip size -- unlike the ATR figures elsewhere in this module.
     if regime_info:
         max_spread = regime_info.get("max_spread_pips", 10.0)
-        current_spread = regime_info.get("current_spread", 0.5)
-        # DISABLED SPREAD CHECK
-        gates_passed.append(f"Spread OK ({current_spread:.1f} pip ≤ {max_spread:.1f} pip) [CHECK DISABLED]")
+        current_spread = regime_info.get("current_spread")
+        if current_spread is None:
+            # Unknown spread is not an acceptable spread. The old inline default
+            # of 0.5 pip asserted a tight market on no evidence.
+            gates_failed.append(
+                "SPREAD UNKNOWN: regime_info carries no current_spread, so the "
+                "entry cost cannot be bounded")
+        elif float(current_spread) > float(max_spread):
+            gates_failed.append(
+                f"SPREAD: {float(current_spread):.1f} pip exceeds the "
+                f"{float(max_spread):.1f} pip maximum for this regime")
+        else:
+            gates_passed.append(
+                f"Spread OK ({float(current_spread):.1f} pip within "
+                f"{float(max_spread):.1f} pip)")
     else:
-        gates_passed.append("Spread check skipped (no regime info)")
+        gates_failed.append(
+            "SPREAD UNKNOWN: no regime info, so no spread tolerance applies")
 
     # Session check
     session = get_session_name()
@@ -517,7 +678,9 @@ def check_pre_trade_gates(
         "all_gates_passed": len(gates_failed) == 0,
         "gates_passed": gates_passed,
         "gates_failed": gates_failed,
-        "session": session
+        "session": session,
+        "risk_verdict": risk.verdict.value,
+        "max_new_lots": risk.max_new_lots,
     }
 # ============================================================
 # LAYERS 1-8: SEQUENTIAL ENTRY ANALYSIS (UPDATED)
@@ -659,7 +822,16 @@ def analyze_entry(
 
         # Use precomputed regime_info (or compute if missing)
         if not regime_info:
-            from entry_engine import detect_regime
+            # NOTE: `detect_regime` is deliberately NOT re-imported here.
+            # A function-local `from entry_engine import detect_regime` used to
+            # sit on this line, shadowing the module-level binding made at
+            # main_production.py:76. It was pure redundancy with one real
+            # effect: it defeated `patch.object(main_production, "detect_regime")`,
+            # so a test could patch the regime and silently get the real
+            # classifier instead. tests/test_layer_gate_logic.py was failing for
+            # exactly that reason -- it set MICRO_SCALP (L7 threshold 55) and L7
+            # read the unpatched regime and applied 70.
+            # The main loop at :1528 already calls the module-level name.
             current_spread = 0.5
             try:
                 if MT5_AVAILABLE and callable(get_current_spread):
@@ -729,12 +901,33 @@ def analyze_entry(
         analysis["layer_2"] = struct or {}
 
         struct_type = struct.get("structure_type", "UNKNOWN") if struct else "BROKEN"
-        h1_atr_val = h1_atr if h1_atr is not None else 0.0
-        is_dead_calm = h1_atr_val < 8.0
-
-        if is_dead_calm:
+        # `h1_atr` here is the mean H1 high-low range in QUOTE CURRENCY (USD),
+        # not pips -- see the assignment above. The old message called it "pips",
+        # which is U9 in PHASE_2_ISSUES.md. The threshold VALUE is deliberately
+        # unchanged here; it is absolute-USD and therefore price-level dependent
+        # (it blocked 100.0% of 2017-18 bars and 0.0% of 2026 bars on the real
+        # H1 dataset), but correcting that is a measured change -- see Track 2.
+        # This commit only stops the output lying about the unit, and stops
+        # "indicator unavailable" being reported as "volatility is zero".
+        if h1_atr is None:
+            # Data/indicator failure, NOT a market observation. Blocking is the
+            # safe direction, but calling it "too calm" asserts a volatility
+            # measurement that was never taken.
             analysis["layer_failed"] = "L2_STRUCTURE"
-            analysis["fail_reason"] = f"H1 ATR too calm ({h1_atr_val:.1f} < 8.0 pips) - no volatility to trade"
+            analysis["fail_reason"] = (
+                "H1 ATR unavailable (indicator or history failure) - "
+                "cannot assess volatility, declining to trade"
+            )
+            analysis["signal_type"] = "PRE_ENTRY"
+            return analysis
+
+        h1_atr_val = float(h1_atr)
+        if h1_atr_val < L2_MIN_H1_RANGE_USD:
+            analysis["layer_failed"] = "L2_STRUCTURE"
+            analysis["fail_reason"] = (
+                f"H1 ATR too calm (${h1_atr_val:.2f} < ${L2_MIN_H1_RANGE_USD:.2f}) "
+                f"- no volatility to trade"
+            )
             analysis["signal_type"] = "PRE_ENTRY"
             return analysis
 
@@ -1170,8 +1363,121 @@ def _live_symbol_specification():
         return None
 
 
-def execute_entry_signal(entry_signal: Dict, account_balance: float = 10000) -> Optional[str]:
+def realised_pnl(trade: Dict, exit_price: float, spec=None) -> Optional[float]:
+    """Realised P&L for a closed trade, in account currency.
+
+    Nothing in this system tracked realised P&L (``PHASE_2_ISSUES.md`` R4), so
+    no component could answer "is the account down today?" -- which is why the
+    daily-loss breaker had nothing to evaluate even once it was wired up.
+
+    Args:
+        trade: The trade record. Needs ``entry_price``, ``position_size`` and
+            ``position_type``.
+        exit_price: The price the position closed at.
+        spec: The instrument specification. Fetched from the broker when omitted.
+
+    Returns:
+        P&L in account currency, or ``None`` when it cannot be computed. ``None``
+        is **not** zero: a trade whose P&L is unknown must not be silently
+        counted as flat, because that understates the day's loss.
+    """
+    try:
+        spec = spec if spec is not None else _live_symbol_specification()
+        if spec is None:
+            logger.error(
+                "[PNL] No symbol specification; cannot value the close of "
+                f"{trade.get('trade_id')}. Reporting unknown rather than zero."
+            )
+            return None
+        entry = float(trade["entry_price"])
+        volume = float(trade["position_size"])
+        side = str(trade["position_type"]).upper()
+        move = float(exit_price) - entry
+        if side in ("SELL", "SHORT"):
+            move = -move
+        elif side not in ("BUY", "LONG"):
+            logger.error(f"[PNL] Unknown position_type {side!r}; cannot sign the move")
+            return None
+        # contract_size-derived, NOT tick-derived: the broker reports
+        # tick_value/tick_size disagreeing with contract_size by 10x on this
+        # symbol. See SymbolSpecification.money_per_price_unit.
+        return move * spec.money_per_price_unit(volume)
+    except (KeyError, TypeError, ValueError) as exc:
+        logger.error(f"[PNL] Could not value the close of {trade.get('trade_id')}: {exc}")
+        return None
+
+
+def account_risk_state() -> Optional[AccountRiskState]:
+    """Assemble the account's risk state from the broker and the trade history.
+
+    Read-only: ``account_info`` and ``positions_get`` only. No order is placed
+    and no account setting is touched.
+
+    Returns:
+        The state, or ``None`` when it cannot be established. ``None`` makes
+        :func:`core.risk_limits.evaluate` return ``HALT``; it is never treated as
+        a flat account. That inversion is the whole point -- the defect being
+        fixed here was a default that asserted "no loss today" on a function
+        that had no way to know.
+    """
+    if not MT5_AVAILABLE:
+        logger.warning("[RISK] MT5 unavailable; account state cannot be read")
+        return None
+    try:
+        info = mt5.account_info()
+        if info is None:
+            logger.error("[RISK] account_info() returned None")
+            return None
+
+        positions = mt5.positions_get(symbol=CONFIG["symbol"]) or ()
+        open_lots = float(sum(float(pos.volume) for pos in positions))
+
+        closed = load_closed_trades() if PERSISTENCE_AVAILABLE else []
+
+        return build_risk_state(
+            balance=float(info.balance),
+            equity=float(info.equity),
+            closed_trades=closed,
+            open_positions=len(positions),
+            open_lots=open_lots,
+            now=datetime.now(timezone.utc),
+        )
+    except (RiskLimitError, AttributeError, TypeError, ValueError) as exc:
+        logger.error(f"[RISK] Could not establish account state: {exc}")
+        return None
+
+
+def execute_entry_signal(
+    entry_signal: Dict,
+    account_balance: Optional[float] = None,
+    *,
+    max_lots: Optional[float] = None,
+) -> Optional[str]:
+    """Size and submit one entry signal.
+
+    Args:
+        entry_signal: The signal to act on.
+        account_balance: The **broker's** balance. ``None`` declines the trade.
+            This parameter previously defaulted to ``10000`` and the only caller
+            passed nothing, so every position in the system was sized against a
+            fictional account (``PHASE_2_ISSUES.md`` R2).
+        max_lots: Exposure headroom in lots, from the account risk gate. The
+            size is capped at this. ``core.sizing`` cannot apply it -- it caps at
+            the broker's ``volume_max``, which is far larger than any limit this
+            project sets (R6, R8).
+
+    Returns:
+        The order id, or ``None`` if the trade was declined.
+    """
     if not entry_signal or not order_executor:
+        return None
+
+    if account_balance is None:
+        logger.error(
+            "[SIZING] No account balance available; declining to trade. "
+            "Sizing against an assumed balance is how every risk figure in "
+            "this system came to be fictional."
+        )
         return None
 
     try:
@@ -1197,6 +1503,16 @@ def execute_entry_signal(entry_signal: Dict, account_balance: float = 10000) -> 
             entry_signal["stop_loss"],
             spec=spec,
         )
+        # Exposure headroom. Applied AFTER the risk-based size so the trade is
+        # reduced to fit the account's remaining capacity rather than sized up
+        # to it -- the cap is a ceiling, never a target.
+        if max_lots is not None and position_size > max_lots:
+            logger.info(
+                f"[SIZING] risk budget allowed {position_size:.2f} lots; "
+                f"capped to {max_lots:.2f} by the account exposure limit"
+            )
+            position_size = max_lots
+
         if position_size <= 0.0:
             # The budget cannot buy a tradeable size. Declining is the whole
             # point: raising it to the minimum would exceed the risk budget.
@@ -1282,12 +1598,54 @@ def manage_positions(current_prices: Dict) -> None:
                         logger.info(f"[{trade['trade_id']}] 1:2 RR: Trail SL")
                     elif action["action"] == "CLOSE_ALL":
                         logger.info(f"[{trade['trade_id']}] TP: Close all @ {current_price:.2f}")
+                        _record_close(trade, current_price, "CLOSE_ALL")
                         closed_trades.append(trade)
             trade["last_check"] = datetime.now().isoformat()
         except Exception as e:
             logger.error(f"Error managing position {trade.get('trade_id')}: {e}")
 
     _OPEN_TRADES = [t for t in _OPEN_TRADES if t not in closed_trades]
+
+
+def _record_close(trade: Dict, exit_price: float, reason: str) -> None:
+    """Value a closing position and persist it, so the risk gate has a source.
+
+    Closed trades were simply dropped from ``_OPEN_TRADES``: no P&L was computed
+    and ``save_closed_trade`` was never called, so nothing in the system could
+    answer "is the account down today?" (``PHASE_2_ISSUES.md`` R4). The
+    daily-loss breaker and the drawdown kill switch both read this history.
+
+    A trade whose P&L cannot be computed is persisted with ``pnl = None``, which
+    :func:`core.risk_limits.realised_pnl_for_day` treats as a hard error rather
+    than as zero -- an unknown loss must not read as no loss.
+    """
+    pnl = realised_pnl(trade, exit_price)
+    trade["exit_price"] = float(exit_price)
+    trade["exit_time"] = datetime.now(timezone.utc).isoformat()
+    trade["exit_reason"] = reason
+    trade["pnl"] = pnl
+    trade["status"] = "CLOSED"
+    if pnl is None:
+        logger.error(
+            f"[PNL] {trade.get('trade_id')} closed at {exit_price:.2f} but its "
+            f"P&L could not be computed. Recorded as unknown; the risk gate "
+            f"will refuse to evaluate the day rather than assume it was flat."
+        )
+    else:
+        logger.info(
+            f"[PNL] {trade.get('trade_id')} closed at {exit_price:.2f} "
+            f"for {pnl:+.2f}"
+        )
+    if PERSISTENCE_AVAILABLE:
+        try:
+            save_closed_trade(trade)
+        except Exception as exc:
+            logger.error(f"[PNL] Could not persist the close: {exc}")
+    if LAYERS_AVAILABLE:
+        try:
+            log_closed_trade(trade)
+        except Exception as exc:
+            logger.debug(f"[PNL] feedback_loop.log_closed_trade declined: {exc}")
 
 # ============================================================
 # PERSISTENCE
@@ -1328,12 +1686,42 @@ def graceful_shutdown():
     logger.info("="*70)
     _SHOULD_CONTINUE = False
 
+    # ----------------------------------------------------------------
+    # Shutdown position closing -- GATED.
+    #
+    # This block previously called mt5.positions_get() and then
+    # mt5.order_send() against EVERY open position on the symbol, with no
+    # ownership check and no safety guard, on SIGINT/SIGTERM (:signal_handler)
+    # and on normal loop exit. main_production.py has no working opening path,
+    # so every position it could have found belonged to something else.
+    #
+    # It was previously unreachable only because CONFIG["demo_mode"] = False
+    # made the process refuse to start. Setting demo_mode = True so the bot can
+    # run in SIMULATION turned that accident into a live hazard on every Ctrl-C,
+    # so the same four guards main.py uses (commit f5d17f5, Phase 6G R1) apply
+    # here. Any one of them stops every order.
+    # ----------------------------------------------------------------
     try:
-        if MT5_AVAILABLE:
+        if not CLOSE_POSITIONS_ON_SHUTDOWN:
+            logger.info("[SHUTDOWN] position closing disabled "
+                        "(CLOSE_POSITIONS_ON_SHUTDOWN is False); no orders sent")
+        elif not LIVE_TRADING_ENABLED:
+            logger.info("[SHUTDOWN] live trading disabled by core.safety; "
+                        "no orders sent")
+        elif not MT5_AVAILABLE:
+            pass
+        elif not _OWNED_TICKETS:
+            logger.info("[SHUTDOWN] this process opened no positions; "
+                        "no orders sent")
+        else:
             positions = mt5.positions_get(symbol=CONFIG["symbol"])
             if positions:
                 logger.info(f"Closing {len(positions)} position(s)...")
                 for pos in positions:
+                    if pos.ticket not in _OWNED_TICKETS:
+                        logger.info(f"[SHUTDOWN] skipping ticket {pos.ticket}: "
+                                    "not opened by this process")
+                        continue
                     close_type = mt5.ORDER_TYPE_SELL if pos.type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
                     close_request = {
                         "action": mt5.TRADE_ACTION_DEAL,
@@ -1374,8 +1762,25 @@ def main():
 
     logger.info(f"Symbol: {CONFIG['symbol']}")
     logger.info(f"Mode: {'DEMO' if CONFIG['demo_mode'] else 'LIVE'}")
-    logger.info(f"Max Concurrent Trades: {CONFIG['max_concurrent_trades']}")
-    logger.info(f"Max Daily Loss: {CONFIG['max_daily_loss_percent']}%")
+    # Report the limits that are actually ENFORCED. This previously printed
+    # CONFIG["max_daily_loss_percent"] (5.0%), which nothing read -- the gate
+    # that was supposed to apply it could not fire. Printing an unenforced
+    # number is worse than printing none: it is where the operator's belief
+    # that the account was protected came from.
+    if RISK_LIMITS is None:
+        logger.critical(
+            "RISK LIMITS UNAVAILABLE -- every pre-trade gate will BLOCK")
+    else:
+        logger.info(
+            f"Risk limits (enforced): "
+            f"daily loss {RISK_LIMITS.max_daily_loss.value:.1f}% | "
+            f"drawdown HALT {RISK_LIMITS.max_drawdown.value:.1f}% | "
+            f"max {RISK_LIMITS.max_open_lots:.2f} lots open "
+            f"({RISK_LIMITS.max_lots_per_position:.2f}/position) | "
+            f"{RISK_LIMITS.max_concurrent_positions} concurrent | "
+            f"{RISK_LIMITS.max_consecutive_losses} consecutive losses | "
+            f"time stop {RISK_LIMITS.max_hold}"
+        )
     logger.info(f"Layers Available: {LAYERS_AVAILABLE}")
     logger.info(f"MT5 Available: {MT5_AVAILABLE}")
     logger.info(f"Persistence Available: {PERSISTENCE_AVAILABLE}")
@@ -1475,11 +1880,51 @@ def main():
                 regime_info = detect_regime(m5_data, m15_data, h1_data, current_spread=current_spread)
 
             # L0 Gates now include spread check
-            gate_check = check_pre_trade_gates(regime_info=regime_info)
+            # Read the account ONCE per cycle and reuse it: the gate, the time
+            # stop and the sizer must all see the same snapshot, or they can
+            # disagree about whether the account is allowed to trade.
+            risk_state = account_risk_state()
+            risk_decision = (
+                evaluate_risk(risk_state, RISK_LIMITS) if RISK_LIMITS is not None
+                else RiskDecision(RiskVerdict.HALT,
+                                  ("RISK LIMITS UNAVAILABLE: see the startup log",),
+                                  0.0)
+            )
+            gate_check = check_pre_trade_gates(regime_info=regime_info,
+                                               risk=risk_decision)
+
+            # ----------------------------------------------------
+            # TIME STOP (config.INTRADAY_MAX_HOLD_MINUTES)
+            #
+            # Defined since it was written and enforced nowhere. Runs before the
+            # gate's `continue`, so positions are still timed out while new
+            # entries are blocked -- a halted account must still be able to
+            # exit, or a drawdown breach would freeze its positions open.
+            # ----------------------------------------------------
+            try:
+                for trade_id, held in overdue_positions(
+                    _OPEN_TRADES, now=datetime.now(timezone.utc),
+                    max_hold=RISK_LIMITS.max_hold if RISK_LIMITS else None,
+                ):
+                    logger.warning(
+                        f"[TIME_STOP] {trade_id} held {held} >= "
+                        f"{RISK_LIMITS.max_hold}; flagged for exit"
+                    )
+                    for trade in _OPEN_TRADES:
+                        if str(trade.get("trade_id")) == trade_id:
+                            trade["time_stop_due"] = True
+            except RiskLimitError as exc:
+                logger.error(f"[TIME_STOP] {exc}")
 
             if not gate_check["all_gates_passed"]:
-                if any("SPREAD" in g for g in gate_check["gates_failed"]):
-                    logger.warning(f"[L0] Trading blocked: {gate_check['gates_failed']}")
+                # Every failure is logged, not just spread ones. The previous
+                # branch logged only when "SPREAD" appeared in the reasons, so a
+                # daily-loss or drawdown breach would have blocked trading
+                # silently -- the operator would see nothing at all.
+                logger.warning(
+                    f"[L0] Trading blocked ({gate_check['risk_verdict']}): "
+                    f"{gate_check['gates_failed']}"
+                )
                 time.sleep(5)
                 continue
 
@@ -1521,7 +1966,16 @@ def main():
                 })
 
                 if analysis.get("signal_type") == "ENTRY_SIGNAL":
-                    order_id = execute_entry_signal(analysis["entry_signal"])
+                    # R2: the balance is the BROKER's, not the hardcoded
+                    # 10000 default that made every risk figure fictional.
+                    # R6/R8: cap the size at the headroom the exposure limit
+                    # leaves, which core.sizing does not know about -- it caps
+                    # at the broker's volume_max, a far larger limit.
+                    order_id = execute_entry_signal(
+                        analysis["entry_signal"],
+                        account_balance=risk_state.balance if risk_state else None,
+                        max_lots=gate_check["max_new_lots"],
+                    )
                     if order_id:
                         logger.info(f"[+] Trade #{len(_OPEN_TRADES)} opened: {order_id}")
 

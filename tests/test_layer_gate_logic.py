@@ -7,21 +7,69 @@ import main_production as mp
 
 
 class LayerGateLogicTests(unittest.TestCase):
+    def setUp(self):
+        # Scalp regimes gate L1 on the H1 FAST bias, not the H4 bias
+        # (main_production.py BIAS-2 branch: `use_fast_bias = regime_name in
+        # ("MICRO_SCALP", "REGIME_SCALP")`). Every test below sets a scalp
+        # regime, so patching only `get_h4_bias` left L1 reading the real
+        # `get_fast_bias`, which needs H1 EMAs the fixture has not got and
+        # returned NEUTRAL -- blocking at L1.
+        #
+        # This went unnoticed because `analyze_entry` re-imported
+        # `detect_regime` locally, shadowing the patch, so the regime was never
+        # actually a scalp regime and this branch was never taken.
+        patcher = patch.object(
+            mp, "get_fast_bias",
+            return_value={
+                "bias": "BULLISH", "bias_strength": 8.0,
+                "ema20": 101.0, "ema50": 100.0, "ema_distance": 1.0,
+                "ema_threshold": 0.2, "invalidated": False, "flip_reason": "",
+                "full_report": "[FAST_BIAS] test fixture: BULLISH",
+            },
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    # The L2 volatility floor reads `h1_data` DIRECTLY, not the patched
+    # `calculate_indicators`:
+    #
+    #     h1_atr = None
+    #     if h1_data is not None and len(h1_data) >= 14:
+    #         h1_atr = (h1_data["high"].tail(14) - h1_data["low"].tail(14)).mean()
+    #
+    # The previous fixture had THREE bars, so `h1_atr` stayed None and every test
+    # died at L2 before reaching the layer it meant to exercise. Two of the three
+    # failed outright; the third passed for the wrong reason. Hence: >= 14 bars,
+    # and a per-bar range above main_production.L2_MIN_H1_RANGE_USD.
+    BARS = 20
+    BAR_RANGE_USD = 12.0  # > L2_MIN_H1_RANGE_USD (8.0), so L2 is not the blocker
+
     def _make_frames(self):
+        n = self.BARS
+        lows = [100.0 + i for i in range(n)]
+        highs = [lo + self.BAR_RANGE_USD for lo in lows]
         m5 = pd.DataFrame(
             {
-                "open": [100.0, 101.0, 102.0],
-                "high": [101.5, 102.5, 103.5],
-                "low": [99.0, 100.0, 101.0],
-                "close": [100.5, 101.5, 102.5],
-                "tick_volume": [100, 120, 140],
+                "time": pd.date_range("2026-01-01", periods=n, freq="5min", tz="UTC"),
+                "open": [lo + 1.0 for lo in lows],
+                "high": highs,
+                "low": lows,
+                "close": [lo + self.BAR_RANGE_USD - 1.0 for lo in lows],
+                "tick_volume": [100 + 10 * i for i in range(n)],
             }
         )
         m15 = m5.copy()
         h1 = m5.copy()
         h4 = m5.copy()
-        daily = pd.DataFrame({"high": [105.0], "low": [95.0]})
+        daily = pd.DataFrame({"high": [highs[-1] + 5.0], "low": [lows[0] - 5.0]})
         return m5, m15, h1, h4, daily
+
+    def test_fixture_clears_the_l2_volatility_floor(self):
+        """Guard the guard: if this breaks, every test below blocks at L2 again."""
+        _, _, h1, _, _ = self._make_frames()
+        self.assertGreaterEqual(len(h1), 14)
+        h1_atr = (h1["high"].tail(14) - h1["low"].tail(14)).mean()
+        self.assertGreater(h1_atr, mp.L2_MIN_H1_RANGE_USD)
 
     def test_broken_h1_structure_blocks_at_l2(self):
         m5, m15, h1, h4, daily = self._make_frames()
@@ -35,6 +83,13 @@ class LayerGateLogicTests(unittest.TestCase):
 
         self.assertEqual(analysis.get("layer_failed"), "L2_STRUCTURE")
         self.assertEqual(analysis.get("signal_type"), "PRE_ENTRY")
+        # Assert the REASON, not just the layer. This test previously passed
+        # while L2 was rejecting on the volatility floor, so it proved nothing
+        # about broken-structure handling.
+        reason = analysis.get("fail_reason", "")
+        self.assertIn("structure is broken", reason)
+        self.assertNotIn("too calm", reason)
+        self.assertNotIn("unavailable", reason)
 
     def test_pullback_gate_requires_real_pullback_detection(self):
         m5, m15, h1, h4, daily = self._make_frames()

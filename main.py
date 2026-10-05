@@ -294,21 +294,41 @@ def check_pre_trade_gates(
     current_daily_loss: float = 0,
     current_spread: float = 0.5
 ) -> Dict:
-    """Layer 0: Pre-trade gate checks - blocks all trading if any gate fails."""
+    """Layer 0: Pre-trade gate checks - blocks all trading if any gate fails.
+
+    **This gate is NOT wired to the account and therefore always blocks.**
+
+    It previously reassured instead. The sole caller is
+    ``check_pre_trade_gates()`` at :880 -- no arguments -- so
+    ``account_balance`` took its default of ``0``, which sent the daily-loss
+    limit down the ``else`` branch to a flat ``1000``, and ``current_daily_loss``
+    took its default of ``0``. The test was therefore ``abs(0) > 1000``: never
+    true, on every cycle, reporting "Daily loss OK (0.00 / 1000.00)". The spread
+    gate below it was likewise replaced by the comment ``# SPREAD CHECK
+    DISABLED`` and an unconditional pass.
+
+    ``main_production.py`` had the same two defects; there they were fixed, by
+    removing the defaulted parameters and calling ``core.risk_limits.evaluate``
+    (``PHASE_2_ISSUES.md`` R2, R3). That is not replicated here because
+    ``main.py`` is a dormant duplicate entry point with **no opening path at
+    all** -- ``mt5_handler`` has no ``send_order``, the caller hardcodes
+    ``None``, and no volume is passed -- so wiring a real risk gate into it
+    would imply it is a trading path, which it is not.
+
+    What is removed is the false reassurance. An inert gate that reports
+    "OK" is worse than one that refuses, because the refusal is visible.
+
+    Returns:
+        A gate result that always fails, naming why.
+    """
     gates_passed = []
-    gates_failed = []
-    
-    # Gate 1: Daily loss limit
-    max_daily_loss = (account_balance * CONFIG["max_daily_loss_percent"] / 100) if account_balance > 0 else 1000
-    if abs(current_daily_loss) > max_daily_loss:
-        gates_failed.append(f"DAILY LOSS LIMIT: {current_daily_loss:.2f} > {max_daily_loss:.2f}")
-    else:
-        gates_passed.append(f"Daily loss OK ({current_daily_loss:.2f} / {max_daily_loss:.2f})")
-    
-    # Gate 2: Spread check
-    SPREAD_MAX = 0.8
-    # SPREAD CHECK DISABLED
-    gates_passed.append(f"Spread OK ({current_spread:.2f}) [CHECK DISABLED]")
+    gates_failed = [
+        "GATE NOT WIRED: main.py's pre-trade gates are not connected to the "
+        "account. No balance, no realised P&L and no spread are supplied by the "
+        "caller, so no limit here can be evaluated. Use main_production.py, "
+        "whose gates call core.risk_limits.evaluate(). See this function's "
+        "docstring and PHASE_2_ISSUES.md R2/R3.",
+    ]
 
     session = get_session_name()
     if session == "DEAD":
