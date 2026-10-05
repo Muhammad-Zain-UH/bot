@@ -53,11 +53,47 @@ For a threshold $T$ dollars and median close $P_{med}$:
 fraction = T / P_med        threshold(price) = fraction * price
 ```
 
-This is chosen because it has **no fitted quantity**. The median close is a
-property of the frozen dataset, not a parameter; the behaviour at the median is
-preserved exactly; and the drift away from the median is removed. Anchoring to
-any *other* point — a chosen era, a "representative" year — would be a decision
-about which regime matters, and this rule avoids making one.
+The behaviour at the median is preserved exactly, and the drift away from it is
+removed.
+
+### Correction: Rule 2 does not eliminate the free parameter, it relocates it
+
+The first draft of this rule claimed "no fitted quantity". That was wrong, and
+testing the rule before implementing it is what caught it.
+
+**The anchor is itself a parameter.** The timeframes cover different eras, so
+their medians differ enormously — H1 $1,544 (2009–2026), M15 $2,457 (2022–2026),
+M5 $4,175 (2025–2026), H4 $1,316 (2004–2026). For U9's $8.00 floor:
+
+| anchor | fraction | blocks, 17-yr average |
+|---|---|---|
+| H1 median $1,544.08 | 0.5181 % | ~95 % of bars |
+| M5 median $4,175.05 | 0.1916 % | far fewer |
+
+So the anchor sets the gate's selectivity almost as directly as the dollar
+threshold did. There is **no parameter-free repair**: an absolute threshold can
+only be replaced by another parameterisation, and every alternative hides a
+constant somewhere — a percentile rule hides the percentile, and calibrating to
+reproduce the current pass rate fits the sample outright.
+
+**What Rule 2 does achieve, and it is verifiable in advance:** it removes the
+*price-level dependence*, which is the actual defect. Measured on U9 before
+implementing anything:
+
+* absolute $8.00 → best-to-worst-year spread **100.0 pp** (0.0 % to 100.0 %)
+* fraction 0.5181 % → spread **30.1 pp** (69.9 % to 100.0 %)
+
+**The declared anchor is the H1 median close, $1544.08**, for every site
+regardless of the timeframe it is applied on. Reason: H1 is the series this
+research programme already treats as its reference — `research_split_manifest_h1.json`
+defines TRAIN/DEV/FINAL_OOS on it — and it is the deepest series with full bar
+coverage (100,001 bars, 2009–2026). One anchor is used everywhere so that the
+choice of timeframe cannot change a threshold.
+
+This is a **declared choice with a stated reason, fixed before any outcome was
+measured** — not a derived quantity, and this document no longer claims it is
+one. A different anchor would give different selectivity, and that is recorded
+here so the result is never presented as inevitable.
 
 **Rule 3 — where a scale-invariant term already exists, make it primary.** U8 is
 `max(2.5, m15_atr * 0.12)`. The ATR term is already scale-invariant and already
@@ -76,7 +112,9 @@ never been validated against anything.
   backtest output** — not trade count, not win rate, not P&L, not funnel shape,
   not "the pass rate looks more sensible". The rule above determines every value.
 * **No new ATR or percentage coefficient may be invented** where none exists.
-  Where Rule 1 and Rule 2 both apply, they fully determine the result. Where a
+  Given the declared anchor, Rule 1 and Rule 2 together determine every value
+  mechanically; the anchor itself is declared once, above, and not revisited per
+  site. Where a
   site needs a coefficient the codebase has never declared, the site is migrated
   under Rules 1–2 only and the residual recorded as open.
 * **No claim of improvement.** The migration's success criterion is that the
