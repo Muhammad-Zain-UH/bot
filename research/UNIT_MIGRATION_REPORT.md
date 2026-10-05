@@ -177,6 +177,35 @@ documented in place, at both sites, with these measurements. `core/thresholds.py
 is retained, tested and unused by the gates — the tool is correct, and the
 problem it solves is still open.
 
+## 3a. The retained configuration, measured
+
+`baselines/baseline_012` is the record of what was kept. Against the
+pre-migration control on identical data and assumptions:
+
+| blocked at | 009 pre-mig | **012 retained** | delta |
+|---|---|---|---|
+| L1_BIAS | 1,505 | **1,505** | 0 |
+| L2_STRUCTURE | 12 | **12** | 0 |
+| L3_PULLBACK | 5,044 | **5,044** | 0 |
+| L4_LIQUIDITY | 748 | **2,142** | +1,394 |
+| L5_SWEEP | 5,000 | **3,325** | −1,675 |
+| L6_POI | 2 | 0 | −2 |
+| L7_CONFIDENCE | 1,835 | 1,787 | −48 |
+| L8_ENTRY | 1,585 | 1,917 | +332 |
+| **signals** | **4** | **3** | **−1** |
+
+**L1, L2 and L3 are byte-identical**, which confirms two things at once: Rule 2's
+revert is complete, and Rule 1 touches nothing upstream of L4. Every change sits
+in exactly the layers whose thresholds were migrated — L4 (U2/U3/U4), L5 (U8),
+and L8 as a consequence of both.
+
+The largest single effect is **L4_LIQUIDITY tripling**, because U4's cap went
+from $60 — 600 pips, so no effective cap — to $6.00 and began rejecting distant
+pools for the first time.
+
+The strategy remains active at 3 signals, which is the material difference from
+Rule 2's zero.
+
 ## 4. What remains open
 
 * **U9 and U10 are still absolute**, and their drift is unfixed. Recorded at

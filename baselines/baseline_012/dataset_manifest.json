@@ -1,0 +1,71 @@
+{
+  "all_native": true,
+  "broker_metadata": {
+    "account_currency": "USD",
+    "broker": "MetaQuotes Ltd.",
+    "currency_base": "XAU",
+    "currency_profit": "USD",
+    "current_spread_points": 39,
+    "description": "Gold vs US Dollar",
+    "digits": 2,
+    "exported_utc": "2026-09-16T12:32:25.695231+00:00",
+    "point": 0.01,
+    "server": "MetaQuotes-Demo",
+    "server_time_note": "MT5 reports bar times in SERVER time. This export subtracts the measured offset to produce true UTC. Broker-native H4/D1 bars are therefore NOT aligned to UTC midnight and are preserved as-is.",
+    "server_utc_offset_hours": 3.0,
+    "symbol": "XAUUSD",
+    "terminal_maxbars": 100000,
+    "trade_contract_size": 100.0,
+    "trade_tick_size": 0.01,
+    "trade_tick_value": 0.1,
+    "volume_max": 100.0,
+    "volume_min": 0.01,
+    "volume_step": 0.01
+  },
+  "coverage": {
+    "D1": {
+      "bars": 76,
+      "derived_from_m1": false,
+      "first": "2026-06-02 21:00:00+00:00",
+      "last": "2026-09-15 21:00:00+00:00",
+      "sha256": "b4473abfa41440312fda0a06b8d27e8be090126613124a0b4ccc06c81c3b6c0d"
+    },
+    "H1": {
+      "bars": 1680,
+      "derived_from_m1": false,
+      "first": "2026-06-02 00:00:00+00:00",
+      "last": "2026-09-16 12:00:00+00:00",
+      "sha256": "e2c504b977facffb09ea6328e1d144ee2c6fcb7df8e7ffcf5c03a02552a79bb9"
+    },
+    "H4": {
+      "bars": 459,
+      "derived_from_m1": false,
+      "first": "2026-06-02 01:00:00+00:00",
+      "last": "2026-09-16 09:00:00+00:00",
+      "sha256": "d938f128a9639034c2e57448cace4b732f96a60c4446ba342c255c33d6724467"
+    },
+    "M1": {
+      "bars": 100002,
+      "derived_from_m1": false,
+      "first": "2026-06-02 10:20:00+00:00",
+      "last": "2026-09-16 12:32:00+00:00",
+      "sha256": "a2870881e9a34b74255ed78a892888b772a69f4903f2dfee433b824ae2d6bb08"
+    },
+    "M15": {
+      "bars": 6711,
+      "derived_from_m1": false,
+      "first": "2026-06-02 00:00:00+00:00",
+      "last": "2026-09-16 12:30:00+00:00",
+      "sha256": "f28c479a678592b1d1779431fe419679646924d2c27478af0bf4a17f2066db72"
+    },
+    "M5": {
+      "bars": 20127,
+      "derived_from_m1": false,
+      "first": "2026-06-02 00:00:00+00:00",
+      "last": "2026-09-16 12:30:00+00:00",
+      "sha256": "a0cdd0f9b68c3f3e795bf61c6a9cc5260308a0a852a5cccce69cf3acc160e156"
+    }
+  },
+  "dataset_sha256": "433b7e2713babdef2ea69909a8bc6a515292dc70b0db434c0b63c256a970b07c",
+  "symbol": "XAUUSD"
+}
