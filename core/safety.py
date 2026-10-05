@@ -38,8 +38,8 @@ This is intentional and is not an oversight to be "fixed" by adding a switch.
 The broker and execution safety model is Phase 2 work: a real broker adapter,
 broker-side stop registration, position reconciliation, and a corrected position
 sizer must all exist *before* this constant is allowed to change. Until then,
-flipping it would re-enable an execution path with a known 10x position-sizing
-error and no broker-side stop protection.
+flipping it would re-enable an execution path that cannot transmit an order and
+has no broker-side stop protection.
 
 Design notes
 ------------
@@ -76,11 +76,24 @@ docstring for why this has no escape hatch.
 PHASE_LOCK_REASON: Final[str] = (
     "Live trading is disabled by the Phase 0/1 safety invariant "
     "(core.safety.LIVE_TRADING_ENABLED is False). The execution layer has known "
-    "unresolved P0 defects: orders are never transmitted to the broker, position "
-    "sizing is ~10x oversized, stops are not registered broker-side, and local "
-    "position state is never reconciled against the broker. A real broker adapter "
-    "and execution safety model are Phase 2 work."
+    "unresolved P0 defects: orders are never transmitted to the broker "
+    "(mt5_handler has no send_order), stops are not registered broker-side, and "
+    "local position state is never reconciled against the broker. A real broker "
+    "adapter and execution safety model are Phase 2 work."
 )
+"""Why the lock is in place. Cited verbatim in the startup refusal.
+
+This text previously also listed "position sizing is ~10x oversized". That
+defect (``PHASE_2_ISSUES.md`` R1) has since been fixed: ``risk_manager`` now
+delegates to ``core.sizing.lots_for_risk`` with a broker-supplied
+``SymbolSpecification``, and ``main_production.execute_entry_signal`` declines
+to trade when no specification is available rather than assuming the
+instrument's economics.
+
+The claim is removed because an inaccurate safety notice is worse than a
+terse one -- a reader who checks one item, finds it stale, and discounts the
+rest is the failure mode. The remaining three items are current.
+"""
 
 
 class UnsafeExecutionStateError(RuntimeError):

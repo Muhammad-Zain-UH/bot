@@ -1,15 +1,28 @@
 # PHASE 2+ ISSUE REGISTER
 
 Defects identified during the Phase 1 audit and confirmed during Phase 0/1
-implementation, that were **deliberately left unchanged**.
+implementation.
 
-Phase 0/1 forbids strategy optimisation, threshold tuning and behavioural change.
-Every item below would alter trading behaviour, and there is currently **no
-measured baseline** against which to judge whether a change is an improvement.
-Fixing them before the backtest harness exists would mean swapping one unvalidated
-configuration for another and calling it progress.
+## STATUS: the production freeze has been LIFTED
 
-**Nothing here has been tuned, adjusted, or "improved".**
+Items below are now being fixed. Each fixed item is marked inline; the original
+description is kept verbatim so the record of what was wrong survives the fix.
+
+What has **not** changed:
+
+* No threshold has been selected by backtest performance, trade count or win
+  rate. Fixes target each item's **documented intent** -- pips where the name
+  says pips, a gate that can fail, a balance that comes from the broker.
+* `baselines/baseline_004` and `baseline_008` remain **byte-identical frozen**.
+  Their manifests record what was true when they were created, including the
+  then-current R1 sizing defect. They are historical records and are not
+  rewritten when a defect is fixed.
+* FINAL_OOS remains LOCKED.
+
+The original warning still applies to anything that *is* a tuning decision:
+without a measured baseline, a change that increases trade count is
+indistinguishable from a change that increases losses. See the measurement
+constraint recorded at the end of section 11.
 
 Legend — P0 critical · P1 high · P2 medium · P3 low
 
@@ -33,10 +46,47 @@ price is therefore **10x** its intended size.
 | U6 | `poi_engine.py:428` `score_poi` | `if displacement >= 20 / >= 10` | 20/10 pips | **$20/$10** | P1 |
 | U7 | `poi_engine.py:194` `detect_order_block` | `if body >= 5` | 5 pips | **$5 M15 body — very rare** | P1 |
 | U8 | `sweep_detector.py:196` `detect_sweep` | `sweep_min = max(2.5, atr*0.12)` | 2.5 pips | **$2.50 = 25 pips minimum sweep** | **P0** |
-| U9 | `main_production.py` L2 gate | `h1_atr < 8.0` described as "pips" | 8 pips | **$8.00 = 80 pips** | P1 |
+| U9 | `main_production.py` L2 gate | ~~`h1_atr < 8.0` described as "pips"~~ **PARTLY FIXED.** The mislabelling is gone: the threshold is now the named `L2_MIN_H1_RANGE_USD` and all operator output prints ATR in dollars. The **value** is unchanged and still absolute-USD, so the price-level dependence below remains open. | 8 pips | **$8.00 = 80 pips** | ~~P1~~ / open |
 | U10 | `entry_engine.py:76-108` `detect_regime` | ATR bands `2.5 / 4.5 / 7.0` labelled "pip" | pips | **dollars** | **P0** |
 | U11 | `main_production.py` `_check_regime_scalp_momentum` | `pip_size = 0.10` hardcoded inline | — | duplicates broker data | P2 |
 | U12 | `mt5_handler.py:150` `get_current_spread` | `XAUUSD_PIP_SIZE = 0.10` hardcoded | — | **correct today**, but breaks silently if the broker changes quote precision | P2 |
+
+### Measured: the L2 gate's selectivity is a function of gold's price, not volatility
+
+`h1_atr < 8.0` against the 14-bar mean H1 high-low range on
+`data/research_v1/bars/XAUUSD_H1.csv` (100,001 bars, 2009-08-31 to 2026-10-01):
+
+| year | mean price | mean H1 range | **% of bars BLOCKED at L2** |
+|---|---|---|---|
+| 2009 | $1,075 | $3.53 | 98.8% |
+| 2014 | $1,267 | $3.02 | 99.7% |
+| 2015 | $1,160 | $2.90 | 99.9% |
+| **2017** | $1,258 | $2.34 | **100.0%** |
+| **2018** | $1,269 | $2.31 | **100.0%** |
+| 2020 | $1,773 | $6.02 | 82.8% |
+| 2023 | $1,943 | $4.29 | 97.3% |
+| 2025 | $3,443 | $11.48 | 31.4% |
+| **2026** | $4,550 | $24.01 | **0.0%** |
+
+Same code, opposite behaviour, because gold quadrupled. In 2017-2018 the gate
+admitted **no bars at all**; in 2026 it admits every one. It is not a volatility
+filter, it is a proxy for the price level.
+
+The same applies to U10's regime bands on M5 (2025-04-25 to 2026-10-01, the full
+extent of M5 history). Over 13 months, with no code change:
+
+| | 2025 (mean $3,673) | 2026 (mean $4,550) |
+|---|---|---|
+| `DEAD_CALM` (atr < 2.5) | 35.1% | **0.5%** |
+| `MICRO_SCALP` (2.5-4.5) | 43.0% | 31.9% |
+| `REGIME_SCALP` (4.5-7.0) | 17.4% | 40.0% |
+| `INTRADAY_SWING` (> 7.0) | 4.6% | **27.6%** |
+
+The regime selects the risk percentage (0.75% / 1.0% / 1.5%), so the account's
+risk-per-trade escalated because gold got expensive. Note the bands are *not*
+mislabelled by a factor of ten the way U9's threshold was -- in dollars they
+produce a sensible spread of regimes. The defect is that they are **absolute**,
+not that they are the wrong size.
 
 **U8 and U10 are the highest-leverage items in this register.** U8 sets the
 minimum wick depth for a sweep and is one of the busiest rejection gates
@@ -54,15 +104,15 @@ measure the result.
 
 | # | Location | Issue | Priority |
 |---|---|---|---|
-| R1 | `risk_manager.py:18` | `lot = risk_amount / (stop_distance * 10.0)`. XAUUSD contract size is **100**, not 10, so every position is **~10x oversized**. `SymbolSpecification.money_per_price_unit()` returns the correct `100.0`; it is **not** wired in. | **P0** |
-| R2 | `main_production.py:444, :1045` | `account_balance: float = 10000` hardcoded. `mt5.account_info()` is called once for a log line and discarded. Every risk figure is fictional. | **P0** |
-| R3 | `main_production.py` `check_pre_trade_gates` | Called without `current_daily_loss`, so it defaults to `0` and `0 < -max_daily_loss` is never true. The daily-loss breaker cannot fire. | **P0** |
-| R4 | system-wide | No realised-P&L tracking anywhere. Nothing knows whether the account is up or down. | **P0** |
-| R5 | `risk_manager.py:22` | `max(0.01, round(lot,2))` silently inflates a sub-minimum size instead of declining the trade. `SymbolSpecification.is_volume_tradeable()` exists for the correct behaviour. | P1 |
-| R6 | `risk_manager.py:23` | `min(lot, 1.0)` ignores `config.INTRADAY_LOT_SIZE_MAX = 0.1`. | P1 |
-| R7 | system-wide | No max-drawdown limit, no consecutive-loss limit, no equity-curve kill switch. | P1 |
-| R8 | `main_production.py` | `max_concurrent_trades = 3` on one symbol is 3x the same risk; no exposure cap. | P1 |
-| R9 | `config.py` | `INTRADAY_MAX_HOLD_MINUTES = 240` defined, never enforced. No time stop. | P1 |
+| R1 | `risk_manager.py:18` | ~~`lot = risk_amount / (stop_distance * 10.0)`. XAUUSD contract size is **100**, not 10, so every position is **~10x oversized**.~~ **FIXED.** `risk_manager.calculate_lot_size_for_symbol` now delegates to `core.sizing.lots_for_risk` with a required broker `SymbolSpecification`, and returns `0.0` rather than a substituted minimum. `main_production.execute_entry_signal` declines when no spec is available. The stale claim has been removed from `core.safety.PHASE_LOCK_REASON`. | ~~P0~~ |
+| R2 | `main_production.py` | ~~`account_balance: float = 10000` hardcoded. `mt5.account_info()` is called once for a log line and discarded. Every risk figure is fictional.~~ **FIXED.** `execute_entry_signal(account_balance=None)` now **declines to trade** without a balance; the main loop supplies `mt5.account_info().balance` via `account_risk_state()`. | ~~P0~~ |
+| R3 | `main_production.py` `check_pre_trade_gates` | ~~Called without `current_daily_loss`, so it defaults to `0` and `0 < -max_daily_loss` is never true. The daily-loss breaker cannot fire.~~ **FIXED.** Both defaulted risk parameters are **removed** rather than corrected -- a defaulted risk input is an assertion the function cannot support. The gate now calls `core.risk_limits.evaluate()`, which returns `HALT` when state is unknown. | ~~P0~~ |
+| R4 | system-wide | ~~No realised-P&L tracking anywhere. Nothing knows whether the account is up or down.~~ **FIXED.** `main_production.realised_pnl()` values closes from `contract_size`, and `_record_close()` persists them via `save_closed_trade`. A P&L that cannot be computed is recorded as `None`, which the risk gate treats as a hard error rather than as zero. | ~~P0~~ |
+| R5 | `risk_manager.py:22` | ~~`max(0.01, round(lot,2))` silently inflates a sub-minimum size instead of declining the trade.~~ **FIXED** with R1: `lots_for_risk` returns a non-tradeable decision and the adapter returns `0.0`. | ~~P1~~ |
+| R6 | `risk_manager.py:23` | ~~`min(lot, 1.0)` ignores `config.INTRADAY_LOT_SIZE_MAX = 0.1`.~~ **FIXED.** `core.sizing` caps at the **broker's** `volume_max` only; the project's own cap is now applied by `RISK_LIMITS.max_lots_per_position` and enforced through `execute_entry_signal(max_lots=...)`. | ~~P1~~ |
+| R7 | system-wide | ~~No max-drawdown limit, no consecutive-loss limit, no equity-curve kill switch.~~ **FIXED.** `core/risk_limits.py` adds all three. A drawdown breach returns `HALT`, which is deliberately **not** self-clearing, unlike the daily cap. Limits in `config.py`: `MAX_DRAWDOWN_PERCENT`, `MAX_CONSECUTIVE_LOSSES`, `MAX_DAILY_LOSS_PERCENT`. | ~~P1~~ |
+| R8 | `main_production.py` | ~~`max_concurrent_trades = 3` on one symbol is 3x the same risk; no exposure cap.~~ **FIXED.** `config.MAX_OPEN_LOTS` caps total open volume -- the limit a position *count* cannot express. The count cap is retained alongside it. | ~~P1~~ |
+| R9 | `config.py` | ~~`INTRADAY_MAX_HOLD_MINUTES = 240` defined, never enforced. No time stop.~~ **FIXED.** `core.risk_limits.overdue_positions()` is called each cycle, **before** the gate's `continue`, so a halted account can still time out its positions. An unparseable entry time raises rather than reading as "young". | ~~P1~~ |
 
 ---
 
