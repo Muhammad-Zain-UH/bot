@@ -1,0 +1,91 @@
+{
+  "namespace": "data/cross_asset_v1",
+  "source": "FRED (Federal Reserve Bank of St. Louis), public CSV endpoint",
+  "acquired_utc": "2026-10-05T09:08:14.307474+00:00",
+  "acquisition_script": "research/acquire_cross_asset.py",
+  "raw_preserved": true,
+  "transformations_applied": "none",
+  "missing_value_policy": "RECORDED, NOT FILLED. FRED leaves a market holiday blank or '.'. How to carry an observation across a non-trading day is a modelling decision and is declared in the hypothesis specification, not here.",
+  "sp500_excluded_because": "FRED serves only a rolling 10 years of SP500 (from 2016-10-03), which does not reach TRAIN's 2009-08-31 start. VIXCLS carries the risk-sentiment mechanism instead, with coverage from 1990.",
+  "series": {
+    "DFII10": {
+      "series_id": "DFII10",
+      "title": "10-Year Treasury Inflation-Indexed Security, Constant Maturity",
+      "source_url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DFII10",
+      "sha256": "4254decae9c981d312db77336e09b80624cd2aaf0b616c82f14c6fc4bc403407",
+      "bytes": 99099,
+      "rows": 6196,
+      "missing_observations": 254,
+      "observed_rows": 5942,
+      "first_date": "2003-01-02",
+      "last_date": "2026-10-01",
+      "value_column": "DFII10"
+    },
+    "DFII5": {
+      "series_id": "DFII5",
+      "title": "5-Year Treasury Inflation-Indexed Security, Constant Maturity",
+      "source_url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DFII5",
+      "sha256": "53b1dbb77e5e1e1943e79937b3fd7fbb9110b5137cee371f739009cfa38d691c",
+      "bytes": 99902,
+      "rows": 6196,
+      "missing_observations": 254,
+      "observed_rows": 5942,
+      "first_date": "2003-01-02",
+      "last_date": "2026-10-01",
+      "value_column": "DFII5"
+    },
+    "DTWEXBGS": {
+      "series_id": "DTWEXBGS",
+      "title": "Nominal Broad U.S. Dollar Index",
+      "source_url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DTWEXBGS",
+      "sha256": "fb8c1f47a32780978add3c2134ee89762bd3114d62c355ce9cb86701782e49ed",
+      "bytes": 104437,
+      "rows": 5410,
+      "missing_observations": 212,
+      "observed_rows": 5198,
+      "first_date": "2006-01-02",
+      "last_date": "2026-09-25",
+      "value_column": "DTWEXBGS"
+    },
+    "VIXCLS": {
+      "series_id": "VIXCLS",
+      "title": "CBOE Volatility Index: VIX",
+      "source_url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=VIXCLS",
+      "sha256": "cc0b59b37b714477d604de46fba408fd888e82308561111a772f3aacf931387f",
+      "bytes": 161442,
+      "rows": 9588,
+      "missing_observations": 302,
+      "observed_rows": 9286,
+      "first_date": "1990-01-02",
+      "last_date": "2026-10-01",
+      "value_column": "VIXCLS"
+    },
+    "T10YIE": {
+      "series_id": "T10YIE",
+      "title": "10-Year Breakeven Inflation Rate",
+      "source_url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=T10YIE",
+      "sha256": "798994d4bcae9e7b71b78bacfa5d18898942abfe9e410d8b49918648cf6edafc",
+      "bytes": 98160,
+      "rows": 6197,
+      "missing_observations": 254,
+      "observed_rows": 5943,
+      "first_date": "2003-01-02",
+      "last_date": "2026-10-02",
+      "value_column": "T10YIE"
+    },
+    "DGS10": {
+      "series_id": "DGS10",
+      "title": "Market Yield on U.S. Treasury Securities at 10-Year Constant Maturity",
+      "source_url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS10",
+      "sha256": "107288572fcfbf2709617bec1e6c10b5e4f6c13b33bc4b5f3e6ef5c7ba5df7c5",
+      "bytes": 268919,
+      "rows": 16893,
+      "missing_observations": 720,
+      "observed_rows": 16173,
+      "first_date": "1962-01-02",
+      "last_date": "2026-10-01",
+      "value_column": "DGS10"
+    }
+  },
+  "dataset_sha256": "540d63a0d8f36f955991f45e3918a6a17abe4a2f92fc688d94e30d153c300da7"
+}
