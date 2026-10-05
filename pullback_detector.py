@@ -72,6 +72,9 @@ from __future__ import annotations
 from typing import Any
 import pandas as pd
 from utils import log_debug
+
+from core.candles import InsufficientBarsError, closed_bars
+from core.indicators import atr_wilder
 try:
     from indicators import calculate_indicators
 except Exception:  # pragma: no cover - optional runtime fallback
@@ -113,29 +116,36 @@ def _get_m15_rsi(m15_frame: pd.DataFrame) -> float | None:
     return None
 
 
-def _estimate_recent_atr(recent: pd.DataFrame, default: float = 10.0) -> float:
-    """Estimate ATR from true range so the pullback gate is less noisy."""
-    try:
-        if recent is None or recent.empty:
-            return default
-        if not all(col in recent.columns for col in ("high", "low", "close")):
-            return default
+def _estimate_recent_atr(recent: pd.DataFrame) -> float | None:
+    """True Wilder ATR on closed bars, or ``None`` when it cannot be computed.
 
-        frame = recent[["high", "low", "close"]].astype(float).copy()
-        prev_close = frame["close"].shift(1)
-        true_range = pd.concat(
-            [
-                frame["high"] - frame["low"],
-                (frame["high"] - prev_close).abs(),
-                (frame["low"] - prev_close).abs(),
-            ],
-            axis=1,
-        ).max(axis=1)
-        atr_series = true_range.rolling(14, min_periods=3).mean()
-        atr_value = _to_float(atr_series.iloc[-1]) if len(atr_series) > 0 else None
-        return atr_value if atr_value is not None and atr_value > 0 else default
-    except Exception:
-        return default
+    A2 (``PHASE_2_ISSUES.md``). The true-range calculation here was correct, but
+    it was smoothed with ``rolling(14).mean()`` -- a simple moving average, not
+    Wilder's recursive smoothing. That is a different statistic: an SMA weights
+    the oldest bar in the window as heavily as the newest and drops it entirely
+    at bar 15, where Wilder decays it geometrically and never drops it.
+
+    ``min_periods=3`` also meant a three-bar frame produced a "14-period ATR"
+    from three observations without saying so.
+
+    Returns ``None`` rather than the previous ``default = 10.0``, which
+    fabricated a volatility reading on any short frame or exception. ``atr_val``
+    gates the impulse test (``impulse_range < atr_val * 1.2``), so a fabricated
+    10.0 silently imposed a 12.0 impulse requirement from no data.
+
+    Args:
+        recent: Bars under ``BarConvention.CLOSED_ONLY``.
+
+    Returns:
+        The ATR in quote currency, or ``None`` if it cannot be computed.
+    """
+    if recent is None:
+        return None
+    try:
+        return float(atr_wilder(recent, period=14).value.value)
+    except (InsufficientBarsError, ValueError, KeyError, TypeError) as exc:
+        log_debug(f"[PULLBACK] ATR unavailable: {exc}")
+        return None
 
 
 def _find_recent_fractal_swing(recent: pd.DataFrame, swing_type: str) -> tuple[int | None, float | None]:
@@ -265,7 +275,17 @@ def detect_m15_pullback(
             }
 
         recent = m15_data.tail(lookback).copy().reset_index(drop=True)
-        closed = recent.iloc[:-1].copy() if len(recent) > 1 else recent.copy()
+        # B5 (PHASE_2_ISSUES.md) -- the DOUBLE DROP. `m15_data` arrives from
+        # get_market_data(closed_only=True), which has already removed MT5's
+        # forming bar, so `iloc[:-1]` removed a second, REAL closed bar and this
+        # detector ran two bars stale. The variable name `closed` records the
+        # intent, which was already satisfied before this line.
+        #
+        # core.candles.closed_bars is a no-op under CLOSED_ONLY, so applying it
+        # twice is safe -- that is exactly why it exists, and its own docstring
+        # names this bug: "unlike the ad-hoc .iloc[:-1] pattern, which silently
+        # discards a real bar each time it is repeated."
+        closed = closed_bars(recent).copy()
         if len(closed) < 10:
             return {
                 "pullback_detected": False,
@@ -297,6 +317,14 @@ def detect_m15_pullback(
         current_volume = _to_float(closed.iloc[-1].get("tick_volume"))
         avg_volume = closed["tick_volume"].mean() if "tick_volume" in closed.columns else 0
         atr_val = _estimate_recent_atr(closed)
+        if atr_val is None:
+            # A2: no fabricated volatility. The old default of 10.0 imposed a
+            # 12.0 impulse requirement (atr_val * 1.2) from no data at all.
+            return {
+                "pullback_detected": False,
+                "pullback_quality": 0.0,
+                "reasoning": "ATR unavailable; cannot assess impulse",
+            }
 
         # Find the most recent confirmed swing in the direction opposite the bias.
         if expected_bias == "BULLISH":

@@ -122,15 +122,43 @@ class ReversalsEvaluateTheEffectiveDirection(unittest.TestCase):
             "the two readings no longer differ; this instant cannot discriminate",
         )
 
+        # The contract is that L3 evaluated the EFFECTIVE direction. How that is
+        # observed depends on whether L3 blocked, and after B5's double-drop fix
+        # (research/atr_bar_convention_spec.md) this instant no longer blocks
+        # there -- the detector sees one more closed bar and finds the pullback.
+        #
+        # Both branches below discriminate. The original single branch read L3's
+        # failure message, which silently stopped testing anything the moment L3
+        # started passing: `assertIn` against "Entry triggers not all confirmed"
+        # would simply have failed with no indication that the premise, not the
+        # contract, had changed.
         observed = str(analysis.get("fail_reason"))
-        self.assertIn(
-            effective_reason, observed,
-            "L3 did not evaluate the effective direction",
-        )
-        self.assertNotIn(
-            stale_reason, observed,
-            "L3 is still evaluating the abandoned direction",
-        )
+        if analysis.get("layer_failed") == "L3_PULLBACK":
+            self.assertIn(
+                effective_reason, observed,
+                "L3 did not evaluate the effective direction",
+            )
+            self.assertNotIn(
+                stale_reason, observed,
+                "L3 is still evaluating the abandoned direction",
+            )
+        else:
+            # L3 passed. It can only have passed on the effective reading, so
+            # assert that the two readings disagree in exactly that way.
+            self.assertIn(
+                "L3_PULLBACK", analysis.get("layers_passed", []),
+                f"L3 neither blocked nor passed; blocked at "
+                f"{analysis.get('layer_failed')}",
+            )
+            self.assertTrue(
+                effective.get("pullback_detected"),
+                "L3 passed, so the EFFECTIVE reading must detect a pullback",
+            )
+            self.assertFalse(
+                stale.get("pullback_detected"),
+                "the stale reading also detects a pullback, so this instant "
+                "cannot discriminate between the two directions",
+            )
 
     def test_sell_to_buy_reversal_evaluates_bullish(self) -> None:
         self._check(REVERSAL_SELL_TO_BUY, stale_bias="BEARISH", effective_side="BUY")

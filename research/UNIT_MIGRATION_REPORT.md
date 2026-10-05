@@ -91,6 +91,33 @@ With the floor at its intended $0.25, `m15_atr * 0.12` binds on **73.7%** of
 bars. Fixing the unit made the scale-aware branch live **without inventing any
 coefficient**. This is the single most valuable change in the migration.
 
+> ### Correction: 73.7% was not true of the configuration this report describes
+>
+> The 73.7% above was measured with a **true Wilder ATR**. At the time this
+> report was written, production did not compute one: `m15_atr` came from
+> `sweep_detector._estimate_m15_atr`, which was
+> `close.diff().abs().rolling(14).mean()` — close-to-close only, understating
+> true ATR by ~2.1× (**A3**, `PHASE_2_ISSUES.md`). With the estimator that was
+> actually in the code, the ATR term bound on **36.7%** of bars, not 73.7%, and
+> the pip floor still dominated.
+>
+> So the figure described a configuration that did not exist. The qualitative
+> claim held — the branch did come alive, 1.2% → 36.7% — but the number was
+> overstated by roughly double.
+>
+> **It is now correct again, for a different reason.** A3 has since been
+> migrated to `core.indicators.atr_wilder`, so production does compute a true
+> Wilder ATR and the figure is 73.7% as stated. See
+> `research/atr_bar_convention_spec.md` and
+> `research/ATR_BAR_CONVENTION_REPORT.md`.
+>
+> The error is recorded rather than quietly amended because of what caused it:
+> the measurement script and the production path computed the same quantity two
+> different ways, and nothing checked that they agreed. The test that now
+> prevents a recurrence is
+> `tests/core/test_atr_single_definition.py::EveryAtrIsTheCanonicalOneTests`,
+> which asserts every ATR in the strategy path equals `atr_wilder` on real bars.
+
 Recorded per Rule 4: `0.12` and `2.0` are now the binding parameters, and they
 have never been validated against anything. They were unreachable when written.
 

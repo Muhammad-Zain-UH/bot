@@ -241,33 +241,79 @@ class SweepIsUnaffectedByFutureData(_MutationHarness):
                          "tick_volume": 300.0})
             return pd.DataFrame(rows)
 
-        # Inside the band: both of the original cases now qualify, which is the
-        # inversion the old docstring anticipated.
-        for depth in (0.25, 0.50, 2.50):
-            result = detect_sweep(
-                frame(low=4000.0 - depth, high=4001.0, close=4000.8), 4000.0, "BUY")
+        # The band edges are DERIVED per frame, not hardcoded. Two reasons, and
+        # the second only became visible once the first was fixed:
+        #
+        # 1. The first version pinned "$0.25" and "$3.00" as literals, which
+        #    broke the moment A3 was fixed -- `sweep_max` is
+        #    `max(30 pips, m15_atr * 2.0)`, and a correct Wilder ATR is larger
+        #    than the close-only surrogate it replaced, so the ceiling moved.
+        #
+        # 2. `sweep_max` depends on the ATR of THE VERY FRAME whose wick is
+        #    being tested. A deeper wick raises that bar's true range, which
+        #    raises the ATR, which raises the ceiling -- so the ceiling
+        #    partially chases the wick. A single ceiling computed from one probe
+        #    frame is therefore wrong for every other frame. Worth recording as
+        #    a property of the gate: `sweep_max` is not a fixed level.
+        from sweep_detector import (SWEEP_MAX_PIPS, SWEEP_MIN_PIPS, XAUUSD_SPEC,
+                                    _estimate_m15_atr)
+
+        def band_for(candidate: pd.DataFrame) -> tuple[float, float]:
+            atr = _estimate_m15_atr(candidate)
+            self.assertIsNotNone(atr, "the fixture must support an ATR")
+            return (max(SWEEP_MIN_PIPS.to_price(XAUUSD_SPEC).value, atr * 0.12),
+                    max(SWEEP_MAX_PIPS.to_price(XAUUSD_SPEC).value, atr * 2.0))
+
+        reference = frame(low=3997.50, high=4001.0, close=4000.8)
+        ref_floor, ref_ceiling = band_for(reference)
+        self.assertLess(ref_floor, ref_ceiling, "the band must be non-empty")
+
+        # Inside the band: each candidate checked against ITS OWN edges.
+        for depth in (ref_floor + 0.01,
+                      ref_floor + (ref_ceiling - ref_floor) * 0.5):
+            candidate = frame(low=4000.0 - depth, high=4001.0, close=4000.8)
+            floor, ceiling = band_for(candidate)
+            if not floor <= depth <= ceiling:
+                continue  # the edges moved past this sample; not a band claim
+            result = detect_sweep(candidate, 4000.0, "BUY")
             self.assertTrue(
                 result["sweep_confirmed"],
-                f"a ${depth:.2f} wick is inside the [$0.25, $3.00] band")
+                f"a ${depth:.2f} wick is inside its own "
+                f"[${floor:.2f}, ${ceiling:.2f}] band")
             self.assertEqual(result["sweep_type"], "bullish_sweep")
 
-        # Below the floor: too shallow to have taken any stops.
-        for depth in (0.10, 0.20):
-            result = detect_sweep(
-                frame(low=4000.0 - depth, high=4001.0, close=4000.8), 4000.0, "BUY")
+        # Below the floor: too shallow to have taken any stops. A shallower wick
+        # cannot raise the ATR, so the floor does not move away from it.
+        for depth in (ref_floor * 0.5, ref_floor - 0.01):
+            candidate = frame(low=4000.0 - depth, high=4001.0, close=4000.8)
+            floor, _ = band_for(candidate)
+            self.assertLess(depth, floor)
             self.assertFalse(
-                result["sweep_confirmed"],
-                f"a ${depth:.2f} wick is below the $0.25 floor")
+                detect_sweep(candidate, 4000.0, "BUY")["sweep_confirmed"],
+                f"a ${depth:.2f} wick is below the ${floor:.2f} floor")
 
-        # Above the ceiling: a break, not a sweep. This edge was $30.00 before
-        # the fix, which no M15 gold candle reaches, so the ceiling never
-        # rejected anything.
-        for depth in (4.00, 6.00):
-            result = detect_sweep(
-                frame(low=4000.0 - depth, high=4001.0, close=4000.8), 4000.0, "BUY")
-            self.assertFalse(
-                result["sweep_confirmed"],
-                f"a ${depth:.2f} wick exceeds the $3.00 ceiling")
+        # Above the ceiling: a break, not a sweep. Found by search rather than
+        # arithmetic, precisely because the ceiling chases the wick -- the
+        # assertion is that such a depth EXISTS and is rejected.
+        rejected_above = None
+        depth = ref_ceiling
+        for _ in range(60):
+            depth *= 1.5
+            candidate = frame(low=4000.0 - depth, high=4001.0, close=4000.8)
+            _, ceiling = band_for(candidate)
+            if depth > ceiling:
+                rejected_above = (depth, ceiling)
+                break
+        self.assertIsNotNone(
+            rejected_above,
+            "no wick depth exceeded the ceiling, so sweep_max never rejects -- "
+            "which is what U4's $60 cap did before it was fixed")
+        depth, ceiling = rejected_above
+        candidate = frame(low=4000.0 - depth, high=4001.0, close=4000.8)
+        self.assertFalse(
+            detect_sweep(candidate, 4000.0, "BUY")["sweep_confirmed"],
+            f"a ${depth:.2f} wick exceeds the ${ceiling:.2f} ceiling")
+
 
     def test_a_buy_request_never_returns_a_bearish_sweep(self) -> None:
         from sweep_detector import detect_sweep

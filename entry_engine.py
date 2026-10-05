@@ -9,6 +9,8 @@ from risk_manager import get_current_session
 from core.symbols import XAUUSD_2DIGIT as XAUUSD_SPEC
 from core.units import Pips
 
+from core.candles import closed_bars, last_closed_bar
+
 try:
     from indicators import calculate_indicators, find_last_swing
 except Exception:
@@ -253,6 +255,42 @@ def detect_rejection_candle(m5_data: pd.DataFrame, direction: str) -> dict[str, 
     try:
         if len(m5_data) < 3:
             return {"rejection_found": False, "wick_size": None, "body_size": None, "wick_ratio": None, "close_position": None, "rejection_quality": 0.0}
+        # B1 (PHASE_2_ISSUES.md) -- **UNRESOLVED**. Reads the bar BEFORE the last
+        # closed one, and that is left in place deliberately.
+        #
+        # The change to `last_closed_bar(m5_data)` was implemented and measured,
+        # then reverted, because the evidence is genuinely two-sided and the
+        # repo has a precedent for this exact situation (U1's stop buffer).
+        #
+        # FOR it being a defect:
+        #   * the variable is named `current`, and this is not the current bar;
+        #   * `get_market_data(closed_only=True)` drops MT5's forming bar on all
+        #     three of its fetch paths, so `iloc[-1]` IS the last closed bar;
+        #   * `detect_displacement_candle` in THIS module reads `iloc[-1]`, and
+        #     the two are alternative entry confirmations evaluated on the same
+        #     pass -- so they examine different bars for no stated reason;
+        #   * `core/candles.py`, the canonical convention module, lists this site
+        #     as "one bar stale".
+        #
+        # AGAINST:
+        #   * BOTH integration fixtures are constructed with the rejection
+        #     candle at `iloc[-2]` and the break at `iloc[-1]`, and
+        #     `tests/fixtures/integration_market.TRIGGER_BARS` is commented
+        #     "two M5 candles: rejection, then the break" -- a coherent entry
+        #     pattern, and the only statement of INTENT anywhere;
+        #   * changing it took both fixtures to zero signals, 60 of 64 test
+        #     failures, because a rejection-then-break sequence stops existing.
+        #
+        # The fixtures are derived evidence -- they were written to satisfy the
+        # code -- so they do not settle it. But nothing states the detector's
+        # intended bar either, and U1 is the precedent for what happens when a
+        # variable name is treated as a specification.
+        #
+        # Measured, so the cost of deciding later is known: reverting this alone
+        # takes the suite from 64 failures to 4. A2-A4 and B2-B6 are unaffected
+        # and shipped. Resolving B1 needs the two fixtures rebuilt to clear all
+        # eight layers with the rejection candle last, which is a separate
+        # measured pass -- see PHASE_2_ISSUES.md B1.
         current = m5_data.iloc[-2]
         c_open = _to_float(current["open"])
         c_close = _to_float(current["close"])
@@ -286,10 +324,16 @@ def detect_momentum_confirmation(m5_data: pd.DataFrame, direction: str) -> dict[
     try:
         if len(m5_data) < 4:
             return {"momentum_confirmed": False, "volume_ratio": None, "rsi_direction": None, "momentum_quality": 0.0}
-        recent = m5_data.iloc[:-1].tail(3)
+        # B2. `iloc[:-1]` dropped the last CLOSED bar, so `current_volume`
+        # below was the volume of the bar before the current one. The frame is
+        # already closed-only; use it as given.
+        recent = closed_bars(m5_data).tail(3)
         baseline_volume = float(m5_data["tick_volume"].tail(20).mean()) if "tick_volume" in m5_data.columns else 0.0
         current_volume = _to_float(recent.iloc[-1].get("tick_volume", baseline_volume))
         volume_ratio = current_volume / baseline_volume if baseline_volume > 0 and current_volume is not None else 1.0
+        # Deliberately NOT changed by B2. This one wants the RSI as of the
+        # PREVIOUS bar, so that comparing it against `curr_rsi` below gives a
+        # direction. Dropping the last bar is the intent here, not a bug.
         prev_rsi = _rsi_from_frame(m5_data.iloc[:-1].tail(6))
         curr_rsi = _rsi_from_frame(m5_data)
         rsi_direction = "neutral"
@@ -647,11 +691,17 @@ def _evaluate_pullback_entry(
 
     confirmed_m5_price = current_price
     if m5_data is not None and len(m5_data) >= 2:
-        confirmed_m5_price = _to_float(m5_data.iloc[-2]["close"]) or current_price
+        # B3 (P0). This priced the entry off `iloc[-2]` -- a bar that closed
+        # five minutes ago -- while a MOMENTUM entry on the same pass used the
+        # current one. On a strategy targeting 15-25 pip moves that is a
+        # material difference in entry price between two paths that are supposed
+        # to be alternatives.
+        confirmed_m5_price = _to_float(last_closed_bar(m5_data)["close"]) or current_price
 
     confirmed_entry_price = confirmed_m5_price
     if m1_data is not None and len(m1_data) >= 2 and m1_choch["m1_choch_confirmed"]:
-        confirmed_entry_price = _to_float(m1_data.iloc[-2]["close"]) or confirmed_m5_price
+        # B3, M1 leg: two minutes stale for the same reason.
+        confirmed_entry_price = _to_float(last_closed_bar(m1_data)["close"]) or confirmed_m5_price
 
     raw_triggered = bool(rejection["rejection_found"] and m1_choch["m1_choch_confirmed"])
     trigger_type = "none"

@@ -40,6 +40,9 @@ from utils import log_debug
 from core.symbols import XAUUSD_2DIGIT as XAUUSD_SPEC
 from core.units import Pips
 
+from core.candles import InsufficientBarsError
+from core.indicators import atr_wilder
+
 # Sweep wick-depth bounds, in PIPS, as this module's docstring always said.
 # Typed so they cannot silently be compared against a raw price again:
 # Pips(2.5).to_price(spec) is $0.25, while a bare 2.5 was $2.50.
@@ -57,16 +60,46 @@ def _to_float(value: Any) -> float | None:
         return None
 
 
-def _estimate_m15_atr(m15_data: pd.DataFrame, default: float = 15.0) -> float:
-    """Estimate a lightweight ATR for M15 sweep filtering."""
+def _estimate_m15_atr(m15_data: pd.DataFrame) -> float | None:
+    """True Wilder ATR on M15 closed bars, or ``None`` when it cannot be computed.
+
+    A3 (``PHASE_2_ISSUES.md``). This was
+    ``close.diff().abs().rolling(14).mean()`` -- a mean absolute close-to-close
+    change, which is **not** an ATR. It could not see intrabar range at all, so a
+    wide-range bar reported a small value. Measured against true Wilder ATR over
+    all 100,020 M15 bars of the frozen export, it understated volatility by
+    roughly **2.1x** (median $1.516 against $3.084).
+
+    That mattered more after U8's unit fix than before it. ``sweep_min`` is
+    ``max(2.5 pips, m15_atr * 0.12)``; at the old $2.50 floor the constant bound
+    on 98.8% of bars so this value was nearly irrelevant, but at the corrected
+    $0.25 floor the ATR term binds and this value sets the gate. The register
+    predicted the coupling: "That understated ATR sets sweep_min (U8)."
+
+    Returns ``None`` rather than a default. The previous signature carried
+    ``default: float = 15.0`` and returned it on any short frame or exception,
+    which **fabricates a volatility reading** -- and at ``x0.12`` a default of
+    15.0 is a $1.80 sweep floor, seven times the $0.25 pip floor, invented from
+    no data. The caller now declines instead, matching
+    ``main_production.execute_entry_signal``'s "no symbol specification -> no
+    trade".
+
+    Args:
+        m15_data: M15 bars under ``BarConvention.CLOSED_ONLY`` -- which is what
+            ``get_market_data(closed_only=True)`` returns, the default on all
+            three of its fetch paths.
+
+    Returns:
+        The ATR in quote currency, or ``None`` if there are too few closed bars
+        or the frame is unusable.
+    """
+    if m15_data is None:
+        return None
     try:
-        if m15_data is None or len(m15_data) < 2 or "close" not in m15_data.columns:
-            return default
-        atr_series = m15_data["close"].diff().abs().rolling(14).mean()
-        atr_value = _to_float(atr_series.iloc[-1]) if len(atr_series) > 0 else None
-        return atr_value if atr_value is not None and atr_value > 0 else default
-    except Exception:
-        return default
+        return float(atr_wilder(m15_data, period=14).value.value)
+    except (InsufficientBarsError, ValueError, KeyError, TypeError) as exc:
+        log_debug(f"[SWEEP] M15 ATR unavailable: {exc}")
+        return None
 
 
 def _find_recent_fractal_level(data: pd.DataFrame, column: str) -> float | None:
@@ -112,6 +145,19 @@ def _assess_sweep_state(
 
     recent = m15_data.tail(12)
     m15_atr = _estimate_m15_atr(m15_data)
+    if m15_atr is None:
+        # A3: no fabricated volatility. The estimator used to return 15.0 here,
+        # which at x0.20 and x0.50 invented a 3.0 / 7.5 buffer from no data.
+        return {
+            "state": "WAIT",
+            "reason": "M15 ATR unavailable; cannot size the structure buffers",
+        }
+    # NOTE: `2.5` and `5.0` here are bare floats compared against a quote-currency
+    # distance, the same defect class as U1-U12 -- but they are NOT in that
+    # register's enumeration, so they are out of scope for
+    # research/atr_bar_convention_spec.md and are recorded in PHASE_2_ISSUES.md
+    # as new items rather than migrated here. Widening a pre-registered change
+    # mid-flight is how a correctness fix turns into an unmeasured one.
     near_buffer = max(2.5, m15_atr * 0.20)
     momentum_buffer = max(5.0, m15_atr * 0.50)
 
@@ -202,6 +248,21 @@ def detect_sweep(
         recent = m15_data.tail(15)  # Give the detector a slightly wider memory
         baseline_volume = m15_data["tick_volume"].mean()
         m15_atr = _estimate_m15_atr(m15_data)
+        if m15_atr is None:
+            # A3: decline rather than invent. `sweep_min` depends on this value
+            # and a fabricated 15.0 would set a $1.80 floor from no data.
+            return {
+                "sweep_confirmed": False,
+                "sweep_type": None,
+                "sweep_level": None,
+                "sweep_wick_low": None,
+                "sweep_wick_high": None,
+                "sweep_wick": None,
+                "sweep_body": None,
+                "sweep_volume": None,
+                "sweep_quality": 0.0,
+                "reasoning": "M15 ATR unavailable; cannot size the sweep band",
+            }
         # U8 (PHASE_2_ISSUES.md). These were `max(2.5, ...)` and `max(30.0, ...)`
         # compared against a wick depth in QUOTE CURRENCY, so they acted as
         # $2.50 and $30.00 -- 25 and 300 pips. This module's own docstring says

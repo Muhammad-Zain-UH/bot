@@ -53,6 +53,8 @@ from core.risk_limits import (
     overdue_positions,
 )
 from core.signal_log import SIGNAL_LOG_COLUMNS as CORE_SIGNAL_LOG_COLUMNS
+from core.candles import InsufficientBarsError, last_closed_bar
+from core.indicators import atr_wilder
 from core.symbols import XAUUSD_2DIGIT as XAUUSD_SPEC
 from core.signal_log import append_signal_row
 from core.units import Percentage
@@ -893,10 +895,29 @@ def analyze_entry(
         analysis["regime_info"] = regime_info
 
         m5_atr = regime_info.get("m5_atr", 0.0)
+        # A4 (PHASE_2_ISSUES.md). This was `mean(high - low)` over 14 bars,
+        # which IGNORES GAPS: true range includes |high - prev_close| and
+        # |low - prev_close|, so a bar that opens away from the previous close
+        # has a true range larger than its own high-low span. On a 24x5
+        # instrument that is every Monday open and every session gap.
+        #
+        # IMPORTANT, and recorded here rather than left implicit: this changes
+        # what L2_MIN_H1_RANGE_USD is compared AGAINST. The floor's value is
+        # unchanged at 8.0 by the decision recorded at that constant, but
+        # `h1_atr` is now a different quantity -- a gap-aware true-range
+        # average rather than a mean high-low span -- so the floor means
+        # something slightly different even though the number did not move.
+        # Measured consequence is in research/ATR_BAR_CONVENTION_REPORT.md.
+        #
+        # Returns None on a short or unusable frame, which the L2 gate already
+        # handles as "indicator unavailable" rather than as zero volatility.
         h1_atr = None
-        if h1_data is not None and len(h1_data) >= 14:
-            ranges_h1 = h1_data["high"].tail(14) - h1_data["low"].tail(14)
-            h1_atr = ranges_h1.mean()
+        if h1_data is not None:
+            try:
+                h1_atr = float(atr_wilder(h1_data, period=14).value.value)
+            except (InsufficientBarsError, ValueError, KeyError, TypeError) as exc:
+                logger.debug(f"[L2] H1 ATR unavailable: {exc}")
+                h1_atr = None
         if current_price and h1_atr is not None and m5_atr:
             session_name = get_session_name()
             current_spread = regime_info.get("current_spread", 0.5)
@@ -1258,7 +1279,15 @@ def analyze_entry(
         # ============ LAYER 8: ENTRY TRIGGERS ============
         # Spread already checked at L0; no need to re-check here.
 
-        confirmed_m5_close = float(m5_data.iloc[-2]["close"]) if m5_data is not None and len(m5_data) >= 2 else float(current_price) if current_price is not None else 0.0
+        # B4 (P0). This passed `iloc[-2]["close"]` into L8 as `current_price` --
+        # a bar that closed five minutes ago. The live tick IS fetched earlier in
+        # the loop, logged, and then discarded. The frame is closed-only, so
+        # `last_closed_bar` is the most recent completed bar.
+        confirmed_m5_close = (
+            float(last_closed_bar(m5_data)["close"])
+            if m5_data is not None and len(m5_data) >= 1
+            else float(current_price) if current_price is not None else 0.0
+        )
         entry = (
             get_entry_trigger(
                 m5_data=m5_data,

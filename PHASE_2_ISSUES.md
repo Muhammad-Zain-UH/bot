@@ -137,12 +137,12 @@ measure the result.
 
 | # | Location | Uses | Effect | Priority |
 |---|---|---|---|---|
-| B1 | `entry_engine.py:158` `detect_rejection_candle` | `iloc[-2]` | one bar stale (5 min on M5) | P1 |
-| B2 | `entry_engine.py:196` `detect_momentum_confirmation` | `iloc[:-1].tail(3)` | one bar stale | P1 |
-| B3 | `entry_engine.py:~490` `_evaluate_pullback_entry` | `iloc[-2]["close"]` as entry price | entry priced off a stale bar | **P0** |
-| B4 | `main_production.py` `confirmed_m5_close` | `iloc[-2]["close"]` | stale price passed as `current_price` into L8 | **P0** |
-| B5 | `pullback_detector.py:221` | `recent.iloc[:-1]` | **double-drop** — removes a forming bar that is not there | P1 |
-| B6 | `entry_engine.py:228` `detect_displacement_candle` | `iloc[-1]` | correct — but inconsistent with B1/B2 in the same pass | P1 |
+| B1 | `entry_engine.py:158` `detect_rejection_candle` | `iloc[-2]` | **UNRESOLVED -- implemented, measured, reverted.** For: the variable is named `current`; `get_market_data(closed_only=True)` drops the forming bar on all three fetch paths; `detect_displacement_candle` in the same module reads `iloc[-1]` and the two are alternative confirmations on one pass; `core/candles.py` lists it as stale. Against: **both** integration fixtures place the rejection at `iloc[-2]` and the break at `iloc[-1]`, and `TRIGGER_BARS` is commented "two M5 candles: rejection, then the break" -- the only statement of intent anywhere. Changing it took both fixtures to zero signals (60 of 64 failures). Resolving it needs both fixtures rebuilt to clear all eight layers with the rejection candle last -- a separate measured pass. | **open** |
+| B2 | `entry_engine.py:196` `detect_momentum_confirmation` | ~~`iloc[:-1].tail(3)`~~ **FIXED.** `closed_bars().tail(3)`, so `current_volume` is the current bar's. **`prev_rsi`'s `iloc[:-1]` is deliberately unchanged** -- it wants the previous bar's RSI to compare against `curr_rsi`, which is the intent, not the bug. | ~~P1~~ |
+| B3 | `entry_engine.py:~490` `_evaluate_pullback_entry` | ~~`iloc[-2]["close"]` as entry price~~ **FIXED.** `last_closed_bar()` on both the M5 and M1 legs (the M1 one was 2 minutes stale). A pullback was priced off a five-minute-old bar while a momentum entry on the same pass used the current one. | ~~P0~~ |
+| B4 | `main_production.py` `confirmed_m5_close` | ~~`iloc[-2]["close"]`~~ **FIXED.** `last_closed_bar()`. The live tick is still fetched, logged and discarded -- that part is unaddressed and belongs with the E-items. | ~~P0~~ |
+| B5 | `pullback_detector.py:221` | ~~`recent.iloc[:-1]` -- **double-drop**~~ **FIXED.** `closed_bars(recent)`, which is a no-op under `CLOSED_ONLY` and therefore idempotent. Detection had been running **two** bars stale. `core/candles.py`'s own docstring already named this bug. | ~~P1~~ |
+| B6 | `entry_engine.py:228` `detect_displacement_candle` | ~~`iloc[-1]` -- correct, but inconsistent with B1/B2~~ **RESOLVED by fixing B1/B2.** Unchanged; it was already right, and the inconsistency is gone because the others moved to it. | ~~P1~~ |
 
 B3/B4 mean a **pullback entry is priced off a bar that closed five minutes ago
 while a momentum entry uses the current one**, on a strategy targeting 15–25 pip
@@ -154,6 +154,35 @@ and then discarded.
 
 ---
 
+## 3a. NEW -- found during the A/B migration, deliberately NOT fixed
+
+Found while migrating A3, recorded rather than folded in. Widening a
+pre-registered change mid-flight is how a measured correctness fix becomes an
+unmeasured one, so these are new items with their own future measurement.
+
+| # | Location | Code | Intended | Actual | Priority |
+|---|---|---|---|---|---|
+| U13 | `sweep_detector.py` `assess_liquidity_gate` | `near_buffer = max(2.5, m15_atr * 0.20)` | 2.5 pips? | **$2.50 = 25 pips** | P1 |
+| U14 | `sweep_detector.py` `assess_liquidity_gate` | `momentum_buffer = max(5.0, m15_atr * 0.50)` | 5 pips? | **$5.00 = 50 pips** | P1 |
+
+Same shape as U1-U12 -- a bare float compared against a quote-currency distance
+-- but **not in that register's enumeration**, so they were outside the scope of
+`research/atr_bar_convention_spec.md` and outside the unit migration's too.
+
+Two things make them worth a separate pass rather than an immediate fix:
+
+1. **Their intent is unrecorded**, exactly as U1's was. Nothing names these as
+   pips. U1 is the precedent for what happens when a name is treated as a
+   specification: the "correction" put a stop $0.95 from entry and the fixture
+   was stopped out on the next bar. These get measured before they get changed.
+2. **They now sit beside a corrected ATR.** The `x0.20` and `x0.50` terms act on
+   a true Wilder ATR after A3's fix, roughly 2.1x its previous value, so their
+   *relative* weight against the constants has already shifted. Whatever is done
+   to the constants should be measured against the post-A3 baseline, not the one
+   before it.
+
+---
+
 ## 4. ATR FRAGMENTATION
 
 `core/indicators.atr_wilder` is the canonical definition. Four incompatible
@@ -161,10 +190,10 @@ implementations remain live:
 
 | # | Location | Definition | Priority |
 |---|---|---|---|
-| A1 | `indicators.py:130` | `pandas_ta.atr` — true Wilder ATR (correct) | P2 |
-| A2 | `pullback_detector.py:69` `_estimate_recent_atr` | correct true range, but **SMA-14**, not Wilder | P1 |
-| A3 | `sweep_detector.py:51` `_estimate_m15_atr` | `close.diff().abs().rolling(14).mean()` — **ignores high/low entirely** | **P0** |
-| A4 | `main_production.py` `h1_atr` | `mean(high - low)` over 14 bars — **ignores gaps** | P1 |
+| A1 | `indicators.py:130` | `pandas_ta.atr` -- true Wilder ATR (correct) | ~~P2~~ **VERIFIED.** Asserted equal to `core.indicators.atr_wilder` to 6 dp on real H1 bars rather than edited (`tests/core/test_atr_single_definition.py`). |
+| A2 | `pullback_detector.py:69` `_estimate_recent_atr` | ~~correct true range, but **SMA-14**, not Wilder~~ **FIXED.** Delegates to `atr_wilder`. Had two faults: SMA rather than Wilder smoothing, and `min_periods=3` silently producing a "14-period ATR" from three observations. | ~~P1~~ |
+| A3 | `sweep_detector.py:51` `_estimate_m15_atr` | ~~`close.diff().abs().rolling(14).mean()` -- **ignores high/low entirely**~~ **FIXED.** Delegates to `atr_wilder`. Measured over all 100,020 M15 bars it understated true Wilder ATR by **2.1x** (median $1.516 vs $3.084). This was the P0: once U8's unit fix moved `sweep_min`'s floor from $2.50 to $0.25, `m15_atr * 0.12` began to bind -- so a non-ATR set the busiest gate in the system. | ~~P0~~ |
+| A4 | `main_production.py` `h1_atr` | ~~`mean(high - low)` over 14 bars -- **ignores gaps**~~ **FIXED.** Delegates to `atr_wilder`. Also had two faults: no previous-close terms (so every session gap was invisible) and SMA rather than Wilder. Aggregate effect is modest (L2 block rate 87.60% -> 88.25% over all H1 bars) but per-bar the ratio spans 0.77-1.40. **Note:** this changes what `L2_MIN_H1_RANGE_USD` is compared against -- the floor's value is unchanged but the quantity is now gap-aware, so its meaning shifted. Recorded at that constant. | ~~P1~~ |
 
 A3 is the most serious: it cannot see intrabar range at all, so on a wide-range
 bar it reports a small value. That understated ATR sets `sweep_min` (U8).

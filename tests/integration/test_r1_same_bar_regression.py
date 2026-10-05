@@ -54,8 +54,28 @@ from tests.integration._harness import long_dataset, run_replay, short_dataset
 #                 short ca9b8a9b2f07b330bbcf9306cd38de9d31ba5d2fd37d5b6bde08f6c728626559
 #   before 5B-ii: long  67c95bf0960018afb29e1052fe4191429cd51ec11b3be7060e17fec4ef3aeb82
 #                 short 057d9b75b86133a8848e06442243eb1e0d3ab5b5ed0d232e8143a186767b836e
-LONG_LEDGER_FINGERPRINT = "33ac2bb259d5662f386913a97b6ca0524eec7f13a0e3ceb4d455d6f65b010317"
-SHORT_LEDGER_FINGERPRINT = "ce733aeb7d6220270b9cc4864a190a2970faa0981286895ef09c990d81228109"
+# Re-pinned a third time, for a single identified reason: the A1-A4 ATR
+# unification and B5's double-drop fix (research/atr_bar_convention_spec.md).
+#
+# REPRESENTATION ONLY -- nothing economic moved, and that is checked rather than
+# asserted. Every economic field is identical to the previous pin:
+#
+#     outcome      TARGET_HIT / TARGET_HIT    unchanged
+#     bars_held    14 / 5                     unchanged (LONG/SHORT_BARS_HELD)
+#     exit_time    08:15:00 / 07:30:00        unchanged
+#     exit_price   2545.1130098575254 / 2171.5830098518823   unchanged
+#     price_risk   9.14642386182777 / 3.65357613817514        unchanged
+#
+# The fingerprint hashes `SimulatedTrade.to_dict()`, which is `asdict()` and so
+# carries ATR-derived metadata alongside the economics. Four incompatible ATR
+# definitions became one, so those fields moved while the trade did not. The
+# assertions below on outcome, exit bar, exit price, R and bars_held are the
+# ones that would have caught an economic change, and they all still pass
+# against their ORIGINAL values.
+#   before A1-A4: long  33ac2bb259d5662f386913a97b6ca0524eec7f13a0e3ceb4d455d6f65b010317
+#                 short ce733aeb7d6220270b9cc4864a190a2970faa0981286895ef09c990d81228109
+LONG_LEDGER_FINGERPRINT = "64dfd91221eefb470090434333b0ff7c3640c4cd323dd2c1032b16bc80a71087"
+SHORT_LEDGER_FINGERPRINT = "ecbbcf622dfab37413180b5a2c1efa70da6114084d4a43e94ec67468dab5278c"
 
 # Still includes the fill bar, which is the R1 property this file exists for.
 # The counts fell because the target moved in, not because the accounting did:
