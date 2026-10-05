@@ -162,6 +162,43 @@ INTRADAY_RISK_PER_TRADE: float = 0.5   # Risk 0.5% per trade
 INTRADAY_LOT_SIZE_MIN: float = 0.01
 INTRADAY_LOT_SIZE_MAX: float = 0.1
 
+# ----------------------------------------------------------------------
+# ACCOUNT-LEVEL RISK LIMITS
+#
+# Enforced by core/risk_limits.py and evaluated in
+# main_production.check_pre_trade_gates. Before these existed, the system had
+# no drawdown limit, no consecutive-loss limit and no equity kill switch of any
+# kind (PHASE_2_ISSUES.md R7), and its daily-loss breaker was structurally
+# incapable of firing because the caller never supplied the loss figure (R3).
+#
+# These are deliberately conservative. They are NOT fitted to any backtest --
+# no measurement was used to choose them, because selecting a risk limit by
+# what would have maximised a historical return is how a risk limit stops
+# being one. Change them because the account's tolerance changed, not because
+# a backtest preferred a different number.
+# ----------------------------------------------------------------------
+
+# Realised loss in one UTC trading day, as a percentage of that day's OPENING
+# balance. Breaching this blocks new entries until the next trading day.
+# main_production.CONFIG["max_daily_loss_percent"] held 5.0 while being
+# unreachable; this is the enforced figure.
+MAX_DAILY_LOSS_PERCENT: float = 3.0
+
+# Peak-to-current equity decline, as a percentage of peak equity. This is the
+# kill switch: breaching it HALTS trading and does not self-clear. Set well
+# inside the -45.25% drawdown that buy-and-hold gold produced on the research
+# TRAIN arm, because a leveraged account cannot sit through that.
+MAX_DRAWDOWN_PERCENT: float = 15.0
+
+# Consecutive losing closes before new entries are blocked.
+MAX_CONSECUTIVE_LOSSES: int = 4
+
+# Total open volume across all positions, in lots. `max_concurrent_trades = 3`
+# capped the position COUNT on a single symbol, which is three times the same
+# directional risk and not an exposure limit at all (R8). This is the limit a
+# count cannot express.
+MAX_OPEN_LOTS: float = 0.30
+
 # Entry filter: require CVD divergence confirmation (bot5-15 feature)
 REQUIRE_CVD_DIVERGENCE: bool = False  # Set to True to enforce
 CVD_DIVERGENCE_WEIGHT: float = 0.18   # +18% confidence if confirmed (institutional signal)
