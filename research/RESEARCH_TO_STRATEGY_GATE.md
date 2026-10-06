@@ -721,3 +721,29 @@ that any strategy choice is optimal.
 
 It defines what a future hypothesis must demonstrate. Nothing in it should be
 read as a prediction that something will.
+
+## V2 amendments (2026-10)
+
+Copied verbatim from `docs/ROADMAP_V2.md` §5 (owner decisions D3–D5).
+
+1. **Economics per trade.** For trade-based forms the economic test is: mean
+   net result per trade > 0, where net = gross − round-turn cost at the actual
+   time of entry and exit (`(spread_entry + spread_exit)/2 × k_cost`, plus
+   financing if held past 17:00 NY). Evaluate at 1× and 2× cost. The
+   52-round-turn cap applies only to exposure overlays.
+2. **Benchmark by form.** Long/flat exposure overlays → buy-and-hold (existing
+   rule). Long/short or intraday forms → cash, plus a drift control (both legs
+   reported separately, and a drift-adjusted version must agree in sign).
+3. **Cost era.** Statistics are computed on gross mid returns in TRAIN.
+   Economics are judged in DEV at DEV-era costs, because that is the cost
+   environment a live bot faces.
+4. **Multiple testing (D4).** TRAIN significance threshold = Bonferroni over
+   the V2 cumulative test count (two-sided, α = 0.05). DEV replication =
+   one-sided p < 0.05 in the direction fixed by TRAIN, with no re-fitting.
+5. **External-prior confirmation (D5)**, for H10 and H11 only: net Sharpe > 0
+   (H10) or Sharpe and max drawdown better than hold (H11) in **both** TRAIN
+   and DEV; no single era supplies more than 60% of cumulative net P&L; Sharpe
+   standard error disclosed. Significance is not required and not claimed.
+6. **Reports.** One page, template in `research/templates/`. Verdict first.
+
+Where these conflict with earlier sections, these govern.

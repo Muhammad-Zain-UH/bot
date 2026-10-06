@@ -1,3 +1,5 @@
+> **CLOSED 2026-10-06 — not pursued, strategy frozen (D1). See `docs/LEGACY_FROZEN.md`.**
+
 # Phase 8 — Research Ledger and Experimental Framework
 
 **Framework only. No experiment has been run. No production code, test, pin,
