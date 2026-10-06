@@ -291,6 +291,17 @@ def detect_rejection_candle(m5_data: pd.DataFrame, direction: str) -> dict[str, 
         # and shipped. Resolving B1 needs the two fixtures rebuilt to clear all
         # eight layers with the rejection candle last, which is a separate
         # measured pass -- see PHASE_2_ISSUES.md B1.
+        #
+        # AND THE DECISIVE MEASUREMENT: baseline_014 (this reading) has a funnel
+        # IDENTICAL to baseline_013 (the other reading) at every one of eight
+        # layers across 15,735 decisions on real bars. B1 moves not one gate
+        # decision. The only thing sensitive to it was two synthetic fixtures
+        # tuned against the old index.
+        #
+        # It is not neutral at the FILL level -- the same six signals resolved
+        # differently because this feeds the pullback entry's geometry -- but six
+        # trades carries no performance information, so that is not evidence for
+        # either reading.
         current = m5_data.iloc[-2]
         c_open = _to_float(current["open"])
         c_close = _to_float(current["close"])
