@@ -50,3 +50,7 @@ data/research_v1/
 
 # Phase 1 derived panels: large generated artefacts, rebuilt from data/research_v1.
 research/phase1/*.pkl
+
+# V2 Dukascopy dataset: raw and built market data (data, not source).
+# Integrity is guaranteed by research/dukascopy_v1_fingerprints.json.
+data/dukascopy_v1/

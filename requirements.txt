@@ -19,6 +19,12 @@ anthropic>=0.28.0
 # News Feeds (RSS feed parsing for news gate layer)
 feedparser>=6.0.10
 
+# V2 research data pipeline (gold/data): Parquet frames, Dukascopy S3 export,
+# and the IANA time-zone database that zoneinfo needs on Windows
+pyarrow>=14.0
+boto3>=1.34
+tzdata>=2024.1
+
 # ============================================================================
 # NOTES:
 # - All dependencies are pure Python and cross-platform
