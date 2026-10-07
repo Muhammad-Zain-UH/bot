@@ -1,0 +1,990 @@
+{
+  "probe_utc": "2026-10-01T10:59:10.338372+00:00",
+  "prior_maxbars_recorded": 100000,
+  "mt5_python_package": "5.0.5640",
+  "maxbars": {
+    "prior_recorded": 100000,
+    "live_terminal_info": 100000000,
+    "raised": true
+  },
+  "terminal_build": 5739,
+  "depth_year_scan": {
+    "M1": {
+      "years_with_data": {
+        "2003": 1,
+        "2004": 1,
+        "2005": 1,
+        "2006": 1,
+        "2007": 1,
+        "2008": 1,
+        "2009": 1,
+        "2010": 1,
+        "2011": 1,
+        "2012": 1,
+        "2013": 1,
+        "2014": 1,
+        "2015": 1,
+        "2016": 1,
+        "2017": 1,
+        "2018": 1,
+        "2019": 1,
+        "2020": 1,
+        "2021": 1,
+        "2022": 1,
+        "2023": 1,
+        "2024": 1,
+        "2025": 1,
+        "2026": 1
+      },
+      "expected_count_per_window": 6600,
+      "real_years": [],
+      "stub_years": [
+        2003,
+        2004,
+        2005,
+        2006,
+        2007,
+        2008,
+        2009,
+        2010,
+        2011,
+        2012,
+        2013,
+        2014,
+        2015,
+        2016,
+        2017,
+        2018,
+        2019,
+        2020,
+        2021,
+        2022,
+        2023,
+        2024,
+        2025,
+        2026
+      ],
+      "zero_years": [],
+      "earliest_real_year": null,
+      "latest_real_year": null,
+      "real_years_count": 0,
+      "real_contiguous": null
+    },
+    "M5": {
+      "years_with_data": {
+        "2003": 1,
+        "2004": 1,
+        "2005": 1,
+        "2006": 1,
+        "2007": 1,
+        "2008": 1,
+        "2009": 1,
+        "2010": 1,
+        "2011": 1,
+        "2012": 1,
+        "2013": 1,
+        "2014": 1,
+        "2015": 1,
+        "2016": 1,
+        "2017": 1,
+        "2018": 1,
+        "2019": 1,
+        "2020": 1,
+        "2021": 1,
+        "2022": 1,
+        "2023": 1,
+        "2024": 1,
+        "2025": 1380,
+        "2026": 1320
+      },
+      "expected_count_per_window": 1320,
+      "real_years": [
+        2025,
+        2026
+      ],
+      "stub_years": [
+        2003,
+        2004,
+        2005,
+        2006,
+        2007,
+        2008,
+        2009,
+        2010,
+        2011,
+        2012,
+        2013,
+        2014,
+        2015,
+        2016,
+        2017,
+        2018,
+        2019,
+        2020,
+        2021,
+        2022,
+        2023,
+        2024
+      ],
+      "zero_years": [],
+      "earliest_real_year": 2025,
+      "latest_real_year": 2026,
+      "real_years_count": 2,
+      "real_contiguous": true
+    },
+    "M15": {
+      "years_with_data": {
+        "2003": 1,
+        "2004": 1,
+        "2005": 1,
+        "2006": 1,
+        "2007": 1,
+        "2008": 1,
+        "2009": 1,
+        "2010": 1,
+        "2011": 1,
+        "2012": 1,
+        "2013": 1,
+        "2014": 1,
+        "2015": 1,
+        "2016": 1,
+        "2017": 1,
+        "2018": 1,
+        "2019": 1,
+        "2020": 1,
+        "2021": 1,
+        "2022": 1,
+        "2023": 460,
+        "2024": 460,
+        "2025": 460,
+        "2026": 440
+      },
+      "expected_count_per_window": 440,
+      "real_years": [
+        2023,
+        2024,
+        2025,
+        2026
+      ],
+      "stub_years": [
+        2003,
+        2004,
+        2005,
+        2006,
+        2007,
+        2008,
+        2009,
+        2010,
+        2011,
+        2012,
+        2013,
+        2014,
+        2015,
+        2016,
+        2017,
+        2018,
+        2019,
+        2020,
+        2021,
+        2022
+      ],
+      "zero_years": [],
+      "earliest_real_year": 2023,
+      "latest_real_year": 2026,
+      "real_years_count": 4,
+      "real_contiguous": true
+    },
+    "H1": {
+      "years_with_data": {
+        "2003": 1,
+        "2004": 1,
+        "2005": 1,
+        "2006": 1,
+        "2007": 1,
+        "2008": 1,
+        "2009": 1,
+        "2010": 110,
+        "2011": 115,
+        "2012": 115,
+        "2013": 115,
+        "2014": 115,
+        "2015": 115,
+        "2016": 115,
+        "2017": 115,
+        "2018": 115,
+        "2019": 115,
+        "2020": 115,
+        "2021": 115,
+        "2022": 115,
+        "2023": 115,
+        "2024": 115,
+        "2025": 115,
+        "2026": 110
+      },
+      "expected_count_per_window": 110,
+      "real_years": [
+        2010,
+        2011,
+        2012,
+        2013,
+        2014,
+        2015,
+        2016,
+        2017,
+        2018,
+        2019,
+        2020,
+        2021,
+        2022,
+        2023,
+        2024,
+        2025,
+        2026
+      ],
+      "stub_years": [
+        2003,
+        2004,
+        2005,
+        2006,
+        2007,
+        2008,
+        2009
+      ],
+      "zero_years": [],
+      "earliest_real_year": 2010,
+      "latest_real_year": 2026,
+      "real_years_count": 17,
+      "real_contiguous": true
+    },
+    "H4": {
+      "years_with_data": {
+        "2003": 1,
+        "2004": 1,
+        "2005": 30,
+        "2006": 31,
+        "2007": 31,
+        "2008": 30,
+        "2009": 31,
+        "2010": 31,
+        "2011": 31,
+        "2012": 31,
+        "2013": 30,
+        "2014": 30,
+        "2015": 31,
+        "2016": 31,
+        "2017": 31,
+        "2018": 31,
+        "2019": 30,
+        "2020": 31,
+        "2021": 31,
+        "2022": 31,
+        "2023": 31,
+        "2024": 30,
+        "2025": 30,
+        "2026": 31
+      },
+      "expected_count_per_window": 27,
+      "real_years": [
+        2005,
+        2006,
+        2007,
+        2008,
+        2009,
+        2010,
+        2011,
+        2012,
+        2013,
+        2014,
+        2015,
+        2016,
+        2017,
+        2018,
+        2019,
+        2020,
+        2021,
+        2022,
+        2023,
+        2024,
+        2025,
+        2026
+      ],
+      "stub_years": [
+        2003,
+        2004
+      ],
+      "zero_years": [],
+      "earliest_real_year": 2005,
+      "latest_real_year": 2026,
+      "real_years_count": 22,
+      "real_contiguous": true
+    }
+  },
+  "from_pos_cap": {
+    "M1": {
+      "99999": {
+        "rows": 99999,
+        "error": null
+      },
+      "150000": {
+        "rows": 100255,
+        "error": null
+      },
+      "500000": {
+        "rows": 100255,
+        "error": null
+      }
+    },
+    "M5": {
+      "99999": {
+        "rows": 99999,
+        "error": null
+      },
+      "150000": {
+        "rows": 100051,
+        "error": null
+      },
+      "500000": {
+        "rows": 100051,
+        "error": null
+      }
+    },
+    "M15": {
+      "99999": {
+        "rows": 99999,
+        "error": null
+      },
+      "150000": {
+        "rows": 100017,
+        "error": null
+      },
+      "500000": {
+        "rows": 100017,
+        "error": null
+      }
+    },
+    "H1": {
+      "99999": {
+        "rows": 99999,
+        "error": null
+      },
+      "150000": {
+        "rows": 100000,
+        "error": null
+      },
+      "500000": {
+        "rows": 100000,
+        "error": null
+      }
+    },
+    "H4": {
+      "99999": {
+        "rows": 34174,
+        "error": null
+      },
+      "150000": {
+        "rows": 34174,
+        "error": null
+      },
+      "500000": {
+        "rows": 34174,
+        "error": null
+      }
+    }
+  },
+  "range_widest": {
+    "M1": {
+      "skipped": "no served year found"
+    },
+    "M5": {
+      "rows": 100015,
+      "earliest_utc": "2025-04-25T04:55:00+00:00",
+      "latest_utc": "2026-10-01T10:55:00+00:00",
+      "years": 1.43,
+      "exceeds_maxbars": true
+    },
+    "M15": {
+      "rows": 88032,
+      "earliest_utc": "2023-01-03T01:00:00+00:00",
+      "latest_utc": "2026-10-01T10:45:00+00:00",
+      "years": 3.74,
+      "exceeds_maxbars": false
+    },
+    "H1": {
+      "rows": 98044,
+      "earliest_utc": "2010-01-04T01:00:00+00:00",
+      "latest_utc": "2026-10-01T10:00:00+00:00",
+      "years": 16.74,
+      "exceeds_maxbars": false
+    },
+    "H4": {
+      "rows": 33357,
+      "earliest_utc": "2005-01-03T00:00:00+00:00",
+      "latest_utc": "2026-10-01T08:00:00+00:00",
+      "years": 21.74,
+      "exceeds_maxbars": false
+    }
+  },
+  "consistency": {
+    "M1": {
+      "rows": 50000,
+      "earliest_utc": "2026-08-10T15:06:00+00:00",
+      "latest_utc": "2026-10-01T13:59:00+00:00",
+      "monotonic": true,
+      "duplicate_timestamps": 0,
+      "high_lt_low": 0,
+      "high_below_body": 0,
+      "low_above_body": 0,
+      "non_positive_prices": 0,
+      "nan_ohlc": 0,
+      "zero_tick_volume": 0,
+      "gaps": {
+        "weekend_sized_gt48h": 7,
+        "intraday_le6h": 32,
+        "other_6h_to_48h": 0,
+        "max_gap_hours": 50.02
+      },
+      "coverage": {
+        "market_minutes_present": 50000,
+        "calendar_minutes_spanned": 74813,
+        "ratio": 0.6683
+      }
+    },
+    "M5": {
+      "rows": 50000,
+      "earliest_utc": "2026-01-09T18:10:00+00:00",
+      "latest_utc": "2026-10-01T13:55:00+00:00",
+      "monotonic": true,
+      "duplicate_timestamps": 0,
+      "high_lt_low": 0,
+      "high_below_body": 0,
+      "low_above_body": 0,
+      "non_positive_prices": 0,
+      "nan_ohlc": 0,
+      "zero_tick_volume": 0,
+      "gaps": {
+        "weekend_sized_gt48h": 38,
+        "intraday_le6h": 151,
+        "other_6h_to_48h": 0,
+        "max_gap_hours": 74.08
+      },
+      "coverage": {
+        "market_minutes_present": 250000,
+        "calendar_minutes_spanned": 381345,
+        "ratio": 0.6556
+      }
+    },
+    "M15": {
+      "rows": 50000,
+      "earliest_utc": "2024-08-09T23:15:00+00:00",
+      "latest_utc": "2026-10-01T13:45:00+00:00",
+      "monotonic": true,
+      "duplicate_timestamps": 0,
+      "high_lt_low": 0,
+      "high_below_body": 0,
+      "low_above_body": 0,
+      "non_positive_prices": 0,
+      "nan_ohlc": 0,
+      "zero_tick_volume": 0,
+      "gaps": {
+        "weekend_sized_gt48h": 112,
+        "intraday_le6h": 452,
+        "other_6h_to_48h": 6,
+        "max_gap_hours": 74.25
+      },
+      "coverage": {
+        "market_minutes_present": 750000,
+        "calendar_minutes_spanned": 1126950,
+        "ratio": 0.6655
+      }
+    },
+    "H1": {
+      "rows": 50000,
+      "earliest_utc": "2018-04-05T10:00:00+00:00",
+      "latest_utc": "2026-10-01T13:00:00+00:00",
+      "monotonic": true,
+      "duplicate_timestamps": 0,
+      "high_lt_low": 0,
+      "high_below_body": 0,
+      "low_above_body": 0,
+      "non_positive_prices": 0,
+      "nan_ohlc": 0,
+      "zero_tick_volume": 0,
+      "gaps": {
+        "weekend_sized_gt48h": 443,
+        "intraday_le6h": 1747,
+        "other_6h_to_48h": 9,
+        "max_gap_hours": 77.0
+      },
+      "coverage": {
+        "market_minutes_present": 3000000,
+        "calendar_minutes_spanned": 4465620,
+        "ratio": 0.6718
+      }
+    },
+    "H4": {
+      "rows": 34174,
+      "earliest_utc": "2004-06-11T04:00:00+00:00",
+      "latest_utc": "2026-10-01T12:00:00+00:00",
+      "monotonic": true,
+      "duplicate_timestamps": 0,
+      "high_lt_low": 0,
+      "high_below_body": 0,
+      "low_above_body": 0,
+      "non_positive_prices": 0,
+      "nan_ohlc": 0,
+      "zero_tick_volume": 0,
+      "gaps": {
+        "weekend_sized_gt48h": 1164,
+        "intraday_le6h": 0,
+        "other_6h_to_48h": 91,
+        "max_gap_hours": 112.0
+      },
+      "coverage": {
+        "market_minutes_present": 8201760,
+        "calendar_minutes_spanned": 11732160,
+        "ratio": 0.6991
+      }
+    }
+  },
+  "session_alignment": {
+    "m5_bars_sampled": 60000,
+    "bars_per_utc_hour": {
+      "0": 144,
+      "1": 2604,
+      "2": 2679,
+      "3": 2697,
+      "4": 2700,
+      "5": 2700,
+      "6": 2700,
+      "7": 2700,
+      "8": 2700,
+      "9": 2700,
+      "10": 2699,
+      "11": 2700,
+      "12": 2700,
+      "13": 2700,
+      "14": 2688,
+      "15": 2686,
+      "16": 2688,
+      "17": 2688,
+      "18": 2688,
+      "19": 2688,
+      "20": 2663,
+      "21": 2624,
+      "22": 2587,
+      "23": 877
+    },
+    "utc_hours_with_zero_bars": [],
+    "m5_minute_offsets": [
+      0,
+      5,
+      10,
+      15,
+      20,
+      25,
+      30,
+      35,
+      40,
+      45,
+      50,
+      55
+    ],
+    "h1_minute_offsets": [
+      0
+    ],
+    "intraday_break_windows": {
+      "22:55 -> 01:00": 104,
+      "23:55 -> 01:00": 55,
+      "22:55 -> 00:00": 10,
+      "01:50 -> 02:05": 4,
+      "21:25 -> 01:00": 3
+    },
+    "weekend_windows": {
+      "Fri 22:55 -> Mon 01:00": 24,
+      "Fri 23:55 -> Mon 01:00": 14,
+      "Fri 22:55 -> Mon 00:00": 2,
+      "Fri 20:00 -> Mon 01:00": 2,
+      "Fri 21:40 -> Mon 01:00": 1
+    }
+  },
+  "cross_timeframe": {
+    "M5": {
+      "overlap_bars": 8001,
+      "max_abs_diff_usd": {
+        "open": 0.6300000000001091,
+        "high": 0.18999999999959982,
+        "low": 0.0,
+        "close": 0.0
+      },
+      "exact_match_counts": {
+        "open": 8000,
+        "high": 8000,
+        "low": 8001,
+        "close": 8001
+      },
+      "exact_match_pct": {
+        "open": 99.99,
+        "high": 99.99,
+        "low": 100.0,
+        "close": 100.0
+      }
+    },
+    "M15": {
+      "overlap_bars": 2667,
+      "max_abs_diff_usd": {
+        "open": 0.6300000000001091,
+        "high": 0.0,
+        "low": 0.0,
+        "close": 0.03999999999996362
+      },
+      "exact_match_counts": {
+        "open": 2666,
+        "high": 2667,
+        "low": 2667,
+        "close": 2666
+      },
+      "exact_match_pct": {
+        "open": 99.96,
+        "high": 100.0,
+        "low": 100.0,
+        "close": 99.96
+      }
+    },
+    "H1": {
+      "overlap_bars": 668,
+      "max_abs_diff_usd": {
+        "open": 1.319999999999709,
+        "high": 5.039999999999964,
+        "low": 0.28000000000065484,
+        "close": 0.03999999999996362
+      },
+      "exact_match_counts": {
+        "open": 667,
+        "high": 667,
+        "low": 667,
+        "close": 667
+      },
+      "exact_match_pct": {
+        "open": 99.85,
+        "high": 99.85,
+        "low": 99.85,
+        "close": 99.85
+      }
+    }
+  },
+  "tick_interval": {
+    "forward_scan": [
+      {
+        "date": "2025-04-01",
+        "ticks": 0
+      },
+      {
+        "date": "2025-04-04",
+        "ticks": 0
+      },
+      {
+        "date": "2025-04-07",
+        "ticks": 0
+      },
+      {
+        "date": "2025-04-10",
+        "ticks": 0
+      },
+      {
+        "date": "2025-04-16",
+        "ticks": 0
+      },
+      {
+        "date": "2025-04-22",
+        "ticks": 0
+      },
+      {
+        "date": "2025-04-25",
+        "ticks": 0
+      },
+      {
+        "date": "2025-04-28",
+        "ticks": 0
+      },
+      {
+        "date": "2025-05-01",
+        "ticks": 0
+      },
+      {
+        "date": "2025-05-07",
+        "ticks": 0
+      },
+      {
+        "date": "2025-05-13",
+        "ticks": 0
+      },
+      {
+        "date": "2025-05-16",
+        "ticks": 0
+      },
+      {
+        "date": "2025-05-19",
+        "ticks": 0
+      },
+      {
+        "date": "2025-05-22",
+        "ticks": 0
+      },
+      {
+        "date": "2025-05-28",
+        "ticks": 87293
+      }
+    ],
+    "first_contiguous_day": "2025-05-27",
+    "density_curve": [
+      {
+        "date": "2025-09-01",
+        "ticks": 80100
+      },
+      {
+        "date": "2025-09-04",
+        "ticks": 104501
+      },
+      {
+        "date": "2025-09-10",
+        "ticks": 91718
+      },
+      {
+        "date": "2025-09-16",
+        "ticks": 99239
+      },
+      {
+        "date": "2025-09-19",
+        "ticks": 88381
+      },
+      {
+        "date": "2025-09-22",
+        "ticks": 100211
+      },
+      {
+        "date": "2025-09-25",
+        "ticks": 109189
+      },
+      {
+        "date": "2025-10-01",
+        "ticks": 95143
+      },
+      {
+        "date": "2025-10-07",
+        "ticks": 100728
+      },
+      {
+        "date": "2025-10-10",
+        "ticks": 111104
+      },
+      {
+        "date": "2025-10-13",
+        "ticks": 123874
+      },
+      {
+        "date": "2025-10-16",
+        "ticks": 122213
+      },
+      {
+        "date": "2025-10-22",
+        "ticks": 121266
+      },
+      {
+        "date": "2025-10-28",
+        "ticks": 115851
+      },
+      {
+        "date": "2025-10-31",
+        "ticks": 112743
+      },
+      {
+        "date": "2025-11-03",
+        "ticks": 109625
+      },
+      {
+        "date": "2025-11-06",
+        "ticks": 104635
+      },
+      {
+        "date": "2025-11-12",
+        "ticks": 123625
+      },
+      {
+        "date": "2025-11-18",
+        "ticks": 123835
+      },
+      {
+        "date": "2025-11-21",
+        "ticks": 114750
+      },
+      {
+        "date": "2025-11-24",
+        "ticks": 112922
+      },
+      {
+        "date": "2025-11-27",
+        "ticks": 84684
+      },
+      {
+        "date": "2025-12-03",
+        "ticks": 109387
+      },
+      {
+        "date": "2025-12-09",
+        "ticks": 118317
+      },
+      {
+        "date": "2025-12-12",
+        "ticks": 896437
+      },
+      {
+        "date": "2025-12-15",
+        "ticks": 723593
+      },
+      {
+        "date": "2025-12-18",
+        "ticks": 771718
+      },
+      {
+        "date": "2025-12-24",
+        "ticks": 738377
+      },
+      {
+        "date": "2025-12-30",
+        "ticks": 907474
+      },
+      {
+        "date": "2026-01-02",
+        "ticks": 743338
+      },
+      {
+        "date": "2026-01-05",
+        "ticks": 849809
+      },
+      {
+        "date": "2026-01-08",
+        "ticks": 874181
+      },
+      {
+        "date": "2026-01-14",
+        "ticks": 880748
+      },
+      {
+        "date": "2026-01-20",
+        "ticks": 767732
+      },
+      {
+        "date": "2026-01-23",
+        "ticks": 786384
+      },
+      {
+        "date": "2026-01-26",
+        "ticks": 1121990
+      },
+      {
+        "date": "2026-01-29",
+        "ticks": 1230563
+      },
+      {
+        "date": "2026-02-04",
+        "ticks": 1066365
+      },
+      {
+        "date": "2026-02-10",
+        "ticks": 872570
+      },
+      {
+        "date": "2026-02-13",
+        "ticks": 832404
+      },
+      {
+        "date": "2026-02-16",
+        "ticks": 481913
+      },
+      {
+        "date": "2026-02-19",
+        "ticks": 625275
+      },
+      {
+        "date": "2026-02-25",
+        "ticks": 728532
+      }
+    ]
+  },
+  "status": "HISTORY_NOT_EXPANDED (M1/M5/M15/H1) + H4_NEWLY_MEASURED",
+  "completed_utc": "2026-10-01T11:00:32.548157+00:00",
+  "run_context": {
+    "after_manual_chart_navigation": true,
+    "gui_reported_oldest": {
+      "M1": "2026-06-17",
+      "M5": "2025-04-25",
+      "M15": "2022-06-30",
+      "H1": "2009-08-31",
+      "H4": "2004-06-11"
+    },
+    "maxbars_live": 100000000,
+    "terminal_build": 5739,
+    "restarted": false
+  },
+  "expansion_verdict": {
+    "M1": {
+      "previous": "2026-06-17",
+      "current": "2026-06-17",
+      "expanded": false,
+      "delta": "none"
+    },
+    "M5": {
+      "previous": "2025-04-25",
+      "current": "2025-04-25",
+      "expanded": false,
+      "delta": "none"
+    },
+    "M15": {
+      "previous": "2022-06-30",
+      "current": "2022-06-30",
+      "expanded": false,
+      "delta": "none"
+    },
+    "H1": {
+      "previous": "2009-08-18",
+      "current": "2009-08-18 (from_pos) / 2010-01-04 (range)",
+      "expanded": false,
+      "delta": "none"
+    },
+    "H4": {
+      "previous": "not probed",
+      "current": "2004-06-11",
+      "expanded": "N/A - first measurement",
+      "years": 22.3
+    }
+  },
+  "h4_detail": {
+    "earliest_from_pos": "2004-06-11",
+    "rows_held": 34174,
+    "years": 22.3,
+    "earliest_real_year_in_scan": 2005,
+    "why_2004_shows_stub": "the scan probes a 7-day window each JUNE; H4 data begins 2004-06-11, after the 2004-06-01..08 window, so 2004 reads as a stub. from_pos confirms 2004-06-11.",
+    "real_years": 22,
+    "contiguous": true,
+    "not_capped": "all three request sizes (99,999 / 150,000 / 500,000) return the same 34,174 rows, so H4 is COMPLETE, not truncated",
+    "coverage": 0.6991,
+    "max_gap_hours": 112.0
+  },
+  "materialisation_ceiling": {
+    "observed": "~100,000 bars per timeframe for M1/M5/M15/H1 even with MaxBars at 1e8",
+    "rows_held": {
+      "M1": 100255,
+      "M5": 100051,
+      "M15": 100017,
+      "H1": 100000,
+      "H4": 34174
+    },
+    "interpretation": "the ceiling is a per-timeframe materialisation limit, not the MaxBars setting. H4 escapes it only because 22.3 years of H4 is 34,174 bars -- a third of what M1 consumes in 3.5 months.",
+    "consequence": "coarse timeframes get decades, fine timeframes get months"
+  },
+  "manual_navigation_effect": {
+    "result": "none for M1/M5/M15/H1",
+    "evidence": "floors identical to the pre-navigation probe; GUI-reported oldest dates equal the API floors exactly, i.e. the charts are already showing everything the terminal holds",
+    "earlier_api_sync_test": "copy_rates_range at old anchors re-requested after 60s/180s/360s stayed at the 1-row sentinel"
+  }
+}

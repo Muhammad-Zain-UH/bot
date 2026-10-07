@@ -1,0 +1,135 @@
+{
+  "bias_label": {
+    "BEARISH": 7291,
+    "BULLISH": 6939,
+    "NEUTRAL": 1505
+  },
+  "bias_strength": {
+    "max": 10.0,
+    "median": 7.4532,
+    "min": 0.0
+  },
+  "bias_timeframe": {
+    "H1": 13806,
+    "H4": 1929
+  },
+  "blocked_at": {
+    "L1_BIAS": 1505,
+    "L2_STRUCTURE": 12,
+    "L3_PULLBACK": 5094,
+    "L4_LIQUIDITY": 725,
+    "L5_SWEEP": 3037,
+    "L5_SWEEP_WAIT": 1935,
+    "L6_POI": 1,
+    "L7_CONFIDENCE": 1833,
+    "L8_ENTRY": 1589,
+    "None": 4
+  },
+  "bos_flip": {
+    "False": 13890,
+    "True": 1845
+  },
+  "checksums": {
+    "full_record": "561510d090b6dadf0f6f80c03748b64c8f40584b39942014da4cdbd4d728d809",
+    "layer_outcome": "3587bf85188eef1c31af38152bfed0ebee66f9cfb8b405c0c833d5f744d589a0",
+    "regime_session_side": "41c1f31ad68113a5a24467437656d2320fad67ad00f15d46c7b483daa84d70dd",
+    "reversal_set": "28ddba838a42b37ff2878a39739030874a69950f27a650b2605568875930cf3a"
+  },
+  "decisions": 15735,
+  "effective_side": {
+    "BUY": 7244,
+    "None": 1505,
+    "SELL": 6986
+  },
+  "kill_zone_true": 2864,
+  "l1_initial_side": {
+    "BUY": 6939,
+    "None": 1505,
+    "SELL": 7291
+  },
+  "l2_blocks": {
+    "decisions": 12,
+    "distinct_h1_states": 1,
+    "distinct_reasons": [
+      "H1 structure is broken (Close 4089.40 > last_high 4082.04)"
+    ]
+  },
+  "l2_structure_type": {
+    "BROKEN": 1857,
+    "HH/HL": 5701,
+    "LH/LL": 5815,
+    "None": 1505,
+    "UNKNOWN": 857
+  },
+  "m5_atr": {
+    "max": 15.6003,
+    "median": 4.6004,
+    "min": 1.9672,
+    "p25": 3.8192,
+    "p75": 5.6961
+  },
+  "regime": {
+    "DEAD_CALM": 119,
+    "INTRADAY_SWING": 1810,
+    "MICRO_SCALP": 7314,
+    "REGIME_SCALP": 6492
+  },
+  "reversals": {
+    "by_regime": {
+      "INTRADAY_SWING": 190,
+      "MICRO_SCALP": 775,
+      "REGIME_SCALP": 880
+    },
+    "by_session": {
+      "Asian": 466,
+      "Dead": 46,
+      "London": 609,
+      "NewYork": 724
+    },
+    "consecutive_runs": 158,
+    "count": 1845,
+    "direction": {
+      "BUY->SELL": 770,
+      "SELL->BUY": 1075
+    },
+    "distinct_h1_states": 157,
+    "pct_of_sided": 12.9656,
+    "run_length": {
+      "max": 12,
+      "median": 12,
+      "min": 1
+    },
+    "terminal_layer": {
+      "L3_PULLBACK": 900,
+      "L4_LIQUIDITY": 145,
+      "L5_SWEEP": 231,
+      "L5_SWEEP_WAIT": 128,
+      "L7_CONFIDENCE": 191,
+      "L8_ENTRY": 250
+    }
+  },
+  "session": {
+    "Asian": 5040,
+    "Closed": 276,
+    "Dead": 1104,
+    "London": 4316,
+    "NewYork": 4999
+  },
+  "side_state_matrix": {
+    "L1=BUY|EFF=BUY|L3=BUY": 6169,
+    "L1=BUY|EFF=SELL|L3=BUY": 770,
+    "L1=None|EFF=None|L3=None": 1505,
+    "L1=SELL|EFF=BUY|L3=SELL": 1075,
+    "L1=SELL|EFF=SELL|L3=SELL": 6216
+  },
+  "signal_type": {
+    "ENTRY_SIGNAL": 4,
+    "PRE_ENTRY": 15731
+  },
+  "style": {
+    "MOMENTUM": 6824,
+    "None": 1505,
+    "PULLBACK": 2300,
+    "PULLBACK / MOMENTUM": 5106
+  }
+}

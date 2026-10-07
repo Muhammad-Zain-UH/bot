@@ -1,0 +1,11 @@
+{
+  "first_decision": "2026-06-24T17:00:00+00:00",
+  "last_decision": "2026-09-16T12:35:00+00:00",
+  "signal_type_counts": {
+    "PRE_ENTRY": 15735
+  },
+  "signals_by_side": {},
+  "strategy_errors": 0,
+  "total_decisions": 15735,
+  "total_signals": 0
+}

@@ -1,0 +1,130 @@
+{
+  "status": "PROPOSAL -- NOT AUTHORISED FOR RESEARCH",
+  "created_utc": "2026-10-01T11:48:39.164140+00:00",
+  "FINAL_OOS_LOCKED": true,
+  "oos_authorisation_token": "OOS-AUTHORISATION-NOT-ISSUED",
+  "oos_unlock_requirements": [
+    "explicit written authorisation from the strategy architect",
+    "record the date, the git SHA and the candidate specification SHA at the moment it is opened",
+    "one look only; a revised candidate on a used OOS is a new candidate on a spent arm"
+  ],
+  "oos_prohibitions": [
+    "supplies no quantile cutoff",
+    "supplies no feature selection",
+    "supplies no threshold selection",
+    "supplies no candidate selection",
+    "supplies no parameter tuning"
+  ],
+  "primary_timeframe": "M15",
+  "context_timeframe": "H1",
+  "timeframe_roles": {
+    "M15": "primary feature/label research, signal discovery, chronological validation",
+    "H1": "regime and directional-robustness layer",
+    "M5": "entry/confirmation refinement, short-horizon labels",
+    "M1": "execution/path/fill validation only; no standalone discovery",
+    "H4": "optional long-regime descriptive context; NOT a dependency of the first pass",
+    "TICKS": "execution-cost and sub-M1 validation only; NOT in this dataset"
+  },
+  "binding_range": {
+    "basis": "M15 n H1 -- M15 is primary and is the shorter, so it sets the range",
+    "from_utc": "2022-06-30T07:00:00+00:00",
+    "to_utc": "2026-10-01T11:00:00+00:00",
+    "years": 4.25
+  },
+  "purge_embargo": {
+    "m15_bars": 16,
+    "equivalent_hours": 4,
+    "rationale": "the longest horizon under consideration (4h); dropped AFTER each boundary so no forward window spans two arms"
+  },
+  "split_ratio": "50/25/25 on M15 row count",
+  "arms": {
+    "TRAIN": {
+      "from_utc": "2022-06-30T07:00:00+00:00",
+      "to_utc": "2024-08-09T18:15:00+00:00",
+      "m15_rows": 50010,
+      "m15_index_range": [
+        0,
+        50009
+      ],
+      "months": 25.3,
+      "net_pct": 33.63,
+      "median_atr_usd": 2.085,
+      "blocks_1h": 12502,
+      "blocks_2h": 6251,
+      "blocks_4h": 3125
+    },
+    "DEV": {
+      "from_utc": "2024-08-11T23:30:00+00:00",
+      "to_utc": "2025-09-02T14:15:00+00:00",
+      "m15_rows": 24989,
+      "m15_index_range": [
+        50026,
+        75014
+      ],
+      "months": 12.7,
+      "net_pct": 44.24,
+      "median_atr_usd": 3.564,
+      "blocks_1h": 6247,
+      "blocks_2h": 3123,
+      "blocks_4h": 1561
+    },
+    "FINAL_OOS": {
+      "from_utc": "2025-09-02T18:30:00+00:00",
+      "to_utc": "2026-10-01T11:30:00+00:00",
+      "m15_rows": 24989,
+      "m15_index_range": [
+        75031,
+        100019
+      ],
+      "months": 12.9,
+      "net_pct": 18.24,
+      "median_atr_usd": 8.932,
+      "blocks_1h": 6247,
+      "blocks_2h": 3123,
+      "blocks_4h": 1561
+    }
+  },
+  "dataset_fingerprints": {
+    "H1": {
+      "values_sha256": "a74e0e5b679fc0fe219102d55a64b3b9bbf6aa53f4a5edde345057eb1361c189",
+      "rows": 100001,
+      "first_utc": "2009-08-31T19:00:00+00:00",
+      "last_utc": "2026-10-01T11:00:00+00:00"
+    },
+    "M15": {
+      "values_sha256": "e37d539588b1493e2b18c0bd70fdd8569f2dfd9a47461b38b490d59d9ee115bf",
+      "rows": 100020,
+      "first_utc": "2022-06-30T07:00:00+00:00",
+      "last_utc": "2026-10-01T11:30:00+00:00"
+    },
+    "M5": {
+      "values_sha256": "ac5c1c39940936522adcd741967ecde7f7bc002cf8b9f968d14533923b7bc4f4",
+      "rows": 100058,
+      "first_utc": "2025-04-25T01:55:00+00:00",
+      "last_utc": "2026-10-01T11:30:00+00:00"
+    },
+    "M1": {
+      "values_sha256": "7b7254a7b9070e1eacf7d19c1e2719c45da129c3f928634031063e0a3b832b7c",
+      "rows": 100287,
+      "first_utc": "2026-06-17T04:32:00+00:00",
+      "last_utc": "2026-10-01T11:31:00+00:00"
+    },
+    "H4": {
+      "values_sha256": "b87154c805cf025bc608eb734aa9e1e513fb97e744fbad2a50ba58bef1262d80",
+      "rows": 34174,
+      "first_utc": "2004-06-11T01:00:00+00:00",
+      "last_utc": "2026-10-01T09:00:00+00:00"
+    },
+    "dataset_sha256": "9925ff94fb8d8c748e3a4774064b0e7b344da21ffac0efce509d7e3f6ef626ca"
+  },
+  "dataset_sha256": "9925ff94fb8d8c748e3a4774064b0e7b344da21ffac0efce509d7e3f6ef626ca",
+  "git_sha": "4aebffd10ca14645b37afd0d09dd0328e32de895",
+  "maxbars": 100000000,
+  "server_offset_hours": 3.0,
+  "regime_warnings": [
+    "ALL THREE ARMS ARE NET-POSITIVE: TRAIN +33.63%, DEV +44.24%, FINAL_OOS +18.24%. There is no bear regime anywhere in the primary M15 range, so chronological validation alone cannot establish directional robustness.",
+    "MEDIAN ATR RISES 4.3x ACROSS ARMS: $2.085 -> $3.564 -> $8.932. TRAIN and FINAL_OOS are different volatility regimes; an ATR-normalised threshold fitted on TRAIN meets a very different distribution in OOS.",
+    "H1 spans 17.08 years and DOES contain bear regimes; it is the designated directional-robustness layer for that reason."
+  ],
+  "enforcement": "research/dataset_access.py raises OOSLockedError on any FINAL_OOS read without the manifest token"
+}

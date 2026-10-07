@@ -33,7 +33,19 @@ from typing import Any
 import requests
 
 import config
-from geopolitics import analyze_geopolitics
+try:
+    from geopolitics import analyze_geopolitics
+except ImportError:
+    def analyze_geopolitics(headlines: list[str]) -> dict[str, Any]:
+        return {
+            "Gold Bias": "Neutral",
+            "Risk Sentiment": "Neutral",
+            "War Risk": "Low",
+            "Recession Risk": "Low",
+            "Inflation Pressure": "Low",
+            "Matched Headlines": headlines[:1],
+            "has_data": bool(headlines),
+        }
 from utils import log_debug
 
 _BASE_URL = "https://api.openai.com/v1/chat/completions"

@@ -1,0 +1,1622 @@
+{
+ "hypothesis": "research/hypothesis_01_compression_breakout.md",
+ "preregistration_commit": "44419ef",
+ "gate": "research/RESEARCH_TO_STRATEGY_GATE.md",
+ "declared_hypotheses": 3,
+ "frozen_definitions": {
+  "compression_window_bars": 12,
+  "atr_length": 14,
+  "atr_convention": "A[i] = ATR_14[i-1] (Wilder, M15)",
+  "percentile": 20,
+  "THETA_train_only": 2.4579083397631636,
+  "breakout_buffer_atr": 0.1,
+  "horizons_m15_bars": {
+   "1h": 4,
+   "2h": 8,
+   "4h": 16
+  },
+  "deduplication": "armed/fired state machine; must leave and re-enter the gating regime; state resets per arm"
+ },
+ "dataset": {
+  "dataset_sha256": "9925ff94fb8d8c748e3a4774064b0e7b344da21ffac0efce509d7e3f6ef626ca",
+  "fingerprints_verified": true,
+  "m15_rows_to_dev_boundary": 75015,
+  "panel_time_max": "2025-09-02 14:15:00+00:00",
+  "dev_boundary": "2025-09-02 14:15:00+00:00"
+ },
+ "arms": {
+  "TRAIN": {
+   "from": "2022-06-30 07:00:00+00:00",
+   "to": "2024-08-09 18:15:00+00:00"
+  },
+  "DEV": {
+   "from": "2024-08-11 23:30:00+00:00",
+   "to": "2025-09-02 14:15:00+00:00"
+  },
+  "FINAL_OOS": "LOCKED - not read, not used as context"
+ },
+ "event_accounting": {
+  "ambiguous_excluded": 0,
+  "invalid_atr_or_window_excluded": 14,
+  "compression_rate_pct": {
+   "TRAIN": 20.0016,
+   "DEV": 16.7754
+  },
+  "events": {
+   "TRAIN": 1052,
+   "DEV": 531
+  },
+  "suppressed_by_dedup": {
+   "TRAIN": 233,
+   "DEV": 97
+  },
+  "baseline_C_events": {
+   "TRAIN": 1099,
+   "DEV": 550
+  },
+  "baseline_C_suppressed": {
+   "TRAIN": 3474,
+   "DEV": 1981
+  }
+ },
+ "primary": {
+  "TRAIN@1h": {
+   "label": "H01_TRAIN@1h",
+   "horizon_bars": 4,
+   "raw": {
+    "n": 1052,
+    "mean": -0.025756018291875404,
+    "median": -0.1089860319300645,
+    "sd": 1.7700861516619566,
+    "se": 0.0545740939835985
+   },
+   "headline": {
+    "weighting": "non-overlapping (observation-weighted, disjoint windows)",
+    "n": 1044,
+    "mean": -0.02996180075019467,
+    "median": -0.11203950615335591,
+    "sd": 1.7746432973441228,
+    "se": 0.05492383120732589,
+    "t": -0.5455154910278416,
+    "ci95": [
+     -0.1376125099165534,
+     0.07768890841616408
+    ]
+   },
+   "block": {
+    "weighting": "equal-block-weighted",
+    "n_blocks": 1050,
+    "mean": -0.026577040494837365,
+    "se": 0.05467348078582813,
+    "t": -0.48610478266323187,
+    "obs_per_block_mean": 1.0019047619047619
+   },
+   "overlap": {
+    "raw_observations": 1052,
+    "non_overlapping_observations": 1044,
+    "overlap_ratio": 1.008,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 1044,
+    "disjoint": true,
+    "min_gap": 4,
+    "required_gap": 4,
+    "n_overlaps": 0
+   },
+   "flags": [],
+   "needs_review": false,
+   "n_events_raw": 1052,
+   "n_events_non_overlapping": 1044,
+   "below_min_n": false,
+   "side_counts": {
+    "LONG": 562,
+    "SELL_SHORT": 490
+   },
+   "side_LONG": {
+    "n": 560,
+    "mean": 0.060310904799602265,
+    "median": -0.055430258153194745,
+    "sd": 1.720951176877064,
+    "se": 0.07272346046588493,
+    "n_non_overlapping": 560
+   },
+   "side_SHORT": {
+    "n": 488,
+    "mean": -0.12532008997225597,
+    "median": -0.17557386225469146,
+    "sd": 1.8276558179938065,
+    "se": 0.08273409149550937,
+    "n_non_overlapping": 488
+   }
+  },
+  "TRAIN@2h": {
+   "label": "H01_TRAIN@2h",
+   "horizon_bars": 8,
+   "raw": {
+    "n": 1052,
+    "mean": -0.05222232606263868,
+    "median": -0.14033565039818072,
+    "sd": 2.652976083797902,
+    "se": 0.08179475671141004
+   },
+   "headline": {
+    "weighting": "non-overlapping (observation-weighted, disjoint windows)",
+    "n": 1012,
+    "mean": -0.05416202318362653,
+    "median": -0.14033565039818072,
+    "sd": 2.6748258280873727,
+    "se": 0.08408242950336908,
+    "t": -0.6441538797526815,
+    "ci95": [
+     -0.21896358501022994,
+     0.11063953864297688
+    ]
+   },
+   "block": {
+    "weighting": "equal-block-weighted",
+    "n_blocks": 1034,
+    "mean": -0.04636189499660778,
+    "se": 0.08251844000847956,
+    "t": -0.5618367845034837,
+    "obs_per_block_mean": 1.0174081237911026
+   },
+   "overlap": {
+    "raw_observations": 1052,
+    "non_overlapping_observations": 1012,
+    "overlap_ratio": 1.04,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 1012,
+    "disjoint": true,
+    "min_gap": 8,
+    "required_gap": 8,
+    "n_overlaps": 0
+   },
+   "flags": [],
+   "needs_review": false,
+   "n_events_raw": 1052,
+   "n_events_non_overlapping": 1012,
+   "below_min_n": false,
+   "side_counts": {
+    "LONG": 562,
+    "SELL_SHORT": 490
+   },
+   "side_LONG": {
+    "n": 550,
+    "mean": 0.12046140479886124,
+    "median": 0.011505470709922715,
+    "sd": 2.7573655277396516,
+    "se": 0.1175744611536719,
+    "n_non_overlapping": 550
+   },
+   "side_SHORT": {
+    "n": 480,
+    "mean": -0.2701966357407792,
+    "median": -0.38359741444010886,
+    "sd": 2.5295972424794604,
+    "se": 0.11545978925907216,
+    "n_non_overlapping": 480
+   }
+  },
+  "TRAIN@4h": {
+   "label": "H01_TRAIN@4h",
+   "horizon_bars": 16,
+   "raw": {
+    "n": 1052,
+    "mean": 0.042490097199301295,
+    "median": -0.0012185281019161528,
+    "sd": 3.4978506269361302,
+    "se": 0.10784335478573759
+   },
+   "headline": {
+    "weighting": "non-overlapping (observation-weighted, disjoint windows)",
+    "n": 914,
+    "mean": 0.0715760268261064,
+    "median": 0.02256344237314327,
+    "sd": 3.5675453235310326,
+    "se": 0.1180039110144808,
+    "t": 0.6065563947056212,
+    "ci95": [
+     -0.15971163876227595,
+     0.30286369241448874
+    ]
+   },
+   "block": {
+    "weighting": "equal-block-weighted",
+    "n_blocks": 999,
+    "mean": 0.05314265057670441,
+    "se": 0.11095261000446095,
+    "t": 0.47896710653825775,
+    "obs_per_block_mean": 1.053053053053053
+   },
+   "overlap": {
+    "raw_observations": 1052,
+    "non_overlapping_observations": 914,
+    "overlap_ratio": 1.151,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 914,
+    "disjoint": true,
+    "min_gap": 16,
+    "required_gap": 16,
+    "n_overlaps": 0
+   },
+   "flags": [],
+   "needs_review": false,
+   "n_events_raw": 1052,
+   "n_events_non_overlapping": 914,
+   "below_min_n": false,
+   "side_counts": {
+    "LONG": 562,
+    "SELL_SHORT": 490
+   },
+   "side_LONG": {
+    "n": 525,
+    "mean": 0.16090975438300523,
+    "median": -0.006250072163012546,
+    "sd": 3.608861021258746,
+    "se": 0.1575036076427985,
+    "n_non_overlapping": 525
+   },
+   "side_SHORT": {
+    "n": 457,
+    "mean": -0.11325318962540296,
+    "median": -0.04048503471143689,
+    "sd": 3.408334418413414,
+    "se": 0.15943515935583868,
+    "n_non_overlapping": 457
+   }
+  },
+  "DEV@1h": {
+   "label": "H01_DEV@1h",
+   "horizon_bars": 4,
+   "raw": {
+    "n": 531,
+    "mean": -0.09064065407532043,
+    "median": -0.12266521663886099,
+    "sd": 1.679026974319354,
+    "se": 0.0728635644313548
+   },
+   "headline": {
+    "weighting": "non-overlapping (observation-weighted, disjoint windows)",
+    "n": 524,
+    "mean": -0.09223410557693669,
+    "median": -0.1216963892707711,
+    "sd": 1.670987005113959,
+    "se": 0.07299740624979723,
+    "t": -1.2635257924276302,
+    "ci95": [
+     -0.23530902182653923,
+     0.05084081067266587
+    ]
+   },
+   "block": {
+    "weighting": "equal-block-weighted",
+    "n_blocks": 528,
+    "mean": -0.08726404913633234,
+    "se": 0.07292191861015462,
+    "t": -1.1966779097359148,
+    "obs_per_block_mean": 1.0056818181818181
+   },
+   "overlap": {
+    "raw_observations": 531,
+    "non_overlapping_observations": 524,
+    "overlap_ratio": 1.013,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 524,
+    "disjoint": true,
+    "min_gap": 4,
+    "required_gap": 4,
+    "n_overlaps": 0
+   },
+   "flags": [],
+   "needs_review": false,
+   "n_events_raw": 531,
+   "n_events_non_overlapping": 524,
+   "below_min_n": false,
+   "side_counts": {
+    "LONG": 301,
+    "SELL_SHORT": 230
+   },
+   "side_LONG": {
+    "n": 299,
+    "mean": 0.006128453442818656,
+    "median": -0.0718266880915308,
+    "sd": 1.4631548330559672,
+    "se": 0.08461642877348373,
+    "n_non_overlapping": 299
+   },
+   "side_SHORT": {
+    "n": 228,
+    "mean": -0.19926975532358954,
+    "median": -0.18609153662194775,
+    "sd": 1.9187124833791789,
+    "se": 0.12706983840701738,
+    "n_non_overlapping": 228
+   }
+  },
+  "DEV@2h": {
+   "label": "H01_DEV@2h",
+   "horizon_bars": 8,
+   "raw": {
+    "n": 531,
+    "mean": -0.03443637135610709,
+    "median": -0.06445763991302272,
+    "sd": 2.7777554916652534,
+    "se": 0.12054432081030075
+   },
+   "headline": {
+    "weighting": "non-overlapping (observation-weighted, disjoint windows)",
+    "n": 504,
+    "mean": -0.004277124246904957,
+    "median": -0.0653347912786672,
+    "sd": 2.673771828683601,
+    "se": 0.1190992632540722,
+    "t": -0.03591226452661297,
+    "ci95": [
+     -0.23771168022488648,
+     0.22915743173107656
+    ]
+   },
+   "block": {
+    "weighting": "equal-block-weighted",
+    "n_blocks": 520,
+    "mean": 0.0046476445093239305,
+    "se": 0.11819532263321442,
+    "t": 0.03932172953871088,
+    "obs_per_block_mean": 1.021153846153846
+   },
+   "overlap": {
+    "raw_observations": 531,
+    "non_overlapping_observations": 504,
+    "overlap_ratio": 1.054,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 504,
+    "disjoint": true,
+    "min_gap": 8,
+    "required_gap": 8,
+    "n_overlaps": 0
+   },
+   "flags": [
+    "ESTIMATOR_SIGN_DISAGREEMENT"
+   ],
+   "needs_review": true,
+   "n_events_raw": 531,
+   "n_events_non_overlapping": 504,
+   "below_min_n": false,
+   "side_counts": {
+    "LONG": 301,
+    "SELL_SHORT": 230
+   },
+   "side_LONG": {
+    "n": 289,
+    "mean": 0.14793227635887785,
+    "median": 0.10798764842506414,
+    "sd": 2.4702094284416427,
+    "se": 0.14530643696715545,
+    "n_non_overlapping": 289
+   },
+   "side_SHORT": {
+    "n": 225,
+    "mean": -0.1912084262244583,
+    "median": -0.2799687258435342,
+    "sd": 2.9124067814082086,
+    "se": 0.19416045209388058,
+    "n_non_overlapping": 225
+   }
+  },
+  "DEV@4h": {
+   "label": "H01_DEV@4h",
+   "horizon_bars": 16,
+   "raw": {
+    "n": 530,
+    "mean": -0.03208392105776229,
+    "median": 0.020111604763391796,
+    "sd": 3.608298054850385,
+    "se": 0.15673445186429827
+   },
+   "headline": {
+    "weighting": "non-overlapping (observation-weighted, disjoint windows)",
+    "n": 461,
+    "mean": -0.060714471915803286,
+    "median": -0.020122956679039714,
+    "sd": 3.556478770513945,
+    "se": 0.16564173008118202,
+    "t": -0.3665409186806172,
+    "ci95": [
+     -0.38537226287492,
+     0.2639433190433135
+    ]
+   },
+   "block": {
+    "weighting": "equal-block-weighted",
+    "n_blocks": 500,
+    "mean": 0.04663741588359022,
+    "se": 0.15353329612132152,
+    "t": 0.30376092392843235,
+    "obs_per_block_mean": 1.06
+   },
+   "overlap": {
+    "raw_observations": 530,
+    "non_overlapping_observations": 461,
+    "overlap_ratio": 1.15,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 461,
+    "disjoint": true,
+    "min_gap": 16,
+    "required_gap": 16,
+    "n_overlaps": 0
+   },
+   "flags": [
+    "ESTIMATOR_SIGN_DISAGREEMENT"
+   ],
+   "needs_review": true,
+   "n_events_raw": 530,
+   "n_events_non_overlapping": 461,
+   "below_min_n": false,
+   "side_counts": {
+    "LONG": 300,
+    "SELL_SHORT": 230
+   },
+   "side_LONG": {
+    "n": 274,
+    "mean": 0.26219710226051746,
+    "median": 0.2225827833805864,
+    "sd": 3.3209274093918864,
+    "se": 0.2006245618359388,
+    "n_non_overlapping": 274
+   },
+   "side_SHORT": {
+    "n": 216,
+    "mean": -0.2963887279867347,
+    "median": -0.17066896004576437,
+    "sd": 3.746139777853687,
+    "se": 0.2548925266912406,
+    "n_non_overlapping": 216
+   }
+  },
+  "POOLED@1h": {
+   "label": "H01_POOLED@1h",
+   "horizon_bars": 4,
+   "raw": {
+    "n": 1583,
+    "mean": -0.04752085821670757,
+    "median": -0.11277910768577736,
+    "sd": 1.739811194558728,
+    "se": 0.04372820632320769
+   },
+   "headline": {
+    "weighting": "non-overlapping (observation-weighted, disjoint windows)",
+    "n": 1568,
+    "mean": -0.0507721883326008,
+    "median": -0.1188811543026688,
+    "sd": 1.740404181662144,
+    "se": 0.04395184281638307,
+    "t": -1.155177691745736,
+    "ci95": [
+     -0.1369178002527116,
+     0.03537342358751002
+    ]
+   },
+   "block": {
+    "weighting": "equal-block-weighted",
+    "n_blocks": 1578,
+    "mean": -0.04688295973609803,
+    "se": 0.043796986410903425,
+    "t": -1.0704608599377592,
+    "obs_per_block_mean": 1.003168567807351
+   },
+   "overlap": {
+    "raw_observations": 1583,
+    "non_overlapping_observations": 1568,
+    "overlap_ratio": 1.01,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 1568,
+    "disjoint": true,
+    "min_gap": 4,
+    "required_gap": 4,
+    "n_overlaps": 0
+   },
+   "flags": [],
+   "needs_review": false,
+   "n_events_raw": 1583,
+   "n_events_non_overlapping": 1568,
+   "below_min_n": false,
+   "side_counts": {
+    "LONG": 863,
+    "SELL_SHORT": 720
+   },
+   "side_LONG": {
+    "n": 859,
+    "mean": 0.04145112254619331,
+    "median": -0.05625064946711291,
+    "sd": 1.6351729815626308,
+    "se": 0.055791382158934,
+    "n_non_overlapping": 859
+   },
+   "side_SHORT": {
+    "n": 716,
+    "mean": -0.14886830743050183,
+    "median": -0.18108980678355696,
+    "sd": 1.856110425896523,
+    "se": 0.06936610341689015,
+    "n_non_overlapping": 716
+   }
+  },
+  "POOLED@2h": {
+   "label": "H01_POOLED@2h",
+   "horizon_bars": 8,
+   "raw": {
+    "n": 1583,
+    "mean": -0.04625622249399164,
+    "median": -0.09645167497728979,
+    "sd": 2.694610751082707,
+    "se": 0.06772602409536964
+   },
+   "headline": {
+    "weighting": "non-overlapping (observation-weighted, disjoint windows)",
+    "n": 1516,
+    "mean": -0.037577597679597716,
+    "median": -0.09750853727135157,
+    "sd": 2.67369623875617,
+    "se": 0.06866927535703252,
+    "t": -0.5472257786938964,
+    "ci95": [
+     -0.17216937737938143,
+     0.09701418202018601
+    ]
+   },
+   "block": {
+    "weighting": "equal-block-weighted",
+    "n_blocks": 1554,
+    "mean": -0.029293065818303748,
+    "se": 0.0676485000207005,
+    "t": -0.4330187041743726,
+    "obs_per_block_mean": 1.0186615186615187
+   },
+   "overlap": {
+    "raw_observations": 1583,
+    "non_overlapping_observations": 1516,
+    "overlap_ratio": 1.044,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 1516,
+    "disjoint": true,
+    "min_gap": 8,
+    "required_gap": 8,
+    "n_overlaps": 0
+   },
+   "flags": [],
+   "needs_review": false,
+   "n_events_raw": 1583,
+   "n_events_non_overlapping": 1516,
+   "below_min_n": false,
+   "side_counts": {
+    "LONG": 863,
+    "SELL_SHORT": 720
+   },
+   "side_LONG": {
+    "n": 839,
+    "mean": 0.12992395769617335,
+    "median": 0.05967837586444026,
+    "sd": 2.660500122334413,
+    "se": 0.09185066454849043,
+    "n_non_overlapping": 839
+   },
+   "side_SHORT": {
+    "n": 705,
+    "mean": -0.2449876327036555,
+    "median": -0.3380543193382541,
+    "sd": 2.6559335777420636,
+    "se": 0.10002824543918688,
+    "n_non_overlapping": 705
+   }
+  },
+  "POOLED@4h": {
+   "label": "H01_POOLED@4h",
+   "horizon_bars": 16,
+   "raw": {
+    "n": 1582,
+    "mean": 0.01750638691090452,
+    "median": 0.0019065079795901202,
+    "sd": 3.534270995505504,
+    "se": 0.08885801494672686
+   },
+   "headline": {
+    "weighting": "non-overlapping (observation-weighted, disjoint windows)",
+    "n": 1375,
+    "mean": 0.027222630520637045,
+    "median": 0.0038130159591802403,
+    "sd": 3.5630921331750725,
+    "se": 0.09608944904521975,
+    "t": 0.2833050953161992,
+    "ci95": [
+     -0.1611126896079937,
+     0.21555795064926775
+    ]
+   },
+   "block": {
+    "weighting": "equal-block-weighted",
+    "n_blocks": 1499,
+    "mean": 0.05097279244024202,
+    "se": 0.08991672039972845,
+    "t": 0.5668889191425176,
+    "obs_per_block_mean": 1.0553702468312207
+   },
+   "overlap": {
+    "raw_observations": 1582,
+    "non_overlapping_observations": 1375,
+    "overlap_ratio": 1.151,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 1375,
+    "disjoint": true,
+    "min_gap": 16,
+    "required_gap": 16,
+    "n_overlaps": 0
+   },
+   "flags": [],
+   "needs_review": false,
+   "n_events_raw": 1582,
+   "n_events_non_overlapping": 1375,
+   "below_min_n": false,
+   "side_counts": {
+    "LONG": 862,
+    "SELL_SHORT": 720
+   },
+   "side_LONG": {
+    "n": 799,
+    "mean": 0.195644088949261,
+    "median": 0.05812212675425671,
+    "sd": 3.5110201733222186,
+    "se": 0.12421096480007385,
+    "n_non_overlapping": 799
+   },
+   "side_SHORT": {
+    "n": 673,
+    "mean": -0.17203071753929247,
+    "median": -0.1252127806759478,
+    "sd": 3.518524616244488,
+    "se": 0.135629156766195,
+    "n_non_overlapping": 673
+   }
+  }
+ },
+ "control_open_anchor": {
+  "TRAIN@1h": {
+   "weighting": "non-overlapping (observation-weighted, disjoint windows)",
+   "n": 1044,
+   "mean": -0.025120221245602762,
+   "median": -0.10798897808145053,
+   "sd": 1.7663063959786114,
+   "se": 0.05466581058758966,
+   "t": -0.4595234384268987,
+   "ci95": [
+    -0.1322652099972785,
+    0.08202476750607297
+   ]
+  },
+  "TRAIN@2h": {
+   "weighting": "non-overlapping (observation-weighted, disjoint windows)",
+   "n": 1012,
+   "mean": -0.04887484341054482,
+   "median": -0.1352434270023234,
+   "sd": 2.670726722267754,
+   "se": 0.08395357521592885,
+   "t": -0.5821651226268635,
+   "ci95": [
+    -0.21342385083376536,
+    0.11567416401267572
+   ]
+  },
+  "TRAIN@4h": {
+   "weighting": "non-overlapping (observation-weighted, disjoint windows)",
+   "n": 914,
+   "mean": 0.07733661331241809,
+   "median": 0.03199560752473589,
+   "sd": 3.5620934596999447,
+   "se": 0.11782357938697675,
+   "t": 0.6563763697792246,
+   "ci95": [
+    -0.15359760228605635,
+    0.3082708289108925
+   ]
+  },
+  "DEV@1h": {
+   "weighting": "non-overlapping (observation-weighted, disjoint windows)",
+   "n": 524,
+   "mean": -0.07385426839904438,
+   "median": -0.1123867738405614,
+   "sd": 1.6483016423546042,
+   "se": 0.07200639157631344,
+   "t": -1.0256626777467737,
+   "ci95": [
+    -0.21498679588861874,
+    0.06727825909052998
+   ]
+  },
+  "DEV@2h": {
+   "weighting": "non-overlapping (observation-weighted, disjoint windows)",
+   "n": 504,
+   "mean": 0.015450697232244778,
+   "median": -0.058340326425800636,
+   "sd": 2.650728765721762,
+   "se": 0.11807284364996432,
+   "t": 0.13085733141186567,
+   "ci95": [
+    -0.2159720763216853,
+    0.24687347078617483
+   ]
+  },
+  "DEV@4h": {
+   "weighting": "non-overlapping (observation-weighted, disjoint windows)",
+   "n": 461,
+   "mean": -0.03991454565621592,
+   "median": -0.030618306411691863,
+   "sd": 3.5465046837396157,
+   "se": 0.16517719054759133,
+   "t": -0.24164683709592227,
+   "ci95": [
+    -0.36366183912949496,
+    0.2838327478170631
+   ]
+  },
+  "POOLED@1h": {
+   "weighting": "non-overlapping (observation-weighted, disjoint windows)",
+   "n": 1568,
+   "mean": -0.04140634414637023,
+   "median": -0.10996871110923798,
+   "sd": 1.7273943834443344,
+   "se": 0.04362329579703729,
+   "t": -0.9491796387649917,
+   "ci95": [
+    -0.12690800390856333,
+    0.04409531561582285
+   ]
+  },
+  "POOLED@2h": {
+   "weighting": "non-overlapping (observation-weighted, disjoint windows)",
+   "n": 1516,
+   "mean": -0.02748957132349604,
+   "median": -0.09518928247581915,
+   "sd": 2.6633925273962573,
+   "se": 0.06840464230623301,
+   "t": -0.4018670428891519,
+   "ci95": [
+    -0.16156267024371274,
+    0.10658352759672067
+   ]
+  },
+  "POOLED@4h": {
+   "weighting": "non-overlapping (observation-weighted, disjoint windows)",
+   "n": 1375,
+   "mean": 0.03802549746911609,
+   "median": 0.01338501488105009,
+   "sd": 3.556014878469007,
+   "se": 0.09589858967924188,
+   "t": 0.3965177965213294,
+   "ci95": [
+    -0.14993573830219797,
+    0.22598673324043017
+   ]
+  }
+ },
+ "path_diagnostics": {
+  "TRAIN@1h": {
+   "MFE_atr": {
+    "n": 1052,
+    "mean": 1.2808865000136975,
+    "median": 0.8797720049447477,
+    "sd": 1.4166950656344424,
+    "se": 0.043678580042808876
+   },
+   "MAE_atr": {
+    "n": 1052,
+    "mean": -1.2798355920762947,
+    "median": -0.960610610188626,
+    "sd": 1.2229150775563018,
+    "se": 0.0377040870659627
+   },
+   "note": "DIAGNOSTIC ONLY. No stop or target is selected from these."
+  },
+  "TRAIN@2h": {
+   "MFE_atr": {
+    "n": 1052,
+    "mean": 1.8689637322310282,
+    "median": 1.2800831170449243,
+    "sd": 2.0156008288378815,
+    "se": 0.062143635756450356
+   },
+   "MAE_atr": {
+    "n": 1052,
+    "mean": -1.8758181569990582,
+    "median": -1.3414284606062519,
+    "sd": 1.81638312277453,
+    "se": 0.05600149075198813
+   },
+   "note": "DIAGNOSTIC ONLY. No stop or target is selected from these."
+  },
+  "TRAIN@4h": {
+   "MFE_atr": {
+    "n": 1052,
+    "mean": 2.531880866797,
+    "median": 1.7896713561464552,
+    "sd": 2.5991184814461237,
+    "se": 0.0801342556958422
+   },
+   "MAE_atr": {
+    "n": 1052,
+    "mean": -2.5335015446411155,
+    "median": -1.8323925966639183,
+    "sd": 2.4614304002914826,
+    "se": 0.07588915029557707
+   },
+   "note": "DIAGNOSTIC ONLY. No stop or target is selected from these."
+  },
+  "DEV@1h": {
+   "MFE_atr": {
+    "n": 531,
+    "mean": 1.2088996334919635,
+    "median": 0.8465695798298194,
+    "sd": 1.2580305334498532,
+    "se": 0.054593875043487096
+   },
+   "MAE_atr": {
+    "n": 531,
+    "mean": -1.3044761123972457,
+    "median": -0.9961655773186885,
+    "sd": 1.2496628534193959,
+    "se": 0.05423074865995335
+   },
+   "note": "DIAGNOSTIC ONLY. No stop or target is selected from these."
+  },
+  "DEV@2h": {
+   "MFE_atr": {
+    "n": 531,
+    "mean": 1.8844824082915836,
+    "median": 1.3126520124742331,
+    "sd": 1.8635551349045307,
+    "se": 0.08087140452198105
+   },
+   "MAE_atr": {
+    "n": 531,
+    "mean": -1.9593882255526314,
+    "median": -1.3591618141307593,
+    "sd": 2.0226685570705656,
+    "se": 0.08777633890672377
+   },
+   "note": "DIAGNOSTIC ONLY. No stop or target is selected from these."
+  },
+  "DEV@4h": {
+   "MFE_atr": {
+    "n": 530,
+    "mean": 2.6246947875858226,
+    "median": 1.9753224375274387,
+    "sd": 2.4619990582086686,
+    "se": 0.1069424052594664
+   },
+   "MAE_atr": {
+    "n": 530,
+    "mean": -2.7365057326746682,
+    "median": -1.9485063266436522,
+    "sd": 2.694082475941628,
+    "se": 0.1170234647263448
+   },
+   "note": "DIAGNOSTIC ONLY. No stop or target is selected from these."
+  },
+  "POOLED@1h": {
+   "MFE_atr": {
+    "n": 1583,
+    "mean": 1.2567392946295908,
+    "median": 0.8700632025803576,
+    "sd": 1.3655531676886634,
+    "se": 0.034321649871407386
+   },
+   "MAE_atr": {
+    "n": 1583,
+    "mean": -1.288100984552874,
+    "median": -0.9647987235464417,
+    "sd": 1.2316120267172175,
+    "se": 0.03095518926586406
+   },
+   "note": "DIAGNOSTIC ONLY. No stop or target is selected from these."
+  },
+  "POOLED@2h": {
+   "MFE_atr": {
+    "n": 1583,
+    "mean": 1.8741693020277148,
+    "median": 1.2909618164672332,
+    "sd": 1.965333353295565,
+    "se": 0.0493964532677854
+   },
+   "MAE_atr": {
+    "n": 1583,
+    "mean": -1.9038508205505091,
+    "median": -1.3438796022963317,
+    "sd": 1.8878652147062402,
+    "se": 0.047449378344768804
+   },
+   "note": "DIAGNOSTIC ONLY. No stop or target is selected from these."
+  },
+  "POOLED@4h": {
+   "MFE_atr": {
+    "n": 1582,
+    "mean": 2.5629752903229646,
+    "median": 1.8540238750539275,
+    "sd": 2.553597582716256,
+    "se": 0.06420209781917763
+   },
+   "MAE_atr": {
+    "n": 1582,
+    "mean": -2.6015117972692967,
+    "median": -1.8752859825633013,
+    "sd": 2.5427003652162368,
+    "se": 0.06392812190823989
+   },
+   "note": "DIAGNOSTIC ONLY. No stop or target is selected from these."
+  }
+ },
+ "baselines": {
+  "TRAIN@1h": {
+   "A_unconditional_side_matched": {
+    "long_side_mean": 0.028931,
+    "short_side_mean": -0.028931,
+    "p_long_from_events": 0.5345,
+    "side_matched_mean": 0.001995,
+    "n_pool": 49992,
+    "weighting": "all eligible bars, overlapping (reference only)"
+   },
+   "B_random_direction_balanced": {
+    "replicates": 2000,
+    "abandoned": 0,
+    "n_drawn_each": 1044,
+    "p_long_matched": 0.5345,
+    "mean": 0.002096,
+    "sd": 0.049757,
+    "pct2_5": -0.092609,
+    "pct97_5": 0.101215,
+    "observed_event_mean": -0.029962,
+    "observed_percentile_rank": 26.95,
+    "empirical_p_one_sided_greater": 0.7305
+   },
+   "C_breakout_without_compression": {
+    "n_events_raw": 1099,
+    "compression_breakout": {
+     "n": 1044,
+     "mean": -0.02996180075019467,
+     "se": 0.05492383120732589,
+     "t": -0.5455154910278416,
+     "ci95": [
+      -0.1376125099165534,
+      0.07768890841616408
+     ]
+    },
+    "breakout_without_compression": {
+     "n": 1097,
+     "mean": -0.03357436532725816,
+     "se": 0.06346844343099,
+     "t": -0.5289930477618215,
+     "ci95": [
+      -0.15797251445199856,
+      0.09082378379748222
+     ]
+    },
+    "headline_diff": {
+     "weighting": "non-overlapping (observation-weighted, disjoint windows)",
+     "diff": 0.0036125645770634894,
+     "se": 0.08393372710682877,
+     "t": 0.04304067865907476,
+     "ci95": [
+      -0.1608975405523209,
+      0.16812266970644787
+     ],
+     "p_two_sided": 0.965669107001877,
+     "n_hi": 1044,
+     "n_lo": 1097
+    },
+    "block_diff_SECONDARY": {
+     "weighting": "equal-block-weighted",
+     "diff": 0.008565332590733752,
+     "se": 0.08376827618902967,
+     "t": 0.10225031456306215,
+     "warning": "equal-block-weighted; NOT a headline estimator"
+    },
+    "cross_group_overlap_pct": 33.72,
+    "bootstrap": {
+     "block_96": {
+      "block_bars": 96,
+      "replicates_used": 4000,
+      "point_all_observations": 0.010008,
+      "se": 0.074747,
+      "t": 0.1339,
+      "ci95": [
+       -0.136945,
+       0.153569
+      ],
+      "weighting": "block bootstrap over ALL observations"
+     },
+     "block_480": {
+      "block_bars": 480,
+      "replicates_used": 4000,
+      "point_all_observations": 0.010008,
+      "se": 0.075457,
+      "t": 0.1326,
+      "ci95": [
+       -0.136888,
+       0.160068
+      ],
+      "weighting": "block bootstrap over ALL observations"
+     }
+    },
+    "flags": [],
+    "note": "DECLARED BASELINE, 0 hypotheses. Cannot promote the candidate."
+   }
+  },
+  "TRAIN@2h": {
+   "A_unconditional_side_matched": {
+    "long_side_mean": 0.056605,
+    "short_side_mean": -0.056605,
+    "p_long_from_events": 0.5395,
+    "side_matched_mean": 0.004475,
+    "n_pool": 49988,
+    "weighting": "all eligible bars, overlapping (reference only)"
+   },
+   "B_random_direction_balanced": {
+    "replicates": 2000,
+    "abandoned": 0,
+    "n_drawn_each": 1012,
+    "p_long_matched": 0.5395,
+    "mean": 0.005728,
+    "sd": 0.071243,
+    "pct2_5": -0.13327,
+    "pct97_5": 0.14993,
+    "observed_event_mean": -0.054162,
+    "observed_percentile_rank": 19.95,
+    "empirical_p_one_sided_greater": 0.8005
+   },
+   "C_breakout_without_compression": {
+    "n_events_raw": 1099,
+    "compression_breakout": {
+     "n": 1012,
+     "mean": -0.05416202318362653,
+     "se": 0.08408242950336908,
+     "t": -0.6441538797526815,
+     "ci95": [
+      -0.21896358501022994,
+      0.11063953864297688
+     ]
+    },
+    "breakout_without_compression": {
+     "n": 1090,
+     "mean": -0.11381806090635137,
+     "se": 0.08386930508816184,
+     "t": -1.3570883982728599,
+     "ci95": [
+      -0.2782018988791486,
+      0.05056577706644584
+     ]
+    },
+    "headline_diff": {
+     "weighting": "non-overlapping (observation-weighted, disjoint windows)",
+     "diff": 0.05965603772272484,
+     "se": 0.11875990605907451,
+     "t": 0.5023247298044363,
+     "ci95": [
+      -0.1731133781530612,
+      0.29242545359851085
+     ],
+     "p_two_sided": 0.6154391163855402,
+     "n_hi": 1012,
+     "n_lo": 1090
+    },
+    "block_diff_SECONDARY": {
+     "weighting": "equal-block-weighted",
+     "diff": 0.06634290781190552,
+     "se": 0.11742211286736592,
+     "t": 0.5649950098142341,
+     "warning": "equal-block-weighted; NOT a headline estimator"
+    },
+    "cross_group_overlap_pct": 54.35,
+    "bootstrap": {
+     "block_96": {
+      "block_bars": 96,
+      "replicates_used": 4000,
+      "point_all_observations": 0.059447,
+      "se": 0.100833,
+      "t": 0.5896,
+      "ci95": [
+       -0.139728,
+       0.254815
+      ],
+      "weighting": "block bootstrap over ALL observations"
+     },
+     "block_480": {
+      "block_bars": 480,
+      "replicates_used": 4000,
+      "point_all_observations": 0.059447,
+      "se": 0.107882,
+      "t": 0.551,
+      "ci95": [
+       -0.15553,
+       0.268908
+      ],
+      "weighting": "block bootstrap over ALL observations"
+     }
+    },
+    "flags": [],
+    "note": "DECLARED BASELINE, 0 hypotheses. Cannot promote the candidate."
+   }
+  },
+  "TRAIN@4h": {
+   "A_unconditional_side_matched": {
+    "long_side_mean": 0.10318,
+    "short_side_mean": -0.10318,
+    "p_long_from_events": 0.5394,
+    "side_matched_mean": 0.008128,
+    "n_pool": 49980,
+    "weighting": "all eligible bars, overlapping (reference only)"
+   },
+   "B_random_direction_balanced": {
+    "replicates": 2000,
+    "abandoned": 0,
+    "n_drawn_each": 914,
+    "p_long_matched": 0.5394,
+    "mean": 0.008811,
+    "sd": 0.110712,
+    "pct2_5": -0.202922,
+    "pct97_5": 0.221018,
+    "observed_event_mean": 0.071576,
+    "observed_percentile_rank": 71.55,
+    "empirical_p_one_sided_greater": 0.2845
+   },
+   "C_breakout_without_compression": {
+    "n_events_raw": 1099,
+    "compression_breakout": {
+     "n": 914,
+     "mean": 0.0715760268261064,
+     "se": 0.1180039110144808,
+     "t": 0.6065563947056212,
+     "ci95": [
+      -0.15971163876227595,
+      0.30286369241448874
+     ]
+    },
+    "breakout_without_compression": {
+     "n": 1035,
+     "mean": -0.05935377549212029,
+     "se": 0.11955365595680227,
+     "t": -0.4964614006749095,
+     "ci95": [
+      -0.29367894116745275,
+      0.17497139018321217
+     ]
+    },
+    "headline_diff": {
+     "weighting": "non-overlapping (observation-weighted, disjoint windows)",
+     "diff": 0.1309298023182267,
+     "se": 0.16798214091786945,
+     "t": 0.7794269176640716,
+     "ci95": [
+      -0.19831519388079738,
+      0.4601747985172508
+     ],
+     "p_two_sided": 0.4357282725843094,
+     "n_hi": 914,
+     "n_lo": 1035
+    },
+    "block_diff_SECONDARY": {
+     "weighting": "equal-block-weighted",
+     "diff": 0.0994888632154299,
+     "se": 0.16087371527417083,
+     "t": 0.6184283308548877,
+     "warning": "equal-block-weighted; NOT a headline estimator"
+    },
+    "cross_group_overlap_pct": 75.16,
+    "bootstrap": {
+     "block_96": {
+      "block_bars": 96,
+      "replicates_used": 4000,
+      "point_all_observations": 0.097105,
+      "se": 0.140903,
+      "t": 0.6892,
+      "ci95": [
+       -0.180214,
+       0.364087
+      ],
+      "weighting": "block bootstrap over ALL observations"
+     },
+     "block_480": {
+      "block_bars": 480,
+      "replicates_used": 4000,
+      "point_all_observations": 0.097105,
+      "se": 0.141175,
+      "t": 0.6878,
+      "ci95": [
+       -0.186092,
+       0.370291
+      ],
+      "weighting": "block bootstrap over ALL observations"
+     }
+    },
+    "flags": [],
+    "note": "DECLARED BASELINE, 0 hypotheses. Cannot promote the candidate."
+   }
+  },
+  "DEV@1h": {
+   "A_unconditional_side_matched": {
+    "long_side_mean": 0.060339,
+    "short_side_mean": -0.060339,
+    "p_long_from_events": 0.5668,
+    "side_matched_mean": 0.008061,
+    "n_pool": 24985,
+    "weighting": "all eligible bars, overlapping (reference only)"
+   },
+   "B_random_direction_balanced": {
+    "replicates": 2000,
+    "abandoned": 0,
+    "n_drawn_each": 524,
+    "p_long_matched": 0.5668,
+    "mean": 0.006821,
+    "sd": 0.066075,
+    "pct2_5": -0.125789,
+    "pct97_5": 0.139872,
+    "observed_event_mean": -0.092234,
+    "observed_percentile_rank": 6.3,
+    "empirical_p_one_sided_greater": 0.937
+   },
+   "C_breakout_without_compression": {
+    "n_events_raw": 550,
+    "compression_breakout": {
+     "n": 524,
+     "mean": -0.09223410557693669,
+     "se": 0.07299740624979723,
+     "t": -1.2635257924276302,
+     "ci95": [
+      -0.23530902182653923,
+      0.05084081067266587
+     ]
+    },
+    "breakout_without_compression": {
+     "n": 550,
+     "mean": 0.02225058399215554,
+     "se": 0.08095113957307865,
+     "t": 0.2748643701558867,
+     "ci95": [
+      -0.1364136495710786,
+      0.18091481755538968
+     ]
+    },
+    "headline_diff": {
+     "weighting": "non-overlapping (observation-weighted, disjoint windows)",
+     "diff": -0.11448468956909223,
+     "se": 0.10900324911385896,
+     "t": -1.0502869455708395,
+     "ci95": [
+      -0.32813105783225577,
+      0.09916167869407132
+     ],
+     "p_two_sided": 0.29358620530181695,
+     "n_hi": 524,
+     "n_lo": 550
+    },
+    "block_diff_SECONDARY": {
+     "weighting": "equal-block-weighted",
+     "diff": -0.10951463312848789,
+     "se": 0.10895271089773799,
+     "t": -1.0051574873733735,
+     "warning": "equal-block-weighted; NOT a headline estimator"
+    },
+    "cross_group_overlap_pct": 31.49,
+    "bootstrap": {
+     "block_96": {
+      "block_bars": 96,
+      "replicates_used": 4000,
+      "point_all_observations": -0.112891,
+      "se": 0.098475,
+      "t": -1.1464,
+      "ci95": [
+       -0.310919,
+       0.074962
+      ],
+      "weighting": "block bootstrap over ALL observations"
+     },
+     "block_480": {
+      "block_bars": 480,
+      "replicates_used": 4000,
+      "point_all_observations": -0.112891,
+      "se": 0.096346,
+      "t": -1.1717,
+      "ci95": [
+       -0.300345,
+       0.079087
+      ],
+      "weighting": "block bootstrap over ALL observations"
+     }
+    },
+    "flags": [],
+    "note": "DECLARED BASELINE, 0 hypotheses. Cannot promote the candidate."
+   }
+  },
+  "DEV@2h": {
+   "A_unconditional_side_matched": {
+    "long_side_mean": 0.121106,
+    "short_side_mean": -0.121106,
+    "p_long_from_events": 0.5615,
+    "side_matched_mean": 0.014898,
+    "n_pool": 24981,
+    "weighting": "all eligible bars, overlapping (reference only)"
+   },
+   "B_random_direction_balanced": {
+    "replicates": 2000,
+    "abandoned": 0,
+    "n_drawn_each": 504,
+    "p_long_matched": 0.5615,
+    "mean": 0.011637,
+    "sd": 0.095186,
+    "pct2_5": -0.170038,
+    "pct97_5": 0.194553,
+    "observed_event_mean": -0.004277,
+    "observed_percentile_rank": 43.35,
+    "empirical_p_one_sided_greater": 0.5665
+   },
+   "C_breakout_without_compression": {
+    "n_events_raw": 550,
+    "compression_breakout": {
+     "n": 504,
+     "mean": -0.004277124246904957,
+     "se": 0.1190992632540722,
+     "t": -0.03591226452661297,
+     "ci95": [
+      -0.23771168022488648,
+      0.22915743173107656
+     ]
+    },
+    "breakout_without_compression": {
+     "n": 547,
+     "mean": 0.10638281346229018,
+     "se": 0.11068291343764323,
+     "t": 0.9611493785102102,
+     "ci95": [
+      -0.11055569687549056,
+      0.32332132380007095
+     ]
+    },
+    "headline_diff": {
+     "weighting": "non-overlapping (observation-weighted, disjoint windows)",
+     "diff": -0.11065993770919515,
+     "se": 0.16258948869686385,
+     "t": -0.6806094206711756,
+     "ci95": [
+      -0.42933533555504827,
+      0.208015460136658
+     ],
+     "p_two_sided": 0.4961186643501468,
+     "n_hi": 504,
+     "n_lo": 547
+    },
+    "block_diff_SECONDARY": {
+     "weighting": "equal-block-weighted",
+     "diff": -0.09424744612310454,
+     "se": 0.16158813692328997,
+     "t": -0.5832572113127724,
+     "warning": "equal-block-weighted; NOT a headline estimator"
+    },
+    "cross_group_overlap_pct": 55.56,
+    "bootstrap": {
+     "block_96": {
+      "block_bars": 96,
+      "replicates_used": 4000,
+      "point_all_observations": -0.133331,
+      "se": 0.154532,
+      "t": -0.8628,
+      "ci95": [
+       -0.460111,
+       0.151081
+      ],
+      "weighting": "block bootstrap over ALL observations"
+     },
+     "block_480": {
+      "block_bars": 480,
+      "replicates_used": 4000,
+      "point_all_observations": -0.133331,
+      "se": 0.150272,
+      "t": -0.8873,
+      "ci95": [
+       -0.436418,
+       0.161241
+      ],
+      "weighting": "block bootstrap over ALL observations"
+     }
+    },
+    "flags": [
+     "ESTIMATOR_SIGN_DISAGREEMENT"
+    ],
+    "note": "DECLARED BASELINE, 0 hypotheses. Cannot promote the candidate."
+   }
+  },
+  "DEV@4h": {
+   "A_unconditional_side_matched": {
+    "long_side_mean": 0.23503,
+    "short_side_mean": -0.23503,
+    "p_long_from_events": 0.5618,
+    "side_matched_mean": 0.02906,
+    "n_pool": 24973,
+    "weighting": "all eligible bars, overlapping (reference only)"
+   },
+   "B_random_direction_balanced": {
+    "replicates": 2000,
+    "abandoned": 0,
+    "n_drawn_each": 461,
+    "p_long_matched": 0.5618,
+    "mean": 0.026011,
+    "sd": 0.139604,
+    "pct2_5": -0.230346,
+    "pct97_5": 0.302059,
+    "observed_event_mean": -0.060714,
+    "observed_percentile_rank": 27.05,
+    "empirical_p_one_sided_greater": 0.7295
+   },
+   "C_breakout_without_compression": {
+    "n_events_raw": 549,
+    "compression_breakout": {
+     "n": 461,
+     "mean": -0.060714471915803286,
+     "se": 0.16564173008118202,
+     "t": -0.3665409186806172,
+     "ci95": [
+      -0.38537226287492,
+      0.2639433190433135
+     ]
+    },
+    "breakout_without_compression": {
+     "n": 522,
+     "mean": 0.12055282439301958,
+     "se": 0.14944505385831272,
+     "t": 0.806669884888358,
+     "ci95": [
+      -0.17235948116927335,
+      0.4134651299553125
+     ]
+    },
+    "headline_diff": {
+     "weighting": "non-overlapping (observation-weighted, disjoint windows)",
+     "diff": -0.18126729630882288,
+     "se": 0.22309416591879122,
+     "t": -0.8125147314466583,
+     "ci95": [
+      -0.6185318615096537,
+      0.2559972688920079
+     ],
+     "p_two_sided": 0.41649633706179456,
+     "n_hi": 461,
+     "n_lo": 522
+    },
+    "block_diff_SECONDARY": {
+     "weighting": "equal-block-weighted",
+     "diff": -0.13454495552935467,
+     "se": 0.211064517415718,
+     "t": -0.637458902030186,
+     "warning": "equal-block-weighted; NOT a headline estimator"
+    },
+    "cross_group_overlap_pct": 78.52,
+    "bootstrap": {
+     "block_96": {
+      "block_bars": 96,
+      "replicates_used": 4000,
+      "point_all_observations": -0.226501,
+      "se": 0.191652,
+      "t": -1.1818,
+      "ci95": [
+       -0.611999,
+       0.137849
+      ],
+      "weighting": "block bootstrap over ALL observations"
+     },
+     "block_480": {
+      "block_bars": 480,
+      "replicates_used": 4000,
+      "point_all_observations": -0.226501,
+      "se": 0.205758,
+      "t": -1.1008,
+      "ci95": [
+       -0.641506,
+       0.177897
+      ],
+      "weighting": "block bootstrap over ALL observations"
+     }
+    },
+    "flags": [
+     "ESTIMATOR_SIGN_DISAGREEMENT"
+    ],
+    "note": "DECLARED BASELINE, 0 hypotheses. Cannot promote the candidate."
+   }
+  }
+ },
+ "per_arm_sides": {},
+ "multiple_testing": {
+  "primary_arm": "TRAIN",
+  "n_declared": 3,
+  "n_with_computable_t": 3,
+  "n_padded_as_non_rejection": 0,
+  "nominal_alpha": 0.05,
+  "bonferroni_threshold_t": 2.394,
+  "t_values": {
+   "TRAIN@1h": -0.5455,
+   "TRAIN@2h": -0.6442,
+   "TRAIN@4h": 0.6066
+  },
+  "survivors_bonferroni": [],
+  "benjamini_hochberg": {
+   "threshold_p": null,
+   "n_survivors": 0,
+   "survivor_idx": []
+  },
+  "max_abs_t": 0.6442,
+  "observed_abs_t_ge_2": 0,
+  "expected_abs_t_ge_2_under_null": 0.1365,
+  "note": "One-sided positive hypothesis; the threshold shown is two-sided, which is conservative for a directional claim and is reported as such."
+ },
+ "power": {
+  "TRAIN@1h": {
+   "non_overlapping_n": 1044,
+   "se": 0.05492,
+   "mde_2se_atr": 0.1098,
+   "mde_bonferroni_atr": 0.1315,
+   "cost_atr_reference": 0.158,
+   "can_detect_cost_sized_effect": true
+  },
+  "TRAIN@2h": {
+   "non_overlapping_n": 1012,
+   "se": 0.08408,
+   "mde_2se_atr": 0.1682,
+   "mde_bonferroni_atr": 0.2013,
+   "cost_atr_reference": 0.158,
+   "can_detect_cost_sized_effect": false
+  },
+  "TRAIN@4h": {
+   "non_overlapping_n": 914,
+   "se": 0.118,
+   "mde_2se_atr": 0.236,
+   "mde_bonferroni_atr": 0.2825,
+   "cost_atr_reference": 0.158,
+   "can_detect_cost_sized_effect": false
+  },
+  "DEV@1h": {
+   "non_overlapping_n": 524,
+   "se": 0.073,
+   "mde_2se_atr": 0.146,
+   "mde_bonferroni_atr": 0.1748,
+   "cost_atr_reference": 0.093,
+   "can_detect_cost_sized_effect": false
+  },
+  "DEV@2h": {
+   "non_overlapping_n": 504,
+   "se": 0.1191,
+   "mde_2se_atr": 0.2382,
+   "mde_bonferroni_atr": 0.2851,
+   "cost_atr_reference": 0.093,
+   "can_detect_cost_sized_effect": false
+  },
+  "DEV@4h": {
+   "non_overlapping_n": 461,
+   "se": 0.16564,
+   "mde_2se_atr": 0.3313,
+   "mde_bonferroni_atr": 0.3965,
+   "cost_atr_reference": 0.093,
+   "can_detect_cost_sized_effect": false
+  }
+ }
+}

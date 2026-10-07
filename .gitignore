@@ -17,3 +17,40 @@ trading_bot.log*
 # IDE
 .vscode/
 .idea/
+
+# Signal logs (data, not source). The archived legacy log and archive/README.md
+# ARE tracked deliberately - see archive/README.md for provenance.
+signal_log_v2.csv
+signal_log_main_v2.csv
+*.schema-mismatch.csv
+*.schema-mismatch.*.csv
+
+# Test artifacts
+.pytest_cache/
+
+# Backtest artifacts and raw market data (data, not source).
+# Generated per run and potentially large; regenerate with backtest.runner.
+backtest_results/
+data/raw/
+
+# Phase 3A baselines: the summary artifacts ARE committed (they are the
+# immutable record). The per-decision dump is not -- it is ~5 MB per run and
+# fully regenerable, and its content is covered by decisions_fingerprint in
+# run_fingerprint.txt, so excluding it loses no verifiability.
+baselines/*/decisions.jsonl
+
+# Research panels are large generated artefacts, regenerated from data/raw
+research/*.pkl
+research/*.meta.json
+research/results.json
+
+# Frozen research dataset: raw market data, same convention as data/raw/.
+# Integrity is guaranteed by research/accessible_bar_dataset_fingerprints.json.
+data/research_v1/
+
+# Phase 1 derived panels: large generated artefacts, rebuilt from data/research_v1.
+research/phase1/*.pkl
+
+# V2 Dukascopy dataset: raw and built market data (data, not source).
+# Integrity is guaranteed by research/dukascopy_v1_fingerprints.json.
+data/dukascopy_v1/

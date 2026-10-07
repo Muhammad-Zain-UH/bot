@@ -12,6 +12,7 @@ __all__ = [
     "build_summary",
     "format_news_event",
     "log_debug",
+    "log_monitor",
 ]
 
 
@@ -42,6 +43,29 @@ if not _logger.handlers:
 def log_debug(message: str) -> None:
     """Log a debug message to both console and the rotating log file."""
     _logger.debug(message)
+
+
+def log_monitor(message: str) -> None:
+    """Log a monitor status line WITHOUT [DEBUG] prefix.
+    
+    Used for single-line MONITOR status updates. Logs to file with timestamp
+    but no DEBUG prefix to keep output clean. Does not print to console
+    (caller should use _safe_print separately if needed).
+    """
+    # Create a simple log record with timestamp but no DEBUG prefix
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    formatted = f"[{timestamp}] {message}"
+    
+    # Write directly to file if available
+    if _logger.handlers:
+        for handler in _logger.handlers:
+            if isinstance(handler, RotatingFileHandler):
+                try:
+                    handler.stream.write(formatted + "\n")
+                    handler.flush()
+                except Exception:
+                    pass  # Silently fail if file write has issues
 
 
 def _format_number(value: Any, digits: int = 4) -> str:

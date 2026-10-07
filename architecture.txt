@@ -1,0 +1,885 @@
+Zoya Intraday Bot — Detailed Architecture
+==========================================
+
+1. SYSTEM OVERVIEW
+------------------
+This is a production-grade, regime-aware, multi-layer intraday trading bot for
+XAUUSD (Gold), built in Python and designed to run against MetaTrader 5 (MT5).
+It operates on a 5-second main loop and uses a 10-layer sequential decision
+pipeline (L0-L9, plus L10) to validate every trade before and after execution.
+The architecture is modular, with each layer in its own file, and supports live
+MT5 execution, simulation mode, state persistence across restarts, and graceful
+error recovery. The system classifies market regimes dynamically and adjusts
+risk, spread tolerance, and layer bypass logic accordingly.
+
+
+2. HIGH-LEVEL ARCHITECTURE (Mermaid)
+-------------------------------------
+graph TB
+    subgraph "Main Loop [main_production.py]"
+        A[main()<br/>5s loop] --> B[check_pre_trade_gates<br/>L0]
+        B -->|PASS| C[Fetch Market Data<br/>MT5]
+        C --> D[detect_regime<br/>entry_engine.py]
+        D --> E[analyze_entry<br/>L1-L8 Sequential]
+        E -->|ENTRY_SIGNAL| F[execute_entry_signal]
+        E -->|PRE_ENTRY/ERROR| A
+        F --> G[manage_positions<br/>L9]
+        G --> H[feedback_loop<br/>L10]
+        H --> A
+    end
+
+    subgraph "Layer Pipeline [analyze_entry]"
+        E --> L1[L1: H4 Bias<br/>bias_engine.py]
+        L1 --> L2[L2: H1 Structure<br/>structure_engine.py]
+        L2 --> L3[L3: M15 Pullback<br/>pullback_detector.py]
+        L3 --> L4[L4: Liquidity<br/>liquidity_engine.py]
+        L4 --> L5[L5: Sweep+CHoCH<br/>sweep_detector.py]
+        L5 --> L6[L6: POI<br/>poi_engine.py]
+        L6 --> L7[L7: Confidence<br/>confidence_engine.py]
+        L7 --> L8[L8: Entry Trigger<br/>entry_engine.py]
+    end
+
+    subgraph "Execution Stack"
+        F --> R1[risk_manager.py<br/>calc_lot_size]
+        F --> R2[order_execution.py<br/>OrderExecutor]
+        R2 --> R3[MT5 / Simulation]
+        F --> R4[trade_persistence.py<br/>save_active_trades]
+    end
+
+    subgraph "Support Systems"
+        S1[error_recovery.py<br/>SystemMonitor]
+        S2[error_recovery.py<br/>GracefulShutdown]
+        S3[mt5_handler.py<br/>connect/get_data]
+        S4[indicators.py<br/>RSI/MACD/EMA/ATR]
+        S5[config.py<br/>CONFIG dict]
+    end
+
+    S3 --> C
+    S4 --> L1
+    S4 --> L2
+    S4 --> L3
+    S4 --> L7
+    S5 --> A
+    S1 --> A
+    S2 --> A
+
+
+3. MAIN LOOP FLOW (ASCII)
+--------------------------
++--------------------------------------------------------------------------------+
+|  main_production.py :: main()                                                  |
+|  Loop: while _SHOULD_CONTINUE                                                  |
+|  Interval: 5 seconds                                                           |
++---------------------------------------+----------------------------------------+
+                                        |
+        +----------------------+----------------------+
+        |                      |                      |
+    1. Get current spread    2. L0: Pre-Trade Gates  |
+       from MT5                  check_pre_trade_gates |
+        |                      |                      |
+        |                      +----------+-----------+
+        |                                 |
+        |                         +------+------+
+        |                         |             |
+        |                      BLOCKED        PASSED
+        |                         |             |
+        |                         v             v
+        |               +----------------+  +-------------------------+
+        |               | Sleep /        |  | 3. Fetch Market Data     |
+        |               | Continue loop  |  | H4:100 H1:60 M15:50     |
+        |               +----------------+  | M5:100 M1:200 D1:10     |
+        |                                   | + price/spread           |
+        |                                   +-------------+-------------+
+        |                                                 |
+        |                                   +-------------+-------------+
+        |                                   | 4. Regime Detection         |
+        |                                   |    detect_regime()          |
+        |                                   |    Based on M5 ATR:         |
+        |                                   |    MICRO_SCALP 2.5-4.5      |
+        |                                   |    REGIME_SCALP 4.5-7.0     |
+        |                                   |    INTRADAY_SWING >7.0      |
+        |                                   |    DEAD_CALM <2.5           |
+        |                                   +-------------+-------------+
+        |                                                 |
+        |                                   +-------------+-------------+
+        |                                   | 5. analyze_entry() L1-L8   |
+        |                                   +-------------+-------------+
+        |                                                 |
+        |                                   +-------------+-------------+
+        |                                   | 6. print_run_summary()     |
+        |                                   |    log_signal() to CSV     |
+        |                                   +-------------+-------------+
+        |                                                 |
+        |                                   +-------------+-------------+
+        |                                   | 7. ENTRY_SIGNAL?           |
+        |                                   +------+----------+----------+
+        |                                          |          |
+        |                                       YES          NO
+        |                                          |          |
+        |                                          v          v
+        |                           +--------------------+  +----------------+
+        |                           | execute_entry_signal|  | Continue loop  |
+        |                           | Risk % by grade    |  | (next iter)    |
+        |                           | calc_lot_size      |  +----------------+
+        |                           | create_order       |
+        |                           | execute_order      |
+        |                           | _OPEN_TRADES.append|
+        |                           +---------+----------+
+        |                                     |
+        |                           +---------+----------+
+        |                           | Layer 9: manage_positions |
+        |                           | CLOSE_50PCT @ 1:1 RR     |
+        |                           | TRAIL_SL @ 1:2 RR        |
+        |                           | CLOSE_ALL @ TP           |
+        |                           +---------+----------+
+        |                                     |
+        |                           +---------+----------+
+        |                           | Layer 10: feedback_loop  |
+        |                           | log_closed_trade()       |
+        |                           | weekly_performance()     |
+        |                           +---------+----------+
+        |                                     |
+        |                           +---------+----------+
+        |                           | Persistence             |
+        |                           | save_active_trades()    |
+        |                           | (every 10 iterations)   |
+        |                           +-----------------------+
+        |                                     |
+        +-------------------------------------+
+                        Sleep 5s, repeat
+
+
+4. DETAILED LAYER PIPELINE (L0-L8)
+------------------------------------
+
+L0: PRE-TRADE GATES
+  File: main_production.py :: check_pre_trade_gates()
+  +------------------------------------------------------------------+
+  | Gate 1: Daily Loss Limit                                         |
+  |   current_daily_loss < -(balance * 5%)                           |
+  |   FAIL -> BLOCK ALL -> sleep 60s                                 |
+  |                                                                  |
+  | Gate 2: Spread Monitoring                                        |
+  |   NOT checked here (deferred to L8 Entry Trigger)                |
+  |   Reason: spread tolerance is REGIME-SPECIFIC                    |
+  |                                                                  |
+  | Gate 3: Session Validation                                       |
+  |   DEAD (22:00-03:00 UTC) -> BLOCK                                |
+  |   LONDON / NY -> PASS (Prime tier)                               |
+  |   ASIAN -> PASS (Tier 2, regime applies risk)                    |
+  +------------------------------------------------------------------+
+                                | PASS
+                                v
+L1: H4 BIAS
+  File: bias_engine.py :: get_h4_bias()
+  +------------------------------------------------------------------+
+  | Input: H4 indicators (EMA20, EMA50, ATR, close) + Daily data     |
+  |                                                                  |
+  | Rules:                                                           |
+  | * EMA20 vs EMA50 separation > ATR-scaled threshold               |
+  | * Last 2 closes vs EMA20 confirmation                            |
+  | * Daily midpoint confirmation (price vs daily H/L mid)           |
+  | * Daily close invalidation (flip if broken)                       |
+  |                                                                  |
+  | Output: BULLISH | BEARISH | NEUTRAL + strength 0-10             |
+  |         + swing_high, swing_low, ema_distance                    |
+  +------------------------------------------------------------------+
+                                |
+                    NEUTRAL -----+
+                     BLOCK -> return analysis
+                     BULLISH/BEARISH -> continue
+                                |
+                                v
+L2: H1 STRUCTURE
+  File: structure_engine.py :: get_h1_structure()
+  +------------------------------------------------------------------+
+  | Input: H1 data + expected_bias (from L1)                         |
+  |                                                                  |
+  | Rules:                                                           |
+  | * Find H1 swing highs/lows (fractal pattern)                     |
+  | * BULLISH: last 5 candles show HH/HL progression                 |
+  | * BEARISH: last 5 candles show LH/LL progression                 |
+  | * ATR check: H1 ATR < 8 pips = DEAD CALM -> BLOCK               |
+  | * Close beyond last swing = BROKEN -> BLOCK                      |
+  |                                                                  |
+  | Output: VALID | BROKEN | UNKNOWN + confidence 0-10              |
+  |         + last_swing_high, last_swing_low                        |
+  +------------------------------------------------------------------+
+                                |
+              BROKEN/DEAD CALM -----+
+               BLOCK -> return analysis
+               UNKNOWN -> WARN but PASS (confidence=0)
+               VALID -> continue
+                                |
+                                v
+L3: M15 PULLBACK
+  File: pullback_detector.py :: get_m15_pullback()
+  +------------------------------------------------------------------+
+  | Input: M15 data + expected_bias + regime_info                    |
+  |                                                                  |
+  | Bypass Logic:                                                    |
+  | * If regime_info["bypass_l3"] == True -> SKIP gate               |
+  |   (MICRO_SCALP momentum entries don't need pullback)             |
+  |                                                                  |
+  | Standard Rules (when not bypassed):                              |
+  | * Detect counter-trend phase on M15                              |
+  | * Retracement accepted 23.6%-78.6% of the last impulse           |
+  | * Ideal zone 38.2%-61.8% -> top base score (5.5)                 |
+  | * 61.8% is the ideal-zone edge, NOT a rejection cutoff           |
+  | * 61.8%-78.6% accepted, scored 4.0                               |
+  | * Structure LH/LL / HH/HL: +3.0 bonus, NOT required              |
+  | * Volume contraction over the window: +1.5/+0.5/+0.0             |
+  |   (temporal, direction-blind; not a standalone gate)             |
+  | * EMA alignment +0.5 -- NOT an EMA20/50 crossover, and           |
+  |   inert: the raw M15 frame carries no ema20/ema50                |
+  |                                                                  |
+  | Output: pullback_detected (bool) + quality (0.0-10.0)            |
+  |         + volume_warning flag                                     |
+  +------------------------------------------------------------------+
+                                |
+                     NOT DETECTED --+
+                      BLOCK -> return analysis
+                      QUALITY < 1.5 -> inert, cannot fire (L3-D5)
+                      PASS -> continue
+                                |
+                                v
+L4: LIQUIDITY POOLS
+  File: liquidity_engine.py
+  +------------------------------------------------------------------+
+  | identify_liquidity_pools():                                      |
+  |   * sweep_pool: stop-loss cluster level + score                  |
+  |   * tp_pool: take-profit cluster level + score                   |
+  |                                                                  |
+  | assess_liquidity_gate():                                         |
+  |   * sweep_score threshold                                        |
+  |   * sweep_distance from current price                            |
+  |   * tp_score quality                                             |
+  |                                                                  |
+  | Output: pools_found + sweep_pool + tp_pool + state (PASS/BLOCK)  |
+  +------------------------------------------------------------------+
+                                |
+                          BLOCK --+
+                           BLOCK -> return analysis
+                           PASS -> continue
+                                |
+                                v
+L5: SWEEP + STRUCTURE
+  File: sweep_detector.py :: get_sweep_and_structure()
+  +------------------------------------------------------------------+
+  | Input: M15 + H1 data + L4 sweep level + bias direction           |
+  |                                                                  |
+  | Rules:                                                           |
+  | * Price sweeps liquidity pool (stop hunt)                        |
+  | * CHoCH / BOS detection                                          |
+  | * Sweep direction matches bias?                                  |
+  |                                                                  |
+  | Output: gate_state (PASS | WATCH | BLOCK)                        |
+  |         + sweep_confirmed + setup_grade + gate_reason            |
+  +------------------------------------------------------------------+
+                                |
+                    WATCH --------+
+                     WAIT -> return analysis (L5_SWEEP_WAIT)
+                     NOT CONFIRMED -> BLOCK
+                     WRONG DIRECTION -> BLOCK
+                     PASS -> continue
+                                |
+                                v
+L6: POI QUALITY
+  File: poi_engine.py :: identify_poi()
+  +------------------------------------------------------------------+
+  | Input: M15 + H1 data + direction + current_price                 |
+  |                                                                  |
+  | Bypass Logic:                                                    |
+  | * If regime_info["bypass_l6"] == True -> SKIP gate               |
+  |   (MICRO_SCALP doesn't need POI confluence)                      |
+  |                                                                  |
+  | Standard Rules:                                                  |
+  | * Order blocks (OB) identification                               |
+  | * Fair value gaps (FVG)                                          |
+  | * Dynamic threshold:                                             |
+  |   - sweep_confirmed=True -> threshold = 60                       |
+  |   - else -> threshold = 70                                       |
+  |                                                                  |
+  | Output: best_poi + score + type + zone bounds                    |
+  +------------------------------------------------------------------+
+                                |
+                     NO POI / SCORE LOW --+
+                      BLOCK -> return analysis
+                      PASS -> continue
+                                |
+                                v
+L7: CONFIDENCE SCORE
+  File: confidence_engine.py :: get_confidence_engine()
+  +------------------------------------------------------------------+
+  | Formula:                                                         |
+  |   bias_component      = bias_strength      * 0.24                |
+  |   structure_component = structure_confidence * 0.20               |
+  |   sweep_component     = sweep_quality      * 0.20                |
+  |   poi_component       = poi_score          * 0.20                |
+  |   cohesion_component  = min(16, strong_signals * 4)              |
+  |   session_bonus       = +8 (LONDON/NY), 0 (ASIAN), -15 (DEAD)   |
+  |   + Fib confluence bonus                                         |
+  |   + RSI neutral bonus                                            |
+  |                                                                  |
+  | Output: final_score (0-100) + grade + reasoning                  |
+  |   * A+ : >= 85                                                    |
+  |   * A  : >= 70 (REGIME_SCALP) or >= 55 (MICRO_SCALP)            |
+  |   * REJECT: below threshold                                      |
+  +------------------------------------------------------------------+
+                                |
+                     SCORE < THRESHOLD
+                      BLOCK -> return analysis (L7_CONFIDENCE)
+                      PASS -> continue
+                                |
+                                v
+L8: ENTRY TRIGGER + REGIME SPREAD CHECK
+  File: entry_engine.py :: get_entry_trigger() + detect_regime()
+  +------------------------------------------------------------------+
+  | Step 1: Spread Check (Regime-Specific)                           |
+  |   * MICRO_SCALP: max 5 pips                                      |
+  |   * REGIME_SCALP: max 7 pips                                     |
+  |   * INTRADAY_SWING: max 10 pips                                  |
+  |   Exceeds -> REJECTED                                             |
+  |                                                                  |
+  | Step 2: Entry Trigger Detection                                  |
+  |   * Rejection candle (wick >= 2x body)                           |
+  |   * Close in upper 50% (BUY) or lower 50% (SELL)                 |
+  |   * Next M1 close confirmation                                    |
+  |   * Volume > 20-candle baseline                                   |
+  |   * RSI turning up/down                                           |
+  |   * MACD histogram flip                                           |
+  |                                                                  |
+  | Step 3: evaluate_entry_for_regime()                              |
+  |   * RR validation                                                 |
+  |   * Entry mode (MARKET/LIMIT)                                     |
+  |                                                                  |
+  | Output: entry_triggered (bool) + setup_type + rr_ratio            |
+  +------------------------------------------------------------------+
+                                |
+                     SPREAD WIDE --+
+                      REJECTED -> return analysis
+                      TRIGGER NOT FIRED -> WAIT
+                      ALL PASS -> ENTRY_SIGNAL
+
+
+5. EXECUTION & MANAGEMENT FLOW
+--------------------------------
++--------------------------------------------------------------------------------+
+|  EXECUTION PIPELINE                                                            |
+|                                                                                |
+|  entry_signal -> Risk Manager -> OrderExecutor -> MT5/Simulation              |
+|       |               |                  |                                      |
+|       |               |                  +-> Trade Persistence                 |
+|       |               |                       save_active_trades()             |
+|       |               |                                                          |
+|       |               +-> calc_lot_size()                                        |
+|       |                    lot = balance * risk_pct / (stop_dist * 10)         |
+|       |                    clamped to [0.01, 1.0]                               |
+|       |                                                                          |
+|       +-> create_order()                                                        |
+|            order_id, entry_price, SL, TP, RR, grade, metadata                 |
+|       +-> execute_order()                                                       |
+|            simulation=True -> simulated (5% random failure for testing)        |
+|            simulation=False -> MT5 order_send() with retry (max 3 attempts)    |
+|       +-> _OPEN_TRADES.append(trade_dict)                                       |
+|                                                                                |
+|  L9: Position Management (trade_manager.py)                                    |
+|  For each open trade:                                                          |
+|    * 1:1 RR hit  -> CLOSE_50PCT (50% closed, SL -> breakeven)                 |
+|    * 1:2 RR hit  -> TRAIL_SL (SL trails at 50% of leg 2)                     |
+|    * 1:3 RR hit  -> CLOSE_ALL (full TP)                                       |
+|    * SL hit      -> CLOSE_ALL (stop loss)                                      |
+|                                                                                |
+|  L10: Feedback Loop (feedback_loop.py)                                         |
+|    * log_closed_trade() -> closed_trades.json                                  |
+|    * calculate_weekly_performance() -> win_rate, avg RR, PnL summary          |
+
+
+6. REGIME DETECTION DETAIL
+---------------------------
+detect_regime() [entry_engine.py]
+Called BEFORE L1 in analyze_entry()
+Inputs: M5 ATR, kill_zone, session, H1 structure valid, current_spread
+
++----------------+----------------+---------+-------+----------+----------+--------------+----------------+
+| Regime         | M5 ATR Cond.   | Risk %  |TP Ratio|Bypass L3 |Bypass L6 |POI Threshold |Max Spread(pips)|
++----------------+----------------+---------+-------+----------+----------+--------------+----------------+
+| MICRO_SCALP    | 2.5 <= ATR <=  |  0.75%  | 1.5R  |   YES    |   YES    |     50       |      5.0       |
+|                | 4.5 + killzone |         |       |          |          |              |                |
++----------------+----------------+---------+-------+----------+----------+--------------+----------------+
+| REGIME_SCALP   | 4.5 < ATR <=   |  1.0%   | 2.0R  |   NO     |   NO     |     60       |      7.0       |
+|                | 7.0            |         |       |          |          |              |                |
++----------------+----------------+---------+-------+----------+----------+--------------+----------------+
+| INTRADAY_SWING | ATR > 7.0      |  1.5%   | 3.0R  |   NO     |   NO     |     70       |      10.0      |
++----------------+----------------+---------+-------+----------+----------+--------------+----------------+
+| DEAD_CALM      | ATR < 2.5      |  0.75%  | 1.5R  |   NO     |   NO     |     70       |      5.0       |
+|                | (blocked at L2) |         |       |          |          |              |                |
++----------------+----------------+---------+-------+----------+----------+--------------+----------------+
+
+
+7. DATA STRUCTURES
+-------------------
+
+7.1 Analysis Result Dict
+analysis = {
+    "timestamp": str,                    # ISO timestamp
+    "signal_type": str,                  # "ENTRY_SIGNAL" | "PRE_ENTRY" | "REJECTED" | "ERROR"
+    "layers_passed": list[str],          # e.g. ["L1_BIAS", "L2_STRUCTURE", "L3_PULLBACK_BYPASSED", ...]
+    "layer_failed": str | None,          # e.g. "L7_CONFIDENCE" | "L3_PULLBACK" | "L5_SWEEP_WAIT"
+    "fail_reason": str,                  # Human-readable failure reason
+    "direction": str,                    # "BUY" | "SELL"
+    "current_price": float | None,
+    "regime_info": dict | None,          # From detect_regime()
+    "candidate_entry_style": str,        # "PULLBACK" | "MOMENTUM" | "PULLBACK / MOMENTUM"
+    "layer_1": dict,                     # bias result
+    "layer_2": dict,                     # structure result
+    "layer_3": dict | None,              # pullback result
+    "layer_4": dict | None,              # liquidity result
+    "layer_5": dict | None,              # sweep result
+    "layer_6": dict | None,              # poi result
+    "layer_7": dict | None,              # confidence result
+    "layer_8": dict | None,              # entry trigger result
+    "entry_signal": dict | None,         # Final entry details (if ENTRY_SIGNAL)
+}
+
+7.2 Regime Info Dict
+regime_info = {
+    "regime": str,                # "MICRO_SCALP" | "REGIME_SCALP" | "INTRADAY_SWING" | "DEAD_CALM"
+    "m5_atr": float,              # M5 ATR value
+    "kill_zone": bool,            # In London 08-10 or NY 12-14 UTC
+    "h1_structure_valid": bool,   # Rough H1 structure check
+    "risk_percent": float,        # 0.75, 1.0, 1.5
+    "tp_ratio": float,            # 1.5, 2.0, 3.0
+    "bypass_l3": bool,            # Skip pullback gate?
+    "bypass_l6": bool,            # Skip POI gate?
+    "poi_threshold": int,         # 50, 60, or 70
+    "max_spread_pips": float,     # 5.0, 7.0, or 10.0
+    "current_spread": float,      # Actual spread
+    "spread_acceptable": bool,    # current_spread <= max_spread_pips
+    "reasoning": str,             # Human-readable regime detection reason
+}
+
+7.3 Entry Signal Dict
+entry_signal = {
+    "position_type": str,         # "BUY" | "SELL"
+    "entry_price": float,
+    "stop_loss": float,
+    "take_profit": float,
+    "rr_ratio": float,            # 1:3.0 for A+, 1:2.0 for A
+    "grade": str,                 # "A+" | "A"
+    "setup_type": str,            # e.g. "SWEEP_PULLBACK"
+    "entry_method": str,          # "PULLBACK" | "MOMENTUM"
+    "entry_mode": str,            # "MARKET" | "LIMIT"
+    "trigger_type": str,          # "REJECTION_CANDLE" | "MOMENTUM_BREAK"
+    "rr_valid": bool,
+    "poi_type": str,              # "ORDER_BLOCK" | "FVG" | "N/A"
+    "timestamp": str,             # ISO timestamp
+}
+
+7.4 Open Trade Dict
+trade = {
+    "trade_id": str,              # Unique trade ID
+    "order_id": str,              # MT5 order ticket
+    "entry_price": float,
+    "stop_loss": float,
+    "take_profit": float,
+    "position_type": str,         # "BUY" | "SELL"
+    "entry_time": str,            # ISO timestamp
+    "status": str,                # "OPEN"
+    "position_size": float,       # Lot size
+    "state": dict | None,         # Trade state object
+    "last_check": str,            # ISO timestamp of last management check
+}
+
+7.5 Confidence Result Dict
+confidence_result = {
+    "final_score": float,         # 0-100
+    "grade": str,                 # "A+" | "A" | "REJECT"
+    "confidence_breakdown": {
+        "bias_component": float,      # 0-24
+        "structure_component": float, # 0-20
+        "sweep_component": float,     # 0-20
+        "poi_component": float,       # 0-20
+        "cohesion_component": float,  # 0-16
+        "session_bonus": float,       # -15 to +8
+    },
+    "reasoning": str,             # e.g. "Bias 80% (x0.24=19.2) | Structure 0% ..."
+    "a_plus_checklist": {
+        "checks_passed": int,     # 0-7
+        "qualifies_for_a_plus": bool,
+    },
+    "recommendation": str,
+}
+
+
+8. CONFIGURATION CONSTANTS (EXACT)
+-----------------------------------
+CONFIG = {
+    # Symbol & Mode
+    "symbol": "XAUUSD",
+    "demo_mode": False,           # LIVE trading
+
+    # Position Limits
+    "max_concurrent_trades": 3,
+    "max_daily_loss_percent": 5.0,
+
+    # Risk per Trade (% of balance)
+    "risk_per_trade_a_plus": 1.5,   # A+ grade
+    "risk_per_trade_a": 1.0,        # A grade
+
+    # Data Requirements (candles)
+    "h4_candles_required": 100,
+    "h1_candles_required": 60,
+    "m15_candles_required": 50,
+    "m5_candles_required": 100,
+    "m1_candles_required": 200,
+}
+
+# Derived Constants
+MIN_PULLBACK_QUALITY = 1.5
+MICRO_SCALP_THRESHOLD = 55      # Confidence threshold
+REGIME_SCALP_THRESHOLD = 70     # Confidence threshold
+A_PLUS_THRESHOLD = 85           # Confidence threshold for A+
+
+# Spread Tolerances (pips)
+MICRO_SCALP_MAX_SPREAD = 5.0
+REGIME_SCALP_MAX_SPREAD = 7.0
+INTRADAY_SWING_MAX_SPREAD = 10.0
+
+# TP Ratios (R)
+MICRO_SCALP_TP_RATIO = 1.5
+REGIME_SCALP_TP_RATIO = 2.0
+INTRADAY_SWING_TP_RATIO = 3.0
+
+# L2 ATR Thresholds (pips)
+DEAD_CALM_ATR_THRESHOLD = 8.0
+HIGH_VOLATILITY_ATR = 15.0
+
+# Kill Zones (UTC hours)
+KILL_ZONES_UTC = ((8, 10), (12, 14))  # London 08-10, NY 12-14
+
+# File Paths
+SIGNAL_LOG_FILE = "signal_log.csv"
+PRODUCTION_LOG = "trading_bot_production.log"
+ACTIVE_TRADES_FILE = "active_trades.json"
+
+
+9. BRANCH DECISION TABLE
+-------------------------
+| Layer | File                    | Function                        | PASS                                  | BLOCK/WAIT                                      |
+|-------|-------------------------|---------------------------------|---------------------------------------|-------------------------------------------------|
+| L0    | main_production.py      | check_pre_trade_gates()         | Daily loss OK + session valid          | Daily loss exceeded, DEAD session                |
+| L1    | bias_engine.py          | get_h4_bias()                   | BULLISH or BEARISH                     | NEUTRAL                                          |
+| L2    | structure_engine.py     | get_h1_structure()              | VALID or UNKNOWN                       | BROKEN, DEAD CALM (ATR<8)                        |
+| L3    | pullback_detector.py    | get_m15_pullback()              | detected=True AND quality>=1.5 (the    | detected=False. quality<1.5 is inert --          |
+|       |                         |                                 | latter is implied), or bypass_l3       | it cannot fire once detected=True (L3-D5).       |
+| L4    | liquidity_engine.py     | assess_liquidity_gate()         | State=PASS                             | State=BLOCK                                      |
+| L5    | sweep_detector.py       | get_sweep_and_structure()       | sweep_confirmed=True, direction        | gate_state=WATCH, not confirmed, wrong direction |
+|       |                         |                                 | matches                                |                                                   |
+| L6    | poi_engine.py           | identify_poi()                  | best_poi.score >= threshold OR         | No POI, score < threshold                        |
+|       |                         |                                 | bypass_l6                              |                                                   |
+| L7    | confidence_engine.py    | get_confidence_engine()         | score >= 55 (MICRO) or >= 70           | score < threshold                                |
+|       |                         |                                 | (REGIME)                               |                                                   |
+| L8    | entry_engine.py         | get_entry_trigger() +           | entry_triggered=True + spread OK +     | spread too wide, trigger not ready, gate fails   |
+|       |                         | evaluate_entry_for_regime()     | gate passes                            |                                                   |
+
+
+10. FILE IMPORT DEPENDENCIES
+------------------------------
+main_production.py
++-- config.py
++-- mt5_handler.py
++-- bias_engine.py                    [L1]
++-- structure_engine.py               [L2]
++-- pullback_detector.py              [L3]
++-- liquidity_engine.py               [L4]
++-- sweep_detector.py                 [L5]
++-- poi_engine.py                     [L6]
++-- confidence_engine.py              [L7]
++-- entry_engine.py                   [L8 + Regime]
++-- trade_manager.py                  [L9]
++-- feedback_loop.py                  [L10]
++-- trade_persistence.py              [Persistence]
++-- risk_manager.py                   [Sizing]
++-- order_execution.py                [Execution]
++-- error_recovery.py                 [Error Handling]
++-- indicators.py                     [Indicators]
++-- utils.py                          [Helpers]
+
+entry_engine.py
++-- indicators.py
++-- risk_manager.py
++-- fibonacci_levels.py     (via confidence_engine)
++-- liquidity_engine.py
++-- sweep_detector.py
++-- pullback_detector.py
+
+
+11. STATE & SIGNAL FLOW
+------------------------
+START
+  |
+  +-> load_active_trades() -> _OPEN_TRADES restored
+  |
+  +-> signal_module.signal(SIGINT, handler)
+  +-> signal_module.signal(SIGTERM, handler)
+  |
+  +-> MAIN LOOP -------------------------------------------------------------------+
+       |                                                                          |
+       +-> [L0] check_pre_trade_gates() -> pass/fail                              |
+       +-> MT5 data fetch                                                         |
+       +-> detect_regime() -> regime_info                                         |
+       +-> [L1-L8] analyze_entry() -> analysis dict                               |
+       |    +-> signal_type = "ENTRY_SIGNAL"                                      |
+       |    +-> signal_type = "PRE_ENTRY"  (most common)                          |
+       |    +-> signal_type = "ERROR"                                             |
+       +-> print_run_summary()                                                    |
+       +-> log_signal() -> signal_log.csv                                         |
+       |                                                                          |
+       +-> IF ENTRY_SIGNAL:                                                       |
+       |    +-> execute_entry_signal()                                             |
+       |         +-> calculate_lot_size()                                          |
+       |         +-> order_executor.create_order()                                 |
+       |         +-> order_executor.execute_order()                                |
+       |         +-> _OPEN_TRADES.append(trade)                                    |
+       |                                                                          |
+       +-> [L9] manage_positions({})                                              |
+       |    +-> order_executor.update_current_price()                              |
+       |    +-> CLOSE_50PCT / TRAIL_SL / CLOSE_ALL                                |
+       |    +-> _OPEN_TRADES cleanup                                              |
+       |                                                                          |
+       +-> [L10] feedback_loop (on closed trades)                                 |
+       |                                                                          |
+       +-> save_state() -> every 10 iterations                                    |
+       |                                                                          |
+       +-> time.sleep(5)                                                          |
+            |                                                                      |
+            +-> LOOP AGAIN                                                        |
+                                                                                    |
+SHUTDOWN SIGNAL (SIGINT/SIGTERM) ---------------------------------------------------+
+  |
+  +-> graceful_shutdown()
+       +-> Close all MT5 positions
+       +-> save_active_trades()
+       +-> shutdown_mt5()
+       +-> shutdown_mgr.shutdown(_OPEN_TRADES, monitor)
+
+
+12. MAIN LOOP SEQUENCE (PRECISE)
+---------------------------------
+1. get_current_spread(symbol)             -> current_spread
+2. detect_regime(m5, m15, h1, spread)     -> regime_info
+3. check_pre_trade_gates(regime_info)     -> gate_check
+   if not all_gates_passed: sleep 5s, continue
+4. if len(_OPEN_TRADES) < max_concurrent_trades:
+       analysis = analyze_entry(h4, h1, m15, m5, m1, daily, price, regime_info)
+       print_run_summary(analysis)
+       log_signal(row) -> signal_log.csv
+       if analysis["signal_type"] == "ENTRY_SIGNAL":
+           order_id = execute_entry_signal(analysis["entry_signal"])
+5. manage_positions({})
+6. if iteration_count % 10 == 0: save_state()
+   if iteration_count % 60 == 0: monitor.check_health()
+7. time.sleep(5)
+
+
+13. TECHNOLOGY STACK
+---------------------
+| Component         | Technology                                               |
+|-------------------|-----------------------------------------------------------|
+| Language          | Python 3.10+                                              |
+| Trading Platform  | MetaTrader 5 (MetaTrader5 Python package)                 |
+| Data Analysis     | pandas, pandas_ta                                         |
+| Persistence       | JSON files (trade_states/active_trades.json)              |
+| Logging           | Python logging (file + stdout)                            |
+| Config            | .env file + config.py                                     |
+| Optional AI       | Anthropic Claude API (ai_analyst.py)                      |
+| News              | RSS feeds (primary), NewsAPI (optional)                   |
+| Intermarket       | DXY, XAGUSD, US10Y, WTIUSD, US500 (optional, disabled)   |
+| CVD/Institutional | cvd_divergence.py, institutional_patterns.py (disabled)  |
+
+
+14. SUPPORT SYSTEMS
+--------------------
+| System            | File               | Responsibility                                     |
+|-------------------|--------------------|-----------------------------------------------------|
+| MT5 Handler       | mt5_handler.py     | MT5 connect/login, market data fetch                |
+|                   |                    | (copy_rates_from_pos + copy_rates_range fallback),  |
+|                   |                    | spread/price retrieval                              |
+| Indicators        | indicators.py      | RSI-14, MACD, EMA-20/50, ATR-14, VWAP,             |
+|                   |                    | volume ratio, trend classification                  |
+| Risk Manager      | risk_manager.py    | Lot size calculation, session detection             |
+|                   |                    | (Asian/London/NY/Dead)                              |
+| Order Executor    | order_execution.py | Order creation, execution with retry,               |
+|                   |                    | partial exit tracking (CLOSE_50PCT / TRAIL_SL /     |
+|                   |                    | CLOSE_ALL)                                          |
+| Trade Persistence | trade_persistence.py | JSON-based save/load of open trades with backup,  |
+|                   |                    | survives restarts                                   |
+| Error Recovery    | error_recovery.py  | SystemMonitor (metrics + health),                   |
+|                   |                    | ConnectionManager, GracefulShutdownManager,         |
+|                   |                    | AlertManager                                        |
+| Config            | config.py          | All constants + .env loading                        |
+
+
+15. KEY DESIGN PATTERNS
+------------------------
+- Sequential Gate Pipeline: Each layer returns a dict with a gate state. Any
+  layer can BLOCK or WAIT, short-circuiting the rest.
+- Regime-Aware Adaptivity: The same pipeline adapts risk, spread tolerance,
+  layer bypass, and confidence thresholds based on market volatility (M5 ATR).
+- State Machine for Trades: Trades progress through PENDING -> OPEN ->
+  PARTIAL_CLOSE -> TRAILING_SL -> CLOSED, tracked by OrderExecutor and
+  trade_manager.
+- Graceful Degradation: Every major component is imported in a try/except block.
+  If MT5 is unavailable, the bot runs in analysis/demo mode. If a layer is
+  missing, analysis returns ERROR instead of crashing.
+- Persistence + Backup: Active trades are saved every 10 loop iterations with
+  automatic backup. On restart, restore_state() rehydrates _OPEN_TRADES.
+- Retry Logic: Order execution retries up to 3 times with 0.5s delay. MT5 data
+  fetch has 3 retry attempts with fallback to copy_rates_range.
+- BOS Flip (L2): A broken H1 structure against the current bias is re-evaluated
+  in the opposite direction, allowing the bot to trade a confirmed reversal
+  instead of stalling.
+
+
+16. LAYER DETAILS (L1-L10)
+---------------------------
+
+L1 - H4/H1 Bias (bias_engine.py)
+  Purpose: Determine the ONLY allowed direction for the trade.
+  Logic:
+    - Scalp regimes use get_fast_bias() on H1 data.
+    - INTRADAY_SWING uses get_h4_bias() on H4 data.
+    - EMA20 vs EMA50 separation must exceed ATR-scaled threshold.
+    - Last 2 closes must confirm bias direction.
+    - Price must be on correct side of daily H/L midpoint.
+  Output: BULLISH | BEARISH | NEUTRAL + bias_strength (0-10).
+
+L2 - H1 Structure (structure_engine.py)
+  Purpose: Confirm trend structure on H1 timeframe.
+  Logic:
+    - Detect swing highs/lows using fractal pattern (5-candle window).
+    - BULLISH requires HH/HL progression; BEARISH requires LH/LL.
+    - H1 ATR < 8 pips -> DEAD CALM -> BLOCK.
+    - Close beyond last swing -> BROKEN -> BLOCK.
+    - BOS Flip: If structure is broken in one direction, check if opposite
+      direction has confirmed structure and flip bias.
+  Output: VALID | BROKEN | UNKNOWN + structure_confidence (0-10).
+
+L3 - M15 Pullback (pullback_detector.py)
+  Purpose: Identify quality pullbacks in the direction of the bias.
+  Logic:
+    - Bypass: MICRO_SCALP bypasses this layer entirely.
+    - Momentum Fallback: REGIME_SCALP without pullback gets a stricter
+      momentum check (2+ consecutive M5 closes, volume above baseline,
+      RSI band 55-75/25-45, distance < 1.2x ATR).
+    - Standard pullback: retracement accepted 23.6%-78.6%, with
+      38.2%-61.8% the ideal (highest-scoring) zone -- 61.8% is the edge
+      of that zone, not a maximum. Structure, volume contraction and RSI
+      contribute quality bonuses; none is a standalone gate. The EMA term
+      is an alignment bonus, not an EMA20/50 crossover, and is inert at
+      HEAD. Corrected D-6OF-2H; implementation unchanged.
+  Output: pullback_detected (bool) + pullback_quality (0-10).
+
+L4 - Liquidity Pools (liquidity_engine.py)
+  Purpose: Identify stop-loss clusters (sweep pools) and take-profit clusters.
+  Logic:
+    - identify_liquidity_pools(): Scans M15/H1/H4/Daily for clustered
+      highs/lows.
+    - assess_liquidity_gate(): Validates sweep pool quality, distance from
+      current price, and TP pool quality.
+  Output: sweep_pool (level + score) + tp_pool (level + score) +
+          state (PASS/BLOCK).
+
+L5 - Sweep + CHoCH/BOS (sweep_detector.py)
+  Purpose: Confirm stop hunt (liquidity sweep) and structure change.
+  Logic:
+    - Price must sweep the L4 liquidity pool.
+    - Detect CHoCH (Change of Character) or BOS (Break of Structure) on H1.
+    - Sweep direction must match bias direction.
+  Output: gate_state (PASS | WATCH | BLOCK) + sweep_confirmed + setup_grade.
+
+L6 - POI Quality (poi_engine.py)
+  Purpose: Find high-probability entry zones (Order Blocks, Fair Value Gaps).
+  Logic:
+    - Bypass: MICRO_SCALP bypasses this layer.
+    - identify_poi(): Scans M15/H1 for OB and FVG patterns.
+    - Dynamic threshold: 60 if sweep confirmed, 70 otherwise.
+  Output: best_poi (type, score, zone bounds).
+
+L7 - Confidence Score (confidence_engine.py)
+  Purpose: Aggregate all signals into a single confidence score with
+           regime-specific weights.
+  Formula:
+    final_score = (
+        bias_strength * weight_bias +
+        structure_confidence * weight_structure +
+        sweep_quality * weight_sweep +
+        poi_score * weight_poi +
+        min(16, strong_signals * 4) +
+        session_bonus +
+        fib_confluence_bonus +
+        rsi_bonus
+    )
+  Regime Weights:
+    - MICRO_SCALP: bias=0.20, structure=0.05, sweep=0.35, poi=0.20, cohesion=0.20
+    - REGIME_SCALP: bias=0.24, structure=0.20, sweep=0.20, poi=0.20, cohesion=0.16
+    - INTRADAY_SWING: bias=0.25, structure=0.30, sweep=0.15, poi=0.20, cohesion=0.10
+  Thresholds: MICRO_SCALP >= 55, REGIME_SCALP >= 70, momentum fallback >= 75.
+  Grades: A+ (>=85), A (>=threshold), REJECT.
+
+L8 - Entry Trigger (entry_engine.py)
+  Purpose: Confirm precise entry timing with M5/M1 candles.
+  Logic:
+    - Spread check (regime-specific, already validated at L0).
+    - Rejection candle: wick >= 2x body, close in upper/lower 50% of range.
+    - Next M1 close confirmation.
+    - Volume > 20-candle baseline.
+    - RSI turning up/down + MACD histogram flip.
+    - evaluate_entry_for_regime(): Validates RR ratio and determines
+      MARKET/LIMIT entry mode.
+  Output: entry_triggered (bool) + setup_type + rr_ratio + entry_mode.
+
+L9 - Position Management (trade_manager.py / manage_positions)
+  Purpose: Manage open trades with strategic partial exits and SL adjustments.
+  Logic (checked in order):
+    - SL Hit: Immediate full close.
+    - 1:1 RR: Close 50% position, move SL to breakeven.
+    - 1:2 RR: Trail SL to 50% of leg 2 (lock partial profits).
+    - 1:3 RR: Close remaining 100% at TP.
+    - Breakeven Protection: If price retraces back to entry after SL moved to
+      BE, close at breakeven + buffer.
+  State Tracking: position_size, current_sl, sl_status, exit_1_1_taken,
+                  exit_1_2_status.
+
+L10 - Feedback Loop (feedback_loop.py)
+  Purpose: Log closed trades and calculate performance metrics.
+  Logic:
+    - log_closed_trade(): Save to closed_trades.json.
+    - calculate_weekly_performance(): Win rate, average RR, total PnL.
+    - Auto-adjust parameters based on performance (if implemented).
+
+
+17. KNOWN ISSUES FROM CODE ANALYSIS
+-------------------------------------
+| # | Issue                                   | Location                    | Description                                    |
+|---|-----------------------------------------|-----------------------------|-------------------------------------------------|
+| 1 | L2 passes UNKNOWN with 0 confidence     | main_production.py:699-703  | L2 allows UNKNOWN structure through but passes |
+|   |                                         |                             | structure_confidence=0 to L7                    |
+| 2 | L7 unreachable threshold                | main_production.py:869-875  | With structure=0, max possible score is ~48,   |
+|   |                                         |                             | but threshold is 55/70                          |
+| 3 | bypass_l3 not honored (FIXED)           | main_production.py:720-723  | Was bypassed; now correctly checked at line 720|
+| 4 | bypass_l6 not honored (FIXED)           | main_production.py:851-853  | Was bypassed; now correctly checked at line 851|
+| 5 | Pullback detected flag                  | pullback_detector.py        | quality can be 7.0 but detected=False causes    |
+|   |                                         |                             | block                                           |
+| 6 | Bias midpoint weak penalty              | bias_engine.py:166-170      | Close < midpoint only reduces strength by 2,    |
+|   |                                         |                             | doesn't block                                   |
+| 7 | Unexpected restarts                     | main_production.py:1305     | SIGTERM handler active; external watchdog may   |
+|   |                                         |                             | trigger                                         |
+| 8 | Hardcoded confidence_score              | main_production.py:1063     | Uses 80.0 instead of actual conf.get("final_    |
+|   |                                         |                             | score")                                         |
+
+
+Generated: 2026-07-21
+System: zoyaintraday_bot_v2 (10-Layer Production Trading Bot)
+Files: main_production.py + 10 layer modules + support systems

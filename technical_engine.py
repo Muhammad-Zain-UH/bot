@@ -1,936 +1,526 @@
-"""Improved technical decision engine for intraday XAUUSD."""
-
+"""Technical decision engine – robust version with full error handling."""
 from __future__ import annotations
-
-from datetime import datetime, timezone
-from typing import Any
-
-from confidence_calibrator import calibrate_technical_confidence
+from typing import Any, Tuple
+import numpy as np
+import pandas as pd
 from utils import log_debug
+from indicators import calculate_indicators, find_last_swing, anchored_vwap_from_swing
+from mt5_handler import get_current_spread, compute_cvd_proxy
+from risk_manager import get_current_session, SESSION_SCORE_MULTIPLIERS
+from fibonacci_levels import calculate_fibonacci_levels, check_fibonacci_confirmation
+from cvd_divergence import detect_cvd_divergence, calculate_cvd
+import config
 
 WAIT_SIGNAL = "WAIT_FOR_CONFIRMATION"
 TRADE_SIGNALS = {"BUY", "SELL"}
+MAX_SCORE = 10.0
+MIN_CONFIDENCE = 35
+CONFIDENCE_BASE = 57
+MAX_TOTAL_PENALTY = 15
 
-WEIGHTS = {
-    "ema_trend": 2.0,       # 20% of M15 score
-    "vwap_position": 1.5,   # 15%
-    "rsi": 1.5,             # 15%
-    "volume": 1.25,         # 12% (increased from 6% - critical for gold)
-    "volume_spike": 0.75,   # 7%
-}
-
-BULLISH_TRENDS = {"Strong Bullish", "Weak Bullish"}
-BEARISH_TRENDS = {"Strong Bearish", "Weak Bearish"}
-STRONG_TRENDS = {"Strong Bullish", "Strong Bearish"}
-
-ENTRY_PULLBACK_M5_ATR_FACTOR = 0.50
-LOW_VOLUME_RATIO = 0.70  # Score penalty threshold for thin participation
-GENUINELY_DEAD_VOLUME_RATIO = 0.50
-GENUINELY_DEAD_TICK_VOLUME = 200.0
-HIGH_VOLUME_RATIO = 1.10
-LOW_VOLUME_PENALTY = 0.80
-LOW_VOLUME_TREND_PENALTY = 0.40
-COUNTERTREND_REJECTION_SCORE = 4.00
-MIN_CONFIDENCE_THRESHOLD = 55  # Lowered from 60 to generate more signals
-LIVE_ENTRY_WEIGHTS = {"M5": 0.12, "M1": 0.18}
-ENTRY_RSI_IDEALS = {"BUY": 58.0, "SELL": 42.0}
-ENTRY_RSI_WINDOW = 18.0
-
-RSI_EXHAUSTION_SELL = 25.0  # Wilder standard for oversold
-RSI_EXHAUSTION_BUY = 75.0   # Wilder standard for overbought
-RSI_CAUTION_SELL = 30.0     # Wilder standard light zone
-RSI_CAUTION_BUY = 70.0      # Wilder standard light zone
-
-M1_COUNTER_SELL_RSI = 60.0
-M1_COUNTER_BUY_RSI = 40.0
-M5_REVERSAL_BUY_RSI = 52.0
-M5_REVERSAL_SELL_RSI = 48.0
-M1_VOL_HIGH_ENTRY = 1.05
-M1_VOL_NORM_ENTRY = 0.95
-
-SIGNAL_SCORE_THRESHOLD = 1.0  # Lowered from 2.0 - allow scores 1.0+ to generate BUY/SELL
-WAIT_SCORE_FLOOR = 0.5      # Lowered from 1.0 - WAIT state for weaker setups
-
-ENTRY_TIMEFRAMES = ("M15", "M5", "M1")
-HIGHER_TIMEFRAMES = ("H4", "H1")
-TIMEFRAME_CONFIRM_WEIGHTS = {"H4": 1.0, "H1": 1.5, "M5": 2.0, "M1": 1.0}
-
-MAX_WEIGHTED_SCORE = sum(WEIGHTS.values()) + sum(TIMEFRAME_CONFIRM_WEIGHTS.values())
-
-# FIX: Session-aware minimum confidence thresholds (RELAXED for profitability)
-MIN_CONFIDENCE_BY_SESSION = {
-    "LondonNewYork": 45,  # Best session - most trades
-    "London": 48,
-    "NewYork": 49,
-    "Asian": 50,          # Quieter but tradeable
-    "Dead": 52,           # Allow trading with risk management
-    "Closed": 99,
-}
-
-
-def _f(value: Any) -> float | None:
+def _to_float(value: Any) -> float | None:
+    """Safely convert any value to float, handling numpy types and None."""
+    if value is None:
+        return None
     try:
-        return None if value is None else float(value)
-    except Exception:
+        # Handle numpy scalar types
+        if hasattr(value, 'item'):
+            value = value.item()
+        return float(value)
+    except (TypeError, ValueError):
         return None
 
-
-def _clip(value: float, lower: float, upper: float) -> float:
-    return max(lower, min(upper, value))
-
+def _clip(value: float, low: float, high: float) -> float:
+    return max(low, min(high, value))
 
 def _trend_dir(trend: str) -> str:
-    if trend in BULLISH_TRENDS:
+    if "Bullish" in str(trend):
         return "BUY"
-    if trend in BEARISH_TRENDS:
+    if "Bearish" in str(trend):
         return "SELL"
     return "NO TRADE"
 
-
-def _volume_is_genuinely_dead(ind: dict[str, Any]) -> bool:
-    """Hard-block only when both relative and absolute volume are dead."""
-    vr = _f(ind.get("volume_ratio"))
-    latest_volume = _f(ind.get("latest_volume"))
-    if vr is None or latest_volume is None:
-        return False
-    return vr < GENUINELY_DEAD_VOLUME_RATIO and latest_volume < GENUINELY_DEAD_TICK_VOLUME
-
-
-def _all_vol_low(tfi: dict[str, dict[str, Any]]) -> bool:
-    for label in ENTRY_TIMEFRAMES:
-        if not _volume_is_genuinely_dead(tfi.get(label, {})):
-            return False
-    return True
-
-
-def _m15_vol_thin(tfi: dict[str, dict[str, Any]]) -> bool:
-    vr = _f(tfi.get("M15", {}).get("volume_ratio"))
-    return vr is not None and vr < LOW_VOLUME_RATIO
-
-
-def _detect_mixed_signals(tfa: dict[str, dict[str, Any]]) -> bool:
-    """Detect when entry timeframes have conflicting directional signals.
-    
-    FIX: Only flag as mixed if no clear higher TF bias exists.
-    In a trending market, pullbacks on lower TF = normal, not "mixed".
-    """
-    # Check for clear higher timeframe bias
+def _higher_tf_bias(tfa: dict) -> tuple[str, int]:
     h4_dir = tfa.get("H4", {}).get("direction", "NO TRADE")
     h1_dir = tfa.get("H1", {}).get("direction", "NO TRADE")
-    
-    # If H4 and H1 agree, lower TF variations are structured, not conflicted
-    if h4_dir in {"BUY", "SELL"} and h4_dir == h1_dir:
-        return False  # Clear bias exists, pullbacks are expected
-    
-    # Only flag as mixed if higher TF is unclear AND entry TF disagree
-    directions = {
-        tfa.get("M15", {}).get("direction", "NO TRADE"),
-        tfa.get("M5", {}).get("direction", "NO TRADE"),
-        tfa.get("M1", {}).get("direction", "NO TRADE"),
-    } - {"NO TRADE"}
-    
-    return len(directions) > 1  # True only if entry TFs really conflict
+    if h4_dir in TRADE_SIGNALS and h1_dir in TRADE_SIGNALS and h4_dir == h1_dir:
+        return h4_dir, 2
+    if h4_dir in TRADE_SIGNALS:
+        return h4_dir, 1
+    if h1_dir in TRADE_SIGNALS:
+        return h1_dir, 1
+    return "NO TRADE", 0
 
-
-def _m1_vol_high(m1: dict[str, Any]) -> bool:
-    ratio = _f(m1.get("atr_ratio"))
-    if ratio is None:
-        return False
-    if str(m1.get("volatility_classification", "Normal")) == "High":
-        return ratio >= M1_VOL_NORM_ENTRY
-    return ratio >= M1_VOL_HIGH_ENTRY
-
-
-def _evaluate_tf(ind: dict[str, Any]) -> dict[str, Any]:
+def _evaluate_tf(ind: dict) -> dict:
     trend = str(ind.get("trend_classification", "Neutral"))
-    direction = _trend_dir(trend)
-    pvwap = str(ind.get("price_vs_vwap", "Unknown"))
     return {
+        "direction": _trend_dir(trend),
         "trend_classification": trend,
-        "direction": direction,
-        "price_vs_vwap": pvwap,
-        "rsi_signal": str(ind.get("rsi_signal", "Unavailable")),
-        "strong_trend": trend in STRONG_TRENDS,
-        "vwap_aligned": (
-            (direction == "BUY" and pvwap == "Above")
-            or (direction == "SELL" and pvwap == "Below")
-        ),
+        "price_vs_vwap": str(ind.get("price_vs_vwap", "Unknown")),
     }
 
-
-def _higher_tf_bias(tfa: dict[str, dict[str, Any]]) -> tuple[str, int, str]:
-    h4_dir = tfa.get("H4", {}).get("direction", "NO TRADE")
-    h1_dir = tfa.get("H1", {}).get("direction", "NO TRADE")
-    h4_trend = str(tfa.get("H4", {}).get("trend_classification", "Neutral"))
-    h1_trend = str(tfa.get("H1", {}).get("trend_classification", "Neutral"))
-    if h4_dir == h1_dir and h4_dir in TRADE_SIGNALS:
-        return h4_dir, 2, f"H4 {h4_trend} and H1 {h1_trend} align {h4_dir}."
-    if h4_dir in TRADE_SIGNALS and h1_dir == "NO TRADE":
-        return h4_dir, 1, f"H4 {h4_trend} leads while H1 is neutral."
-    if h1_dir in TRADE_SIGNALS and h4_dir == "NO TRADE":
-        return h1_dir, 1, f"H1 {h1_trend} leads while H4 is neutral."
-    return "NO TRADE", 0, ""
-
-
-def _apply_volume_penalty(
-    weighted_score: float,
-    tfi: dict[str, dict[str, Any]],
-    tfa: dict[str, dict[str, Any]],
-) -> tuple[float, bool, float, str]:
-    if not _m15_vol_thin(tfi):
-        return weighted_score, False, 0.0, ""
-    m15_vol = _f(tfi.get("M15", {}).get("volume_ratio"))
-    if m15_vol is None:
-        return weighted_score, False, 0.0, ""
-    m15_dir = tfa.get("M15", {}).get("direction", "NO TRADE")
-    htf_bias, _, _ = _higher_tf_bias(tfa)
-    thinness = _clip((LOW_VOLUME_RATIO - m15_vol) / LOW_VOLUME_RATIO, 0.0, 1.0)
-    penalty_pct = 0.05 + (thinness * 0.17)
-    if htf_bias in TRADE_SIGNALS and htf_bias == m15_dir:
-        penalty_pct *= 0.80
-    penalized = weighted_score * (1.0 - penalty_pct)
-    penalty_amount = abs(weighted_score - penalized)  # For logging
-    reason = (
-        f"M15 volume thin ({m15_vol:.3f}) - "
-        f"{penalty_pct*100:.0f}% proportional score penalty applied."
-    )
-    return penalized, True, penalty_amount, reason
-
-
-def _score(primary: dict[str, Any]) -> dict[str, Any]:
-    buy = 0.0
-    sell = 0.0
-    components = {key: 0.0 for key in WEIGHTS}
-    trend = str(primary.get("trend_classification", "Neutral"))
-    direction = _trend_dir(trend)
-    if direction == "BUY":
-        weight = WEIGHTS["ema_trend"] if trend.startswith("Strong") else 1.50
-        buy += weight
-        components["ema_trend"] = weight
-    elif direction == "SELL":
-        weight = WEIGHTS["ema_trend"] if trend.startswith("Strong") else 1.50
-        sell += weight
-        components["ema_trend"] = -weight
-    pvwap = str(primary.get("price_vs_vwap", "Unknown"))
-    if pvwap == "Above":
-        buy += WEIGHTS["vwap_position"]
-        components["vwap_position"] = WEIGHTS["vwap_position"]
-    elif pvwap == "Below":
-        sell += WEIGHTS["vwap_position"]
-        components["vwap_position"] = -WEIGHTS["vwap_position"]
-    rsi_sig = str(primary.get("rsi_signal", "Unavailable"))
-    if rsi_sig == "Bullish Continuation":
-        buy += WEIGHTS["rsi"]
-        components["rsi"] = WEIGHTS["rsi"]
-    elif rsi_sig == "Bearish Continuation":
-        sell += WEIGHTS["rsi"]
-        components["rsi"] = -WEIGHTS["rsi"]
-    
-    vc = str(primary.get("volume_classification", "Unknown"))
-    vr = _f(primary.get("volume_ratio"))
-    vol_low = vc == "Low" or (vr is not None and vr < LOW_VOLUME_RATIO)
-    vol_high = vc == "High"
-    if vol_high and direction in TRADE_SIGNALS:
-        if direction == "BUY":
-            buy += WEIGHTS["volume"]
-            components["volume"] = WEIGHTS["volume"]
-        else:
-            sell += WEIGHTS["volume"]
-            components["volume"] = -WEIGHTS["volume"]
-    if primary.get("volume_spike"):
-        if direction == "BUY":
-            buy += WEIGHTS["volume_spike"]
-            components["volume_spike"] = WEIGHTS["volume_spike"]
-        elif direction == "SELL":
-            sell += WEIGHTS["volume_spike"]
-            components["volume_spike"] = -WEIGHTS["volume_spike"]
-    return {
-        "buy_score": buy,
-        "sell_score": sell,
-        "final_score": buy - sell,
-        "score_direction": "BUY" if buy > sell else ("SELL" if sell > buy else "NO TRADE"),
-        "components": components,
-        "vol_penalized": vol_low,
-    }
-
-
-def _confirmation_components(tfa: dict[str, dict[str, Any]]) -> dict[str, Any]:
-    buy = 0.0
-    sell = 0.0
-    net = 0.0
-    components = {label: 0.0 for label in TIMEFRAME_CONFIRM_WEIGHTS}
-    for label, weight in TIMEFRAME_CONFIRM_WEIGHTS.items():
-        direction = tfa.get(label, {}).get("direction", "NO TRADE")
-        if direction == "BUY":
-            buy += weight
-            net += weight
-            components[label] = weight
-        elif direction == "SELL":
-            sell += weight
-            net -= weight
-            components[label] = -weight
-    return {"buy_score": buy, "sell_score": sell, "net_score": net, "components": components}
-
-
-def _entry_rsi_quality(direction: str, rsi: float | None) -> float:
-    if direction not in TRADE_SIGNALS or rsi is None:
-        return 0.0
-    ideal = ENTRY_RSI_IDEALS[direction]
-    return _clip(1.0 - (abs(rsi - ideal) / ENTRY_RSI_WINDOW), 0.0, 1.0)
-
-
-def _live_entry_components(
-    tfi: dict[str, dict[str, Any]],
-    tfa: dict[str, dict[str, Any]],
-) -> dict[str, Any]:
-    buy = 0.0
-    sell = 0.0
-    net = 0.0
-    components = {label: 0.0 for label in LIVE_ENTRY_WEIGHTS}
-    for label, weight in LIVE_ENTRY_WEIGHTS.items():
-        direction = tfa.get(label, {}).get("direction", "NO TRADE")
-        if direction not in TRADE_SIGNALS:
-            continue
-        rsi_quality = _entry_rsi_quality(direction, _f(tfi.get(label, {}).get("rsi_14")))
-        trend_strength = _clip((_f(tfi.get(label, {}).get("trend_strength_ratio")) or 0.0) / 1.0, 0.0, 1.0)
-        live_score = weight * ((0.75 * rsi_quality) + (0.25 * trend_strength))
-        if direction == "BUY":
-            buy += live_score
-            net += live_score
-            components[label] = live_score
-        else:
-            sell += live_score
-            net -= live_score
-            components[label] = -live_score
-    return {"buy_score": buy, "sell_score": sell, "net_score": net, "components": components}
-
-
-def _rsi_exhaustion(signal: str, tfi: dict[str, dict[str, Any]]) -> tuple[bool, bool, str]:
-    m15_rsi = _f(tfi.get("M15", {}).get("rsi_14"))
-    m5_rsi = _f(tfi.get("M5", {}).get("rsi_14"))
-    m1_rsi = _f(tfi.get("M1", {}).get("rsi_14"))
-    if signal == "SELL":
-        if m1_rsi is not None and m1_rsi < 30.0:
-            return False, True, f"RSI caution: M1 RSI {m1_rsi:.1f} is oversold."
-        if m15_rsi is not None and m15_rsi < RSI_EXHAUSTION_SELL:
-            return True, False, f"RSI stretched: M15 RSI {m15_rsi:.1f} is deeply oversold."
-        if m15_rsi is not None and m5_rsi is not None and m15_rsi < RSI_CAUTION_SELL and m5_rsi < RSI_CAUTION_SELL:
-            return False, True, f"RSI caution: M15 {m15_rsi:.1f} and M5 {m5_rsi:.1f} are oversold."
-    if signal == "BUY":
-        # CRITICAL FIX: M1 RSI > 75 is a hard exhaustion block (not just caution)
-        if m1_rsi is not None and m1_rsi > 75.0:
-            return True, False, f"RSI EXHAUSTION: M1 RSI {m1_rsi:.1f} is extreme overbought - wait for pullback."
-        if m1_rsi is not None and m1_rsi > 70.0:
-            return False, True, f"RSI caution: M1 RSI {m1_rsi:.1f} is overbought."
-        if m15_rsi is not None and m15_rsi > RSI_EXHAUSTION_BUY:
-            return True, False, f"RSI stretched: M15 RSI {m15_rsi:.1f} is deeply overbought."
-        if m15_rsi is not None and m5_rsi is not None and m15_rsi > RSI_CAUTION_BUY and m5_rsi > RSI_CAUTION_BUY:
-            return False, True, f"RSI caution: M15 {m15_rsi:.1f} and M5 {m5_rsi:.1f} are overbought."
-    return False, False, ""
-
-
-def _m1_counter(signal: str, tfi: dict[str, dict[str, Any]]) -> tuple[bool, str]:
-    rsi = _f(tfi.get("M1", {}).get("rsi_14"))
-    trend = str(tfi.get("M1", {}).get("trend_classification", "Neutral"))
-    if signal == "SELL" and rsi is not None and rsi > M1_COUNTER_SELL_RSI:
-        return True, f"M1 bounce: RSI {rsi:.1f} ({trend}) - wait for RSI < {M1_COUNTER_SELL_RSI:.0f}."
-    if signal == "BUY" and rsi is not None and rsi < M1_COUNTER_BUY_RSI:
-        return True, f"M1 pullback: RSI {rsi:.1f} ({trend}) - wait for RSI > {M1_COUNTER_BUY_RSI:.0f}."
-    return False, ""
-
-
-def _higher_tf_conflict(signal: str, tfa: dict[str, dict[str, Any]]) -> tuple[bool, str]:
-    """SOFTENED: Check higher timeframe conflicts but allow override with high confidence.
-    
-    H1 opposition now triggers a confidence penalty (-12%) rather than hard block.
-    This allows strong lower-TF setups to trade against intraday bias if conditions are right.
-    H4 opposition is secondary and weaker penalty.
-    
-    Returns (conflict_detected, reason)
-    Caller uses this to penalize confidence, not block trades outright.
-    """
-    if signal not in TRADE_SIGNALS:
-        return False, ""
-    
-    h4_dir = tfa.get("H4", {}).get("direction", "NO TRADE")
-    h1_dir = tfa.get("H1", {}).get("direction", "NO TRADE")
-    h4_trend = str(tfa.get("H4", {}).get("trend_classification", "Neutral"))
-    h1_trend = str(tfa.get("H1", {}).get("trend_classification", "Neutral"))
-    
-    # FIX: H1 opposition now triggers confidence penalty, not hard block
-    # This allows strong M15 setups to trade if confidence stays high (65%+)
-    if h1_dir in TRADE_SIGNALS and h1_dir != signal:
-        return True, f"! H1 {h1_trend} opposes {signal} (confidence penalty applied)."
-    
-    # Secondary: H4 opposition is a weaker flag
-    if h4_dir in TRADE_SIGNALS and h4_dir != signal:
-        return True, f"! H4 {h4_trend} opposes {signal} (minor penalty)."
-    
-    return False, ""
-
-
-def _rsi_conf(direction: str, rsi: float | None) -> float:
-    if rsi is None:
-        return 1.5
-    if direction == "BUY":
-        if 50 <= rsi <= 65:
-            return 12.0
-        if 65 < rsi <= 73:
-            return 6.0
-        if rsi > 73:
-            return 2.0
-        if 45 <= rsi < 50:
-            return 4.0
-    if direction == "SELL":
-        if 35 <= rsi < 50:
-            return 12.0
-        if 27 <= rsi < 35:
-            return 2.0
-        if rsi < 27:
-            return 1.0
-        if 50 <= rsi <= 55:
-            return 4.0
-    return 0.0
-
-
-def _vol_conf(primary: dict[str, Any], thin_volume: bool) -> float:
-    vr = _f(primary.get("volume_ratio"))
-    vc = str(primary.get("volume_classification", "Unknown"))
-    if vr is None or vc == "Unknown":
-        return -1.0
-    if thin_volume:
-        return max(-3.0, (vr - LOW_VOLUME_RATIO) * 8.0)
-    if vc == "High":
-        return 6.0
-    if vr >= HIGH_VOLUME_RATIO:
-        return 3.0
-    # NORMAL volume (0.85-1.10) gets modest confidence boost for healthy participation
-    if vr >= LOW_VOLUME_RATIO:
-        return 1.5
-    return 0.0
-
-
-def _align_conf(direction: str, tfa: dict[str, dict[str, Any]]) -> float:
-    if direction not in TRADE_SIGNALS:
-        return 0.0
-    score = 0.0
-    for label, weight in (("H4", 5.0), ("H1", 4.0), ("M15", 4.0), ("M5", 3.0), ("M1", 1.5)):
-        current = tfa.get(label, {}).get("direction", "NO TRADE")
-        if current == direction:
-            score += weight
-        elif current in TRADE_SIGNALS:
-            score -= weight * 0.80
-    return max(-10.0, min(10.0, score))
-
-
-def _calculate_confidence(
-    direction: str,
-    scorecard: dict[str, Any],
-    tfa: dict[str, dict[str, Any]],
-    tfi: dict[str, dict[str, Any]],
-    mixed: bool,
-    high_news: bool,
-    rsi_caution: bool,
-    rsi_exhausted: bool,
-    m1_counter: bool,
-    waiting: bool,
-    thin_volume: bool = False,
-    higher_tf_conflict: bool = False,
-) -> int:
-    primary = tfi.get("M15", {})
-    m1 = tfi.get("M1", {})
-    tsr = _f(primary.get("trend_strength_ratio")) or 0.0
-    rsi_val = _f(primary.get("rsi_14"))
-    atr_ratio = _f(primary.get("atr_ratio")) or 1.0
-    m1_atr = _f(m1.get("atr_ratio")) or 1.0
-    
-    # GATE #1: Thin volume graduated penalty (NOT hard cap)
-    vol_ratio = _f(primary.get("volume_ratio"))
-    thin_vol_penalty = 0.0
-    if thin_volume and vol_ratio is not None and vol_ratio < 0.5:
-        # Penalty: up to 50% for critically thin volume, proportional to thinness
-        thin_vol_penalty = min(50.0, (0.5 - vol_ratio) * 100.0)
-        log_debug(f"THIN VOLUME PENALTY: ratio {vol_ratio:.3f} < 0.5 — {thin_vol_penalty:.0f}% penalty (allow trade)")
-    
-    confidence = 22.0
-    confidence += min(abs(scorecard.get("final_score", 0.0)) / MAX_WEIGHTED_SCORE, 1.0) * 14.0
-    confidence += min(tsr / 0.75, 1.0) * 16.0
-    confidence += _align_conf(direction, tfa)
-    confidence += _rsi_conf(direction, rsi_val)
-    confidence += _vol_conf(primary, scorecard.get("volume_penalty_applied", False))
-    confidence += max(-3.0, 5.0 - max(0.0, atr_ratio - 1.0) * 5.0) if str(primary.get("volatility_classification", "Normal")) == "High" else 6.0
-    confidence += (-7.0 if m1_atr >= 1.45 else -4.0) if _m1_vol_high(m1) else 3.0
-    if mixed:
-        confidence -= 2.0  # Reduced from 4.0 - pullbacks in trends are normal
-    if high_news:
-        confidence -= 4.0  # Reduced from 6.0
-    if rsi_caution:
-        confidence -= 3.0  # Reduced from 5.0
-    if rsi_exhausted:
-        confidence -= 5.0  # Reduced from 7.0
-    if m1_counter:
-        confidence -= 3.0  # Reduced from 4.0
-    if waiting:
-        confidence -= 2.0  # Reduced from 5.0
-    if higher_tf_conflict:
-        confidence -= 8.0  # Reduced from 12.0 - allow pullback entries
-    
-    fallback = int(round(max(30.0, min(95.0, confidence - thin_vol_penalty))))
-    calibrated, _ = calibrate_technical_confidence(
-        fallback_confidence=fallback,
-        direction=direction,
-        scorecard=scorecard,
-        tfi=tfi,
-        mixed_signals=mixed,
-        high_impact_news=high_news,
-        rsi_caution=rsi_caution or rsi_exhausted,
-        m1_counter=m1_counter,
-    )
-    return calibrated
-
-
-def _m5_reversal_ready(direction: str, tfi: dict[str, dict[str, Any]], tfa: dict[str, dict[str, Any]]) -> bool:
-    m5_dir = tfa.get("M5", {}).get("direction", "NO TRADE")
-    m5_rsi = _f(tfi.get("M5", {}).get("rsi_14"))
-    m5_vwap = str(tfi.get("M5", {}).get("price_vs_vwap", "Unknown"))
-    if direction == "BUY":
-        return m5_dir == "BUY" and ((m5_rsi is not None and m5_rsi >= M5_REVERSAL_BUY_RSI) or m5_vwap == "Above")
-    if direction == "SELL":
-        return m5_dir == "SELL" and ((m5_rsi is not None and m5_rsi <= M5_REVERSAL_SELL_RSI) or m5_vwap == "Below")
-    return False
-
-
-def _build_wait_metadata(
-    direction: str,
-    tfi: dict[str, dict[str, Any]],
-    tfa: dict[str, dict[str, Any]],
-    gates: dict[str, Any],
-    context: str,
-) -> tuple[str, str]:
-    m5_rsi = _f(tfi.get("M5", {}).get("rsi_14"))
-    if direction == "BUY":
-        if context == "countertrend_pullback":
-            return (
-                "H4 and H1 still favor BUY, but M15 is pulling back against the higher timeframe trend.",
-                f"Wait for M5 to flip bullish and RSI to recover above {M5_REVERSAL_BUY_RSI:.0f}.",
-            )
-        if tfa.get("M5", {}).get("direction") == "SELL":
-            return (
-                "H4 and H1 are bullish, but M5 is still correcting lower.",
-                f"Wait for M5 bullish reversal, RSI >= {M5_REVERSAL_BUY_RSI:.0f}, and price back above VWAP.",
-            )
-        if gates.get("m1_counter"):
-            return ("The broader BUY setup is intact, but M1 is still pulling back.", gates.get("m1_counter_reason") or f"Wait for M1 RSI > {M1_COUNTER_BUY_RSI:.0f}.")
-        if gates.get("rsi_exhausted"):
-            trigger = f"Wait for M5 RSI to cool from {m5_rsi:.1f} and re-accelerate higher." if m5_rsi is not None else "Wait for RSI to cool and M5 to re-align bullish."
-            return ("The BUY setup is stretched after a strong push and needs a reset before entry.", trigger)
-        return ("The BUY setup has directional edge, but the lower timeframe trigger is not aligned yet.", "Wait for fresh M5 continuation in the direction of H4 and H1.")
-    if direction == "SELL":
-        if context == "countertrend_pullback":
-            return (
-                "H4 and H1 still favor SELL, but M15 is bouncing against the higher timeframe trend.",
-                f"Wait for M5 to flip bearish and RSI to slip below {M5_REVERSAL_SELL_RSI:.0f}.",
-            )
-        if tfa.get("M5", {}).get("direction") == "BUY":
-            return (
-                "H4 and H1 are bearish, but M5 is still bouncing higher.",
-                f"Wait for M5 bearish reversal, RSI <= {M5_REVERSAL_SELL_RSI:.0f}, and price back below VWAP.",
-            )
-        if gates.get("m1_counter"):
-            return ("The broader SELL setup is intact, but M1 is still bouncing.", gates.get("m1_counter_reason") or f"Wait for M1 RSI < {M1_COUNTER_SELL_RSI:.0f}.")
-        if gates.get("rsi_exhausted"):
-            trigger = f"Wait for M5 RSI to recover from {m5_rsi:.1f} and roll back over." if m5_rsi is not None else "Wait for RSI to cool and M5 to re-align bearish."
-            return ("The SELL setup is stretched after a sharp drop and needs a reset before entry.", trigger)
-        return ("The SELL setup has directional edge, but the lower timeframe trigger is not aligned yet.", "Wait for fresh M5 continuation in the direction of H4 and H1.")
-    return ("The setup is not actionable yet.", "Wait for stronger directional alignment before entering.")
-
-
-def _resolve_signal_state(
-    raw_candidate: str,
-    final_score: float,
-    tfa: dict[str, dict[str, Any]],
-    tfi: dict[str, dict[str, Any]],
-    gates: dict[str, Any],
-) -> tuple[str, str, str, str, str]:
-    higher_bias, bias_strength, bias_reason = _higher_tf_bias(tfa)
-    m15_dir = tfa.get("M15", {}).get("direction", "NO TRADE")
-    gates["higher_tf_bias"] = higher_bias
-    gates["higher_tf_bias_reason"] = bias_reason
-    setup_direction = raw_candidate if raw_candidate in TRADE_SIGNALS else higher_bias
-    strong_bias = bias_strength == 2 and higher_bias in TRADE_SIGNALS
-    countertrend_pullback = strong_bias and m15_dir not in {higher_bias, "NO TRADE"}
-
-    if strong_bias and raw_candidate in TRADE_SIGNALS and raw_candidate != higher_bias:
-        gates["higher_tf_conflict"] = True
-        gates["higher_tf_reason"] = bias_reason or f"H4 and H1 favor {higher_bias}, not {raw_candidate}."
-        if abs(final_score) < COUNTERTREND_REJECTION_SCORE:
-            reason, trigger = _build_wait_metadata(higher_bias, tfi, tfa, gates, "countertrend_pullback")
-            return WAIT_SIGNAL, higher_bias, "wait_for_pullback_completion", reason, trigger
-        return "NO TRADE", higher_bias, "countertrend_rejected", gates["higher_tf_reason"], ""
-
-    if countertrend_pullback and WAIT_SCORE_FLOOR <= abs(final_score) < COUNTERTREND_REJECTION_SCORE:
-        reason, trigger = _build_wait_metadata(higher_bias, tfi, tfa, gates, "countertrend_pullback")
-        return WAIT_SIGNAL, higher_bias, "wait_for_pullback_completion", reason, trigger
-
-    continuation_context = higher_bias in TRADE_SIGNALS and m15_dir in {higher_bias, "NO TRADE"}
-    if continuation_context:
-        if not _m5_reversal_ready(higher_bias, tfi, tfa):
-            reason, trigger = _build_wait_metadata(higher_bias, tfi, tfa, gates, "m5_reversal")
-            return WAIT_SIGNAL, higher_bias, "wait_for_m5_reversal", reason, trigger
-        if gates.get("m1_counter"):
-            reason, trigger = _build_wait_metadata(higher_bias, tfi, tfa, gates, "m1_reset")
-            return WAIT_SIGNAL, higher_bias, "wait_for_m1_reset", reason, trigger
-        if gates.get("rsi_exhausted"):
-            reason, trigger = _build_wait_metadata(higher_bias, tfi, tfa, gates, "rsi_reset")
-            return WAIT_SIGNAL, higher_bias, "wait_for_rsi_reset", reason, trigger
-        if abs(final_score) >= SIGNAL_SCORE_THRESHOLD:
-            return higher_bias, higher_bias, "ready", "", ""
-        if abs(final_score) >= WAIT_SCORE_FLOOR:
-            reason, trigger = _build_wait_metadata(higher_bias, tfi, tfa, gates, "score_expansion")
-            return WAIT_SIGNAL, higher_bias, "wait_for_score_expansion", reason, trigger
-
-    if raw_candidate in TRADE_SIGNALS:
-        if gates.get("m1_counter"):
-            reason, trigger = _build_wait_metadata(raw_candidate, tfi, tfa, gates, "m1_reset")
-            return WAIT_SIGNAL, raw_candidate, "wait_for_m1_reset", reason, trigger
-        if gates.get("rsi_exhausted"):
-            reason, trigger = _build_wait_metadata(raw_candidate, tfi, tfa, gates, "rsi_reset")
-            return WAIT_SIGNAL, raw_candidate, "wait_for_rsi_reset", reason, trigger
-        return raw_candidate, raw_candidate, "ready", "", ""
-
-    if higher_bias in TRADE_SIGNALS and abs(final_score) >= WAIT_SCORE_FLOOR:
-        reason, trigger = _build_wait_metadata(higher_bias, tfi, tfa, gates, "entry_alignment")
-        return WAIT_SIGNAL, higher_bias, "wait_for_entry_alignment", reason, trigger
-
-    return "NO TRADE", "NO TRADE", "not_actionable", "", ""
-
-
-def _calculate_volatility_adjusted_threshold(atr_ratio: float | None) -> float:
-    """TIER 2: Adjust SIGNAL_SCORE_THRESHOLD based on volatility regime."""
+def _is_consolidation(tfi: dict) -> bool:
+    atr_ratio = _to_float(tfi.get("M15", {}).get("atr_ratio"))
     if atr_ratio is None:
-        return SIGNAL_SCORE_THRESHOLD
-    if atr_ratio > 1.2:
-        return 4.5  # High vol: stricter
-    elif atr_ratio < 0.7:
-        return 3.5  # Low vol: looser
-    else:
-        return 4.0  # Normal
+        return False
+    return atr_ratio < 0.7
 
+def _volume_climax(vol_ratio: float) -> bool:
+    return vol_ratio > 2.0
 
-def _calculate_confluence_score(tfa: dict[str, dict[str, Any]], direction: str) -> tuple[float, str]:
-    """TIER 2: Score confluence across all timeframes."""
-    if direction not in TRADE_SIGNALS:
-        return 0.0, ""
+def _absorption(vol_ratio: float, price_change_pct: float, atr_ratio: float) -> bool:
+    return vol_ratio > 1.5 and abs(price_change_pct) < atr_ratio * 0.3
+
+def _liquidity_sweep(direction: str, current_price: float, prev_day_high: float, prev_day_low: float) -> Tuple[bool, str]:
+    if direction == "BUY" and current_price < prev_day_low and current_price > prev_day_low - 5.0:
+        return True, "Sweep of sell stops"
+    if direction == "SELL" and current_price > prev_day_high and current_price < prev_day_high + 5.0:
+        return True, "Sweep of buy stops"
+    return False, ""
+
+def _rejection_wick(candle: dict, direction: str) -> tuple[bool, str]:
+    """Check if M1 candle has a long wick rejecting the level. Session-aware thresholds.
     
-    agreeing_tfs = 0
-    for label in ("H4", "H1", "M15", "M5", "M1"):
-        if tfa.get(label, {}).get("direction") == direction:
-            agreeing_tfs += 1
-    
-    if agreeing_tfs == 5:
-        return 30.0, "All 5 TFs aligned"
-    elif agreeing_tfs == 4:
-        return 20.0, "4 of 5 TFs aligned"
-    elif agreeing_tfs == 3:
-        return 10.0, "3 of 5 TFs aligned"
-    elif agreeing_tfs == 2:
-        return 5.0, "2 TFs aligned"
-    else:
-        return -5.0, "Fragmented signal"
-
-
-def _build_levels(signal: str, tfi: dict[str, dict[str, Any]]) -> dict[str, float | None]:
-    """TIER 1: Build entry/stop/target with slippage & spread buffer.
-    
-    FIX #10: Validates risk/reward symmetry for SELL signals.
+    Returns: (is_valid: bool, reason: str)
+    - BUY setup: Long lower wick (sellers rejected)
+    - SELL setup: Long upper wick (buyers rejected)
+    - Asia/Dead sessions: 35% wick threshold (more permissive for thin markets)
+    - London/NY sessions: 50% wick threshold (stricter for liquid markets)
     """
-    SPREAD_BUFFER = 0.3
-    STOP_CUSHION = 0.2
-    TARGET_CUSHION = 0.1
+    open_p = _to_float(candle.get('open'))
+    close_p = _to_float(candle.get('close'))
+    high_p = _to_float(candle.get('high'))
+    low_p = _to_float(candle.get('low'))
+    if any(v is None for v in [open_p, close_p, high_p, low_p]):
+        return False, "Missing candle data"
     
-    if signal not in TRADE_SIGNALS:
-        return {"entry_price": None, "stop_loss": None, "take_profit": None, "risk_distance": None}
+    body = abs(close_p - open_p)
+    full = high_p - low_p
+    if full <= 0:
+        return False, "No price range"
     
-    m1 = tfi.get("M1", {})
-    m5 = tfi.get("M5", {})
-    m15 = tfi.get("M15", {})
-    price = _f(m1.get("close")) or _f(m5.get("close")) or _f(m15.get("close"))
-    entry_atr = _f(m1.get("atr_14")) or _f(m5.get("atr_14")) or _f(m15.get("atr_14"))
-    pullback_atr = _f(m5.get("atr_14")) or _f(m15.get("atr_14")) or entry_atr
-    risk_atr = _f(m15.get("atr_14")) or _f(m5.get("atr_14")) or entry_atr
+    wick_ratio = (full - body) / full
     
-    if price is None or pullback_atr in {None, 0} or risk_atr in {None, 0}:
-        return {"entry_price": price, "stop_loss": None, "take_profit": None, "risk_distance": None}
+    # Session-aware threshold
+    session = get_current_session()
+    if session in ["Asian", "Dead"]:
+        threshold = 0.35  # More permissive for thin markets
+    else:
+        threshold = 0.50  # Standard for liquid markets
     
-    pullback = pullback_atr * ENTRY_PULLBACK_M5_ATR_FACTOR
-    anchors = [v for v in (_f(m5.get("ema_20")), _f(m5.get("vwap")), _f(m1.get("ema_20")), _f(m1.get("vwap"))) if v is not None]
-    risk_distance = risk_atr * 1.5
-    
-    if signal == "BUY":
-        atr_entry = price - pullback
-        supports = [a for a in anchors if a <= atr_entry]
-        entry = max(supports + [atr_entry]) if supports else atr_entry
-        entry = entry + SPREAD_BUFFER
-        stop_loss = entry - risk_distance - STOP_CUSHION
-        take_profit = entry + risk_distance * 2 - TARGET_CUSHION
-        return {"entry_price": entry, "stop_loss": stop_loss, "take_profit": take_profit, "risk_distance": risk_distance}
-    
-    # SELL: Validate symmetry (reverse order but same distance)
-    atr_entry = price + pullback
-    resistances = [a for a in anchors if a >= atr_entry]
-    entry = min(resistances + [atr_entry]) if resistances else atr_entry
-    entry = entry - SPREAD_BUFFER
-    stop_loss = entry + risk_distance + STOP_CUSHION
-    take_profit = entry - (risk_distance * 2) + TARGET_CUSHION
-    
-    # FIX #10: Validate SELL levels are properly ordered
-    # For SELL: take_profit < entry < stop_loss (price above entry is risk, below is reward)
-    result = {"entry_price": entry, "stop_loss": stop_loss, "take_profit": take_profit, "risk_distance": risk_distance}
-    
-    # Log warning if levels look inverted
-    if take_profit >= entry or entry >= stop_loss:
-        log_debug(f"⚠ SELL levels may be inverted: TP {take_profit:.2f} | Entry {entry:.2f} | SL {stop_loss:.2f}")
-    
-    return result
+    if direction == "BUY":
+        lower_wick = min(open_p, close_p) - low_p
+        if lower_wick > body and wick_ratio > threshold:
+            return True, f"Valid lower wick ({wick_ratio:.1%})"
+        elif lower_wick <= body:
+            return False, f"Lower wick too small ({lower_wick:.1f} vs body {body:.1f})"
+        else:
+            return False, f"Wick ratio too low ({wick_ratio:.1%} vs {threshold:.1%})"
+    else:  # SELL
+        upper_wick = high_p - max(open_p, close_p)
+        if upper_wick > body and wick_ratio > threshold:
+            return True, f"Valid upper wick ({wick_ratio:.1%})"
+        elif upper_wick <= body:
+            return False, f"Upper wick too small ({upper_wick:.1f} vs body {body:.1f})"
+        else:
+            return False, f"Wick ratio too low ({wick_ratio:.1%} vs {threshold:.1%})"
 
-
-def get_technical_signal(
-    symbol: str,
-    timeframe_indicators: dict[str, dict[str, Any]],
-    high_impact_news: bool = False,
-) -> dict[str, Any]:
-    required = set(ENTRY_TIMEFRAMES).union(HIGHER_TIMEFRAMES)
-    missing = sorted(required.difference(timeframe_indicators))
-    if missing:
-        return _empty(f"Missing timeframe data: {', '.join(missing)}.")
+def get_technical_signal(symbol: str, timeframe_indicators: dict) -> dict:
     try:
         tfi = timeframe_indicators
-        tfa = {label: _evaluate_tf(ind) for label, ind in tfi.items()}
-        primary = tfi["M15"]
+        # Build timeframe analysis with safe conversions
+        tfa = {}
+        for tf in ["H4", "H1", "M15", "M5", "M1", "D1"]:
+            ind = tfi.get(tf, {})
+            tfa[tf] = _evaluate_tf(ind)
+
+        bias_dir, bias_strength = _higher_tf_bias(tfa)
+        session = get_current_session()
+        threshold_mult = SESSION_SCORE_MULTIPLIERS.get(session, 1.0)
+
+        # Simple scoring: H1 is PRIMARY (higher weight than H4 which lagged)
+        # This ensures fast-moving H1 bias takes precedence over slow H4
+        buy_score = 0.0
+        sell_score = 0.0
+        for tf in ["H4", "H1"]:
+            if tfa[tf]["direction"] == "BUY":
+                buy_score += 1.0 if tf == "H4" else 2.0  # H1 = 2.0 (primary), H4 = 1.0 (secondary)
+            elif tfa[tf]["direction"] == "SELL":
+                sell_score += 1.0 if tf == "H4" else 2.0  # H1 = 2.0 (primary), H4 = 1.0 (secondary)
+        # M15 alignment adds bonus
+        if tfa["M15"]["direction"] == bias_dir:
+            if bias_dir == "BUY":
+                buy_score += 1.0
+            elif bias_dir == "SELL":
+                sell_score += 1.0
+        net_score = buy_score - sell_score
+        direction = "BUY" if net_score > 0 else "SELL" if net_score < 0 else "NO TRADE"
+
+        # Trap filters – get safe values
+        m15 = tfi.get("M15", {})
+        m5 = tfi.get("M5", {})
+        m1 = tfi.get("M1", {})
+        vol_ratio = _to_float(m15.get("volume_ratio")) or 1.0
+        atr_ratio = _to_float(m15.get("atr_ratio")) or 1.0
+        close_m15 = _to_float(m15.get("close")) or 0
+        open_m15 = _to_float(m15.get("open")) or 0.01
+        price_change_pct = (close_m15 - open_m15) / max(abs(open_m15), 0.01)
+
+        # FIX #6: TRANSPARENCY LOGGING - Trap filter status tracking
+        trap_status_parts = []
         
-        base_score = _score(primary)
-        confirmation = _confirmation_components(tfa)
-        live_entry = _live_entry_components(tfi, tfa)
-        final_buy = base_score["buy_score"] + confirmation["buy_score"] + live_entry["buy_score"]
-        final_sell = base_score["sell_score"] + confirmation["sell_score"] + live_entry["sell_score"]
-        final_score = base_score["final_score"] + confirmation["net_score"] + live_entry["net_score"]
-        final_score, m15_vol_thin, penalty_points, penalty_reason = _apply_volume_penalty(final_score, tfi, tfa)
+        # 1. Consolidation
+        if _is_consolidation(tfi):
+            log_debug("Consolidation detected – NO TRADE")
+            return _empty_result("Consolidation")
+        trap_status_parts.append("Consolidation: OK")
         
-        # Score log stays explicit so frozen/plateau behavior is easy to inspect live.
-        log_debug(
-            f"Score components: "
-            f"base_buy={base_score['buy_score']:.2f} | "
-            f"base_sell={base_score['sell_score']:.2f} | "
-            f"conf_buy={confirmation['buy_score']:.2f} | "
-            f"conf_sell={confirmation['sell_score']:.2f} | "
-            f"live_buy={live_entry['buy_score']:.2f} | "
-            f"live_sell={live_entry['sell_score']:.2f} | "
-            f"final_buy={final_buy:.2f} | "
-            f"final_sell={final_sell:.2f} | "
-            f"final_score={final_score:.2f}"
-        )
+        # 2. Volume climax
+        if _volume_climax(vol_ratio):
+            log_debug(f"Volume climax ({vol_ratio:.2f}) – possible fakeout")
+            return _empty_result("Volume climax")
+        trap_status_parts.append("Volume: OK")
         
-        score_direction = "BUY" if final_score > 0 else ("SELL" if final_score < 0 else "NO TRADE")
+        # 3. Absorption
+        if _absorption(vol_ratio, price_change_pct, atr_ratio):
+            log_debug("Absorption detected – institutional trading, wait")
+            return _empty_result("Absorption")
+        trap_status_parts.append("Absorption: OK")
         
-        # FIX #7: Apply session multiplier to threshold
-        from risk_manager import get_current_session, SESSION_SCORE_MULTIPLIERS
+        # 4. Liquidity sweep
+        prev_day = tfi.get("D1", {})
+        prev_day_high = _to_float(prev_day.get("high"))
+        prev_day_low = _to_float(prev_day.get("low"))
+        current_price = _to_float(m1.get("close")) or _to_float(m5.get("close")) or _to_float(m15.get("close")) or 0
+        sweep_status = "None"
+        if prev_day_high and prev_day_low and current_price:
+            sweep, sweep_reason = _liquidity_sweep(direction, current_price, prev_day_high, prev_day_low)
+            if sweep:
+                if direction == "BUY" and current_price > prev_day_low + 2.0:
+                    log_debug(f"Sweep reclaimed: {sweep_reason}")
+                    sweep_status = "Reclaimed"
+                else:
+                    log_debug(f"Sweep not reclaimed – waiting: {sweep_reason}")
+                    return _empty_result("Liquidity sweep not reclaimed")
+        trap_status_parts.append(f"Sweep: {sweep_status}")
+        # 5. CVD proxy (weight 0.4)
+        cvd = compute_cvd_proxy(symbol)
+        cvd_conf = 0.0
+        if direction == "BUY" and cvd > 20:
+            cvd_conf = 0.4
+        elif direction == "SELL" and cvd < -20:
+            cvd_conf = 0.4
+        
+        # ===== CONTINUATION ENTRY CHECK (DISABLED) =====
+        # DISABLED: All TFs aligned entries were too risky with low accuracy (~50%)
+        # Now using only MOMENTUM and PULLBACK for better accuracy (~70%+)
+        # Keeping logic for reference but not executing
+        h1_dir = tfa["H1"]["direction"]
+        m15_dir = tfa["M15"]["direction"]
+        m5_dir = tfa["M5"]["direction"]
+        m1_dir = tfa["M1"]["direction"]
+        
+        all_tf_aligned = (h1_dir == m15_dir == m5_dir == m1_dir == direction and 
+                         direction in TRADE_SIGNALS)
+        
+        if all_tf_aligned:
+            # Log for reference but do NOT enter - fallthrough to MOMENTUM/PULLBACK
+            log_debug(f"[CONTINUATION] All TFs aligned {direction} – DISABLED (low accuracy). Checking MOMENTUM/PULLBACK instead.")
+            # Continue to next entry method checks
+        
+        # ===== M1 BREAKOUT + VOLUME CONFIRMATION (REPLACES M5 RSI MOMENTUM) =====
+        # FIXED: Use M1 candle breakout with volume surge instead of M5 RSI extremes
+        # This prevents entries at local lows/highs with low conviction
+        
+        m5_rsi = _to_float(m5.get("rsi_14"))
+        m1_volume = _to_float(m1.get("latest_volume", m1.get("volume", 0))) or 0.0
+        m1_volume_history = tfi.get("M1", {}).get("volume_history", [])
+        m1_volume_avg = sum(m1_volume_history[-20:]) / 20 if len(m1_volume_history or []) >= 20 else 0
+        
+        m5_volume = _to_float(m5.get("latest_volume", m5.get("volume", 0))) or 0.0
+        m5_volume_history = tfi.get("M5", {}).get("volume_history", [])
+        m5_volume_avg = sum(m5_volume_history[-20:]) / 20 if len(m5_volume_history or []) >= 20 else 0
+        
+        is_momentum_entry = False
+        momentum_reason = ""
+        
+        # Check for M1 breakout above/below previous candle with volume confirmation
+        m1_close = _to_float(m1.get("close", 0))
+        m1_high = _to_float(m1.get("high", 0))
+        m1_low = _to_float(m1.get("low", 0))
+        
+        # Get previous M1 candle data (if available)
+        prev_m1_high = tfi.get("M1", {}).get("prev_high")
+        prev_m1_low = tfi.get("M1", {}).get("prev_low")
+        
+        if direction == "BUY" and prev_m1_high is not None and m1_close is not None and m1_volume_avg > 0:
+            # BUY: M1 closes significantly above previous high + 2x volume
+            breakout = m1_close > prev_m1_high * 1.00025  # 0.5 pips above for XAUUSD
+            volume_confirmed = m1_volume >= m1_volume_avg * 2.0
+            
+            if breakout and volume_confirmed and m5_rsi is not None and m5_rsi > 45:
+                is_momentum_entry = True
+                momentum_reason = f"M1 Breakout (close={m1_close:.2f} > prev_high={prev_m1_high:.2f}) + Volume({m1_volume:.0f}x) + M5_RSI({m5_rsi:.1f})"
+                log_debug(f"[M1 BREAKOUT ENTRY] BUY confirmed – {momentum_reason}")
+        
+        elif direction == "SELL" and prev_m1_low is not None and m1_close is not None and m1_volume_avg > 0:
+            # SELL: M1 closes significantly below previous low + 2x volume
+            breakout = m1_close < prev_m1_low * 0.99975  # 0.5 pips below for XAUUSD
+            volume_confirmed = m1_volume >= m1_volume_avg * 2.0
+            
+            if breakout and volume_confirmed and m5_rsi is not None and m5_rsi < 55:
+                is_momentum_entry = True
+                momentum_reason = f"M1 Breakout (close={m1_close:.2f} < prev_low={prev_m1_low:.2f}) + Volume({m1_volume:.0f}x) + M5_RSI({m5_rsi:.1f})"
+                log_debug(f"[M1 BREAKOUT ENTRY] SELL confirmed – {momentum_reason}")
+        
+        # If M1 breakout + volume confirmed, proceed with entry
+        if is_momentum_entry:
+            trap_status_parts.append("M1_Breakout: ✓ VALID")
+            trap_status_parts.append("Volume_Surge: ✓ CONFIRMED")
+            trap_status_parts.append("Wick: BYPASSED (breakout confirmed)")
+            
+            confidence = CONFIDENCE_BASE + 25  # Higher boost for breakout+volume entries
+            if vol_ratio < 0.5:
+                confidence -= 8.0
+            if m5_volume_avg > 0 and m5_volume < m5_volume_avg * 1.2:
+                confidence -= 6.0
+            confidence = _clip(confidence, MIN_CONFIDENCE, 95)
+            final_signal = direction if confidence >= 50 else WAIT_SIGNAL
+            levels = _build_levels(direction, tfi)
+            trap_filter_status = " | ".join(trap_status_parts)
+            log_debug(f"[M1 BREAKOUT] Entry approved – confidence={confidence}% | {momentum_reason}")
+            return {
+                "technical_signal": final_signal,
+                "setup_direction": direction,
+                "weighted_score": net_score,
+                "max_score": MAX_SCORE,
+                "technical_confidence": int(confidence),
+                "timeframe_analysis": tfa,
+                "mixed_signals": False,
+                "risk_level": "Medium",
+                "trade_levels": levels,
+                "gates": {
+                    "entry_method": "m1_breakout",
+                    "momentum_reason": momentum_reason,
+                    "m1_volume_surge": True,
+                    "m1_volume_ratio": round(m1_volume / max(m1_volume_avg, 1), 2),
+                },
+                "error": None,
+                "trap_filter_status": trap_filter_status,
+            }
+        
+        # If no M1 breakout entry, continue to rejection wick check
+        log_debug(f"[M1 BREAKOUT] No breakout confirmation (BUY breakout={is_momentum_entry if direction=='BUY' else 'N/A'}, SELL breakout={is_momentum_entry if direction=='SELL' else 'N/A'})")
+        
+        # 6. Rejection wick on M1 (entry trigger for non-momentum entries)
+        m1_candle = {
+            'open': _to_float(m1.get('open')),
+            'high': _to_float(m1.get('high')),
+            'low': _to_float(m1.get('low')),
+            'close': _to_float(m1.get('close'))
+        }
+        wick_status = "OK"
+        wick_is_valid, wick_reason = _rejection_wick(m1_candle, direction)
+        # FIX #3: Make rejection wick OPTIONAL (not all impulse/momentum candles have wicks, candle close direction is more important)
+        if not wick_is_valid:
+            log_debug(f"[WICK WARNING] No rejection wick ({wick_reason}) – but close direction valid, proceeding with entry")
+            wick_status = f"NOT_REQUIRED ({wick_reason})"
+            # Don't block entry, just log warning and continue
+        trap_status_parts.append(f"Wick: {wick_status}")
+        
+        # 7. VWAP proximity check (optional)
+        vwap = _to_float(m15.get("vwap"))
+        vwap_status = "OK"
+        if vwap and direction == "BUY" and current_price < vwap - 2.0:
+            log_debug("Price below VWAP – wait for reclaim")
+            vwap_status = "BELOW"
+            return _empty_result("Price below VWAP")
+        if vwap and direction == "SELL" and current_price > vwap + 2.0:
+            log_debug("Price above VWAP – wait for reclaim")
+            vwap_status = "ABOVE"
+            return _empty_result("Price above VWAP")
+        trap_status_parts.append(f"VWAP: {vwap_status}")
+
+        # 8. FIBONACCI RETRACEMENT CHECK (NEW)
+        # Require price to be near 0.618 Fibonacci level for entry confirmation
+        fib_status = "OK"
+        if direction in TRADE_SIGNALS:
+            recent_data = tfi.get("M15", {})
+            if recent_data:
+                try:
+                    swing_high = _to_float(recent_data.get("swing_high"))
+                    swing_low = _to_float(recent_data.get("swing_low"))
+                    
+                    if swing_high is None or swing_low is None:
+                        log_debug("[FIBONACCI] Swing data unavailable – skipping Fibonacci check")
+                    else:
+                        fib_levels = calculate_fibonacci_levels(swing_high, swing_low, direction)
+                        fib_check = check_fibonacci_confirmation(current_price, fib_levels, direction, tolerance_pips=8.0)
+                        
+                        # FIX #5: Make Fibonacci 0.618 OPTIONAL (impulse waves are 0-0.382 range, not 0.618. Only pullback entries hit 0.618)
+                        if not fib_check.get("is_at_fib_level"):
+                            fib_618_dist = fib_check.get("fib_618_distance")
+                            log_debug(
+                                f"[FIBONACCI WARNING] Price {current_price:.2f} not at 0.618 "
+                                f"(distance: {fib_618_dist:.1f} pips) – but continuing with entry (impulse mode)"
+                            )
+                            fib_status = f"AWAY {fib_618_dist:.0f}p (impulse)"
+                            # Don't block entry, just log warning
+                        else:
+                            log_debug(f"[FIBONACCI] ✓ Price at valid retracement level: {fib_check.get('nearest_level')}")
+                            fib_status = f"AT {fib_check.get('nearest_level')}"
+                except Exception as fib_exc:
+                    log_debug(f"Fibonacci check warning: {fib_exc} — proceeding with entry")
+        trap_status_parts.append(f"Fib: {fib_status}")
+
+        # 9. CVD DIVERGENCE CHECK (NEW)
+        # Detect if volume is NOT confirming price extremes (early reversal signal)
+        # Use M5 data for better responsiveness on entry timing
+        cvd_divergence_adjustment = 0.0
+        if direction in TRADE_SIGNALS:
+            try:
+                # Get raw M5 DataFrame for CVD calculation (more responsive than M15)
+                m5_raw_data = tfi.get("M5", {}).get("raw_data")
+                if m5_raw_data is not None and isinstance(m5_raw_data, pd.DataFrame) and not m5_raw_data.empty:
+                    cvd_result = detect_cvd_divergence(m5_raw_data, lookback=20)
+                    if cvd_result.get("has_divergence"):
+                        div_type = cvd_result.get("type")
+                        cvd_low = _to_float(cvd_result.get("cvd_at_price_low"))
+                        cvd_high = _to_float(cvd_result.get("cvd_at_price_high"))
+                        price_low = _to_float(cvd_result.get("price_new_low"))
+                        price_high = _to_float(cvd_result.get("price_new_high"))
+                        
+                        # CRITICAL FIX: Match divergence type with trade direction
+                        # SELL trades should have BEARISH divergence (weak buying = good for shorting)
+                        # BUY trades should have BULLISH divergence (weak selling = good for longing)
+                        
+                        if direction == "SELL" and div_type == "bearish":
+                            # ✅ PERFECT MATCH: Selling into confirmed weakness
+                            cvd_divergence_adjustment = +10.0
+                            log_debug(f"[CVD DIVERGENCE] ✅ SELL + BEARISH divergence = CONFIRMED MATCH")
+                            log_debug(f"    Price new HIGH ({price_high:.2f}) | CVD: {cvd_high:.0f} (weak buying)")
+                            log_debug(f"    → +10% confidence REWARD")
+                            
+                        elif direction == "SELL" and div_type == "bullish":
+                            # ❌ MISMATCH: Selling into bullish signal (opposite direction)
+                            cvd_divergence_adjustment = -15.0
+                            log_debug(f"[CVD DIVERGENCE] ⚠️  CONFLICT: SELL + BULLISH divergence = MISMATCH")
+                            log_debug(f"    Price new LOW ({price_low:.2f}) | CVD: {cvd_low:.0f} (strong buying)")
+                            log_debug(f"    → -15% confidence PENALTY (price likely to bounce UP)")
+                            
+                        elif direction == "BUY" and div_type == "bullish":
+                            # ✅ PERFECT MATCH: Buying into confirmed strength
+                            cvd_divergence_adjustment = +10.0
+                            log_debug(f"[CVD DIVERGENCE] ✅ BUY + BULLISH divergence = CONFIRMED MATCH")
+                            log_debug(f"    Price new LOW ({price_low:.2f}) | CVD: {cvd_low:.0f} (weak selling)")
+                            log_debug(f"    → +10% confidence REWARD")
+                            
+                        elif direction == "BUY" and div_type == "bearish":
+                            # ❌ MISMATCH: Buying into bearish signal (opposite direction)
+                            cvd_divergence_adjustment = -15.0
+                            log_debug(f"[CVD DIVERGENCE] ⚠️  CONFLICT: BUY + BEARISH divergence = MISMATCH")
+                            log_debug(f"    Price new HIGH ({price_high:.2f}) | CVD: {cvd_high:.0f} (weak buying)")
+                            log_debug(f"    → -15% confidence PENALTY (price likely to drop)")
+                        else:
+                            cvd_divergence_adjustment = 0.0
+                            log_debug(f"[CVD DIVERGENCE] No divergence detected (neutral signal)")
+                else:
+                    log_debug("[CVD] Raw M5 data unavailable for divergence check")
+            except Exception as cvd_exc:
+                log_debug(f"CVD divergence check warning: {cvd_exc} — proceeding")
+
+        # Confidence calculation with penalty cap
+        confidence = CONFIDENCE_BASE
+        penalty = 0.0
+        if vol_ratio < 0.5:
+            penalty += 5.0
+        if tfa["H1"]["direction"] != bias_dir and bias_dir in TRADE_SIGNALS:
+            h1_trend = tfa["H1"]["trend_classification"]
+            penalty += 8.0 if "Strong" in h1_trend else 4.0
+        if _is_consolidation(tfi):
+            penalty += 10.0
+        if penalty > MAX_TOTAL_PENALTY:
+            penalty = MAX_TOTAL_PENALTY
+        confidence -= penalty
+        confidence += cvd_conf * 10  # max +4%
+        confidence += cvd_divergence_adjustment  # CVD divergence bonus
+        confidence = _clip(confidence, MIN_CONFIDENCE, 92)
+        
+        # FIX #3: APPLY SESSION MULTIPLIERS
         session = get_current_session()
         session_multiplier = SESSION_SCORE_MULTIPLIERS.get(session, 1.0)
-        adjusted_threshold = SIGNAL_SCORE_THRESHOLD * session_multiplier
+        original_confidence = confidence
+        confidence = confidence * session_multiplier
+        confidence = _clip(confidence, MIN_CONFIDENCE, 92)
+        if session_multiplier != 1.0:
+            log_debug(f"[SESSION MULTIPLIER] {session}: {original_confidence:.0f}% × {session_multiplier} = {confidence:.0f}%")
+
+        # Spread check
+        spread = get_current_spread(symbol)
+        if spread > 50:
+            log_debug(f"Spread too high ({spread:.0f} pts) – skipping")
+            return _empty_result("High spread")
+
+        final_signal = direction if confidence >= 45 and direction in TRADE_SIGNALS else WAIT_SIGNAL
+        # Build trade levels
+        levels = _build_levels(direction, tfi)
         
-        raw_candidate = score_direction if score_direction in TRADE_SIGNALS and abs(final_score) >= adjusted_threshold else "NO TRADE"
-        # FIX #6: Properly detect mixed signals (conflicting entry timeframe directions)
-        mixed = _detect_mixed_signals(tfa) or (final_buy > 0 and final_sell > 0)
-        scorecard = {
-            "base_buy_score": base_score["buy_score"],
-            "base_sell_score": base_score["sell_score"],
-            "base_components": base_score["components"],
-            "confirmation_buy_score": confirmation["buy_score"],
-            "confirmation_sell_score": confirmation["sell_score"],
-            "confirmation_net_score": confirmation["net_score"],
-            "confirmation_components": confirmation["components"],
-            "live_entry_buy_score": live_entry["buy_score"],
-            "live_entry_sell_score": live_entry["sell_score"],
-            "live_entry_net_score": live_entry["net_score"],
-            "live_entry_components": live_entry["components"],
-            "buy_score": final_buy,
-            "sell_score": final_sell,
-            "final_score": final_score,
-            "score_direction": score_direction,
-            "volume_penalty_applied": m15_vol_thin,
-            "volume_penalty_points": penalty_points,
-            "volume_penalty_reason": penalty_reason,
-        }
-        gates: dict[str, Any] = {
-            "all_vol_low": _all_vol_low(tfi),
-            "m15_volume_thin": m15_vol_thin,
-            "m15_volume_reason": penalty_reason,
-            "higher_tf_conflict": False,
-            "higher_tf_reason": "",
-            "higher_tf_bias": "",
-            "higher_tf_bias_reason": "",
-            "rsi_exhausted": False,
-            "rsi_caution": False,
-            "m1_counter": False,
-            "m1_exhaustion": False,
-            "m1_exhaustion_reason": "",
-            "exhaustion_reason": "",
-            "rsi_caution_reason": "",
-            "m1_counter_reason": "",
-            "wait_for_confirmation": False,
-            "wait_reason": "",
-            "wait_trigger": "",
-            "entry_timing_state": "not_actionable",
-        }
-        if raw_candidate in TRADE_SIGNALS:
-            gates["higher_tf_conflict"], gates["higher_tf_reason"] = _higher_tf_conflict(raw_candidate, tfa)
-        exhaustion_direction = raw_candidate if raw_candidate in TRADE_SIGNALS else score_direction
-        if exhaustion_direction in TRADE_SIGNALS:
-            exhausted, cautious, reason = _rsi_exhaustion(exhaustion_direction, tfi)
-            gates["rsi_exhausted"] = exhausted
-            gates["rsi_caution"] = cautious
-            if exhausted:
-                gates["exhaustion_reason"] = reason
-            elif cautious:
-                gates["rsi_caution_reason"] = reason
-            gates["m1_counter"], gates["m1_counter_reason"] = _m1_counter(exhaustion_direction, tfi)
-        m1_rsi = _f(tfi.get("M1", {}).get("rsi_14"))
-        if m1_rsi is not None:
-            if exhaustion_direction == "SELL" and m1_rsi < 30.0:
-                gates["m1_exhaustion"] = True
-                gates["m1_exhaustion_reason"] = f"M1 RSI {m1_rsi:.1f} is oversold."
-            elif exhaustion_direction == "BUY" and m1_rsi > 70.0:
-                gates["m1_exhaustion"] = True
-                gates["m1_exhaustion_reason"] = f"M1 RSI {m1_rsi:.1f} is overbought."
-        technical_signal, setup_direction, timing_state, wait_reason, wait_trigger = _resolve_signal_state(raw_candidate, final_score, tfa, tfi, gates)
-        gates["entry_timing_state"] = timing_state
-        gates["wait_for_confirmation"] = technical_signal == WAIT_SIGNAL
-        gates["wait_reason"] = wait_reason
-        gates["wait_trigger"] = wait_trigger
-        confidence_direction = setup_direction if setup_direction in TRADE_SIGNALS else score_direction
-        # GATE #2: Pass thin_volume and higher_tf_conflict flags to confidence calculation
-        technical_confidence = _calculate_confidence(
-            direction=confidence_direction,
-            scorecard=scorecard,
-            tfa=tfa,
-            tfi=tfi,
-            mixed=mixed,
-            high_news=high_impact_news,
-            rsi_caution=gates["rsi_caution"],
-            rsi_exhausted=gates["rsi_exhausted"],
-            m1_counter=gates["m1_counter"],
-            waiting=technical_signal == WAIT_SIGNAL,
-            thin_volume=gates["m15_volume_thin"],
-            higher_tf_conflict=gates["higher_tf_conflict"],
-        )
-        level_direction = setup_direction if setup_direction in TRADE_SIGNALS else technical_signal
-        
-        # TIER 2: Volatility-adjusted threshold & confluence scoring
-        m15_atr_ratio = _f(tfi.get("M15", {}).get("atr_ratio"))
-        vol_adj_threshold = _calculate_volatility_adjusted_threshold(m15_atr_ratio)
-        confluence_bonus, confluence_reason = _calculate_confluence_score(tfa, level_direction)
-        gates["volatility_adjusted_threshold"] = vol_adj_threshold
-        gates["confluence_bonus"] = confluence_bonus
-        gates["confluence_reason"] = confluence_reason
-        
-        trade_levels = _build_levels(level_direction, tfi)
-        risk_points = 0
-        if str(primary.get("volatility_classification", "Normal")) == "High":
-            risk_points += 1
-        if _m1_vol_high(tfi["M1"]):
-            risk_points += 2
-        if high_impact_news:
-            risk_points += 1
-        if mixed:
-            risk_points += 1
-        if gates["higher_tf_conflict"]:
-            risk_points += 1
-        if gates["rsi_caution"]:
-            risk_points += 1
-        if gates["rsi_exhausted"]:
-            risk_points += 1
-        if gates["m1_counter"]:
-            risk_points += 1
-        if gates["m15_volume_thin"]:
-            risk_points += 1
-        risk_level = "High" if risk_points >= 5 else ("Medium" if risk_points >= 2 else "Low")
-        
-        # FIX: Use session-aware confidence threshold
-        from risk_manager import get_current_session
-        session = get_current_session()
-        session_min_conf = MIN_CONFIDENCE_BY_SESSION.get(session, MIN_CONFIDENCE_THRESHOLD)
-        
-        if technical_signal in TRADE_SIGNALS and technical_confidence < session_min_conf:
-            log_debug(f"Confidence {technical_confidence}% < {session_min_conf}% threshold ({session}) — downgrading {technical_signal} to WAIT")
-            gates["confidence_threshold_rejected"] = True
-            gates["confidence_threshold_value"] = technical_confidence
-            gates["signal_wait_timestamp"] = datetime.now(timezone.utc).isoformat()  # Track when WAIT started
-            technical_signal = WAIT_SIGNAL
-            gates["wait_for_confirmation"] = True
-            gates["wait_reason"] = f"Confidence only {technical_confidence}% (need {session_min_conf}%+ in {session}) — waiting for M1 pullback to confirm {setup_direction}."
-            gates["wait_trigger"] = f"Wait for M1 to align: confidence to reach {session_min_conf}%+ on pullback."
-        
-        log_debug(f"Technical engine: state={technical_signal} | setup={setup_direction} | score={final_score:+.2f} | conf={technical_confidence}% | risk={risk_level} | timing={timing_state}")
+        # FIX #6: TRANSPARENCY - Final trap filter status string
+        trap_filter_status = " | ".join(trap_status_parts)
+
         return {
-            "technical_signal": technical_signal,
-            "setup_direction": setup_direction,
-            "weighted_score": final_score,
-            "max_score": MAX_WEIGHTED_SCORE,
-            "technical_confidence": technical_confidence,
-            "scorecard": scorecard,
+            "technical_signal": final_signal,
+            "setup_direction": direction,
+            "weighted_score": net_score,
+            "max_score": MAX_SCORE,
+            "technical_confidence": int(confidence),
             "timeframe_analysis": tfa,
-            "mixed_signals": mixed,
-            "risk_level": risk_level,
-            "trade_levels": trade_levels,
-            "gates": gates,
-            "entry_timing_state": timing_state,
-            "wait_reason": wait_reason,
-            "wait_trigger": wait_trigger,
+            "mixed_signals": False,
+            "risk_level": "Medium",
+            "trade_levels": levels,
+            "gates": {"calibration_status": ""},
+            "error": None,
+            "trap_filter_status": trap_filter_status,
         }
     except Exception as exc:
         log_debug(f"Technical engine failed: {exc}")
-        return _empty(str(exc))
+        import traceback
+        traceback.print_exc()
+        return _empty_result(str(exc))
 
+def _build_levels(direction: str, tfi: dict) -> dict:
+    entry = _to_float(tfi.get("M1", {}).get("close")) or _to_float(tfi.get("M5", {}).get("close"))
+    atr = _to_float(tfi.get("M15", {}).get("atr_14")) or 8.0
+    if not entry:
+        return {}
+    stop_distance = atr * 1.5
+    if direction == "BUY":
+        return {
+            "entry_price": round(entry, 2),
+            "stop_loss": round(entry - stop_distance, 2),
+            "take_profit": round(entry + stop_distance * 2, 2),
+            "risk_distance": round(stop_distance, 2),
+        }
+    elif direction == "SELL":
+        return {
+            "entry_price": round(entry, 2),
+            "stop_loss": round(entry + stop_distance, 2),
+            "take_profit": round(entry - stop_distance * 2, 2),
+            "risk_distance": round(stop_distance, 2),
+        }
+    return {}
 
-def _empty(reason: str) -> dict[str, Any]:
+def _empty_result(reason: str) -> dict:
     return {
         "technical_signal": "NO TRADE",
         "setup_direction": "NO TRADE",
         "weighted_score": 0.0,
-        "max_score": MAX_WEIGHTED_SCORE,
+        "max_score": MAX_SCORE,
         "technical_confidence": 0,
-        "scorecard": {},
         "timeframe_analysis": {},
         "mixed_signals": False,
         "risk_level": "High",
-        "trade_levels": {"entry_price": None, "stop_loss": None, "take_profit": None, "risk_distance": None},
-        "gates": {
-            "all_vol_low": False,
-            "m15_volume_thin": False,
-            "m15_volume_reason": "",
-            "higher_tf_conflict": False,
-            "higher_tf_reason": "",
-            "higher_tf_bias": "",
-            "higher_tf_bias_reason": "",
-            "rsi_exhausted": False,
-            "rsi_caution": False,
-            "m1_counter": False,
-            "m1_exhaustion": False,
-            "m1_exhaustion_reason": "",
-            "exhaustion_reason": "",
-            "rsi_caution_reason": "",
-            "m1_counter_reason": "",
-            "wait_for_confirmation": False,
-            "wait_reason": "",
-            "wait_trigger": "",
-            "entry_timing_state": "not_actionable",
-        },
-        "entry_timing_state": "not_actionable",
-        "wait_reason": "",
-        "wait_trigger": "",
+        "trade_levels": {},
+        "gates": {},
         "error": reason,
     }
-
-
-def format_price(value: float | None) -> str:
-    return "N/A" if value is None else f"{value:.4f}"

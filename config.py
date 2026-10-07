@@ -81,6 +81,10 @@ SYMBOL:    str   = "XAUUSD"
 LOT_SIZE:  float = 0.01
 N_CANDLES: int   = 250
 
+# Momentum Entry RSI Thresholds (for fast entry without pullback wait)
+M5_RSI_MOMENTUM_BUY:  float = 60.0   # M5 RSI > 60 triggers momentum BUY entry
+M5_RSI_MOMENTUM_SELL: float = 40.0   # M5 RSI < 40 triggers momentum SELL entry
+
 # ---------------------------------------------------------------------------
 # MetaTrader 5
 # ---------------------------------------------------------------------------
@@ -96,6 +100,7 @@ INTERMARKET_ENABLED:        bool = _env_str("INTERMARKET_ENABLED", "true").lower
 INTERMARKET_DXY_SYMBOL:     str  = _env_str("INTERMARKET_DXY_SYMBOL", "DXY")
 INTERMARKET_SILVER_SYMBOL:  str  = _env_str("INTERMARKET_SILVER_SYMBOL", "XAGUSD")
 INTERMARKET_YIELD_SYMBOL:   str  = _env_str("INTERMARKET_YIELD_SYMBOL", "US10Y")
+INTERMARKET_OIL_SYMBOL:     str  = _env_str("INTERMARKET_OIL_SYMBOL", "WTIUSD")
 INTERMARKET_SP500_SYMBOL:   str  = _env_str("INTERMARKET_SP500_SYMBOL", "US500")
 
 # ---------------------------------------------------------------------------
@@ -103,6 +108,107 @@ INTERMARKET_SP500_SYMBOL:   str  = _env_str("INTERMARKET_SP500_SYMBOL", "US500")
 # ---------------------------------------------------------------------------
 REQUEST_TIMEOUT:     int = 15
 NEWS_LOOKAHEAD_DAYS: int = 1
+
+
+# ============================================================
+# INTRADAY OPTIMIZATION - NEW SETTINGS
+# ============================================================
+
+# Timeframes for intraday (remove D1 for swing trading)
+INTRADAY_TIMEFRAMES: list[str] = ["H4", "H1", "M15", "M5", "M1"]
+
+# Enable intraday mode
+INTRADAY_MODE: bool = True
+
+# Intraday session quality multipliers
+INTRADAY_SESSION_MULTIPLIERS: dict[str, float] = {
+    "LondonNewYork": 0.70,  # Best session (easier threshold)
+    "London": 0.75,
+    "NewYork": 0.70,
+    "Asian": 1.30,          # Avoid (harder)
+    "Dead": 2.00,           # Block (hardest)
+}
+
+# Intraday confidence thresholds
+MIN_CONFIDENCE_INTRADAY: float = 62.0  # Higher bar (vs 45%)
+WAIT_SCORE_FLOOR_INTRADAY: float = 1.8  # Pullback min score
+
+# Pullback parameters (for M15 retracement)
+PULLBACK_RATIO_MIN: float = 0.38  # Minimum 38% retracement
+PULLBACK_RATIO_MAX: float = 0.62  # Maximum 62% retracement (avoid too shallow)
+
+# M5 body filter
+M5_BODY_MIN_ATR_RATIO: float = 0.4  # Reject if candle body < 40% of ATR
+
+# M1 entry confirmation
+M1_REJECTION_WICK_MIN_RATIO: float = 0.6  # Wick must be 60%+ of range
+
+# Order execution & slippage (FIX #6 PHASE 4)
+MAX_SLIPPAGE_PIPS: float = 2.0  # Covers realistic spread (1.5pips) + latency (was 0.5)
+
+# Trailing stop settings
+TRAILING_STOP_ATR_TRIGGER: float = 1.0   # Activate at 1× risk profit
+TRAILING_STOP_ATR_TRAIL: float = 0.75    # Trail by 75% of entry ATR
+
+# Maximum daily trades (intraday only)
+MAX_INTRADAY_TRADES_PER_DAY: int = 4
+
+# Position hold time limits
+INTRADAY_MAX_HOLD_MINUTES: int = 240  # Exit by 4-hour mark
+INTRADAY_MIN_HOLD_MINUTES: int = 5    # Minimum 5 minutes before trailing
+
+# Risk management (intraday specific)
+INTRADAY_RISK_PER_TRADE: float = 0.5   # Risk 0.5% per trade
+INTRADAY_LOT_SIZE_MIN: float = 0.01
+INTRADAY_LOT_SIZE_MAX: float = 0.1
+
+# ----------------------------------------------------------------------
+# ACCOUNT-LEVEL RISK LIMITS
+#
+# Enforced by core/risk_limits.py and evaluated in
+# main_production.check_pre_trade_gates. Before these existed, the system had
+# no drawdown limit, no consecutive-loss limit and no equity kill switch of any
+# kind (PHASE_2_ISSUES.md R7), and its daily-loss breaker was structurally
+# incapable of firing because the caller never supplied the loss figure (R3).
+#
+# These are deliberately conservative. They are NOT fitted to any backtest --
+# no measurement was used to choose them, because selecting a risk limit by
+# what would have maximised a historical return is how a risk limit stops
+# being one. Change them because the account's tolerance changed, not because
+# a backtest preferred a different number.
+# ----------------------------------------------------------------------
+
+# Realised loss in one UTC trading day, as a percentage of that day's OPENING
+# balance. Breaching this blocks new entries until the next trading day.
+# main_production.CONFIG["max_daily_loss_percent"] held 5.0 while being
+# unreachable; this is the enforced figure.
+MAX_DAILY_LOSS_PERCENT: float = 3.0
+
+# Peak-to-current equity decline, as a percentage of peak equity. This is the
+# kill switch: breaching it HALTS trading and does not self-clear. Set well
+# inside the -45.25% drawdown that buy-and-hold gold produced on the research
+# TRAIN arm, because a leveraged account cannot sit through that.
+MAX_DRAWDOWN_PERCENT: float = 15.0
+
+# Consecutive losing closes before new entries are blocked.
+MAX_CONSECUTIVE_LOSSES: int = 4
+
+# Total open volume across all positions, in lots. `max_concurrent_trades = 3`
+# capped the position COUNT on a single symbol, which is three times the same
+# directional risk and not an exposure limit at all (R8). This is the limit a
+# count cannot express.
+MAX_OPEN_LOTS: float = 0.30
+
+# Entry filter: require CVD divergence confirmation (bot5-15 feature)
+REQUIRE_CVD_DIVERGENCE: bool = False  # Set to True to enforce
+CVD_DIVERGENCE_WEIGHT: float = 0.18   # +18% confidence if confirmed (institutional signal)
+
+# Entry filter: require institutional pattern (bot5-15 feature)
+REQUIRE_INSTITUTIONAL_PATTERN: bool = False  # Optional, not blocking
+INSTITUTIONAL_PATTERN_WEIGHT: float = 0.12   # ±12% confidence based on pattern (upthrust -15%, sweep +8%)
+
+# News filter for intraday
+HIGH_IMPACT_NEWS_BLACKOUT_MINUTES: int = 60  # Avoid trading 60 min before/after
 
 
 # ---------------------------------------------------------------------------

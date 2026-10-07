@@ -1,0 +1,42 @@
+{
+  "ambiguous_exit_fraction": 0.0,
+  "ambiguous_exits": 0,
+  "average_bars_held": 10.333333333333334,
+  "average_loss": -8.399999999999636,
+  "average_r": 0.6427743727924397,
+  "average_win": 12.501250000000255,
+  "breakeven": 0,
+  "by_direction": {
+    "BUY": 1,
+    "SELL": 2
+  },
+  "by_outcome": {
+    "STOPPED": 1,
+    "TARGET_HIT": 2
+  },
+  "by_regime": {
+    "MICRO_SCALP": 3
+  },
+  "by_setup": {
+    "MOMENTUM": 3
+  },
+  "completed_trades": 3,
+  "expectancy": 5.534166666666958,
+  "expectancy_r": 0.6427743727924397,
+  "gross_pnl": 16.602500000000873,
+  "losses": 1,
+  "max_consecutive_losses": 1,
+  "max_consecutive_wins": 2,
+  "max_drawdown": 8.399999999999636,
+  "max_drawdown_r": 1.0243902439024173,
+  "net_pnl": 16.602500000000873,
+  "open_at_end": 0,
+  "profit_factor": 2.9764880952382846,
+  "rejected_orders": 0,
+  "total_commission": 0.0,
+  "total_orders": 3,
+  "total_signals": 3,
+  "total_trades": 3,
+  "win_rate": 0.6666666666666666,
+  "wins": 2
+}

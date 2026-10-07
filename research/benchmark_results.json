@@ -1,0 +1,247 @@
+{
+ "purpose": "the buy-and-hold benchmark every candidate is measured against, and the transition-cost budget that decides which strategy forms may be attempted at all",
+ "manifest": "research/research_split_manifest_h1.json",
+ "round_turn_usd": 0.33,
+ "gate_share_of_return": 0.2,
+ "oos": {
+  "inspected": false,
+  "note": "FINAL_OOS is not loaded; only TRAIN and DEV are benchmarked"
+ },
+ "annualisation": {
+  "basis": "measured bars per year per arm, not an assumed 24x365",
+  "train_bars_per_year": 5837.2,
+  "calendar_hours_per_year": 8766.0,
+  "train_vol_pct_measured_basis": 15.69,
+  "train_vol_pct_if_24x365_assumed": 19.23,
+  "note": "gold trades about 120 hours a week, not 168. Annualising hourly returns with sqrt(24*365) overstates volatility by about 1.23x and understates Sharpe by the same factor. An earlier quick calculation in this session used the 24x365 basis and therefore understated the benchmark Sharpe; the figure here supersedes it."
+ },
+ "arms": {
+  "TRAIN": {
+   "hold": {
+    "bars": 66147,
+    "years": 11.33,
+    "bars_per_year": 5837.2,
+    "price_first": 950.85,
+    "price_last": 1893.68,
+    "price_mean": 1377.48,
+    "gross_dollars_per_unit": 942.83,
+    "cost_dollars_one_round_turn": 0.33,
+    "total_return_pct": 99.12,
+    "cagr_pct": 6.266,
+    "max_drawdown_pct": -45.25,
+    "longest_underwater_years": 8.93,
+    "ann_volatility_pct": 15.69,
+    "sharpe_rf0": 0.387,
+    "annual_dollar_gain_per_unit": 83.2
+   },
+   "budget": {
+    "cagr_pct": 6.266,
+    "mean_price": 1377.48,
+    "drag_per_round_turn_pct_of_capital": 0.02396,
+    "affordable_round_turns_per_year": {
+     "10%_of_return": {
+      "round_turns": 26,
+      "one_per_days": 14.0
+     },
+     "20%_of_return": {
+      "round_turns": 52,
+      "one_per_days": 7.0
+     },
+     "50%_of_return": {
+      "round_turns": 130,
+      "one_per_days": 2.8
+     },
+     "100%_of_return": {
+      "round_turns": 261,
+      "one_per_days": 1.4
+     }
+    },
+    "schedule_cost": {
+     "twice daily": {
+      "round_turns_per_year": 504,
+      "annual_drag_pct_of_capital": 12.074,
+      "share_of_cagr_pct": 192.7,
+      "verdict": "DEAD"
+     },
+     "daily": {
+      "round_turns_per_year": 252,
+      "annual_drag_pct_of_capital": 6.037,
+      "share_of_cagr_pct": 96.3,
+      "verdict": "marginal"
+     },
+     "every 2 days": {
+      "round_turns_per_year": 126,
+      "annual_drag_pct_of_capital": 3.019,
+      "share_of_cagr_pct": 48.2,
+      "verdict": "marginal"
+     },
+     "weekly": {
+      "round_turns_per_year": 52,
+      "annual_drag_pct_of_capital": 1.246,
+      "share_of_cagr_pct": 19.9,
+      "verdict": "viable"
+     },
+     "fortnightly": {
+      "round_turns_per_year": 25,
+      "annual_drag_pct_of_capital": 0.599,
+      "share_of_cagr_pct": 9.6,
+      "verdict": "viable"
+     },
+     "monthly": {
+      "round_turns_per_year": 12,
+      "annual_drag_pct_of_capital": 0.287,
+      "share_of_cagr_pct": 4.6,
+      "verdict": "viable"
+     },
+     "quarterly": {
+      "round_turns_per_year": 4,
+      "annual_drag_pct_of_capital": 0.096,
+      "share_of_cagr_pct": 1.5,
+      "verdict": "viable"
+     }
+    },
+    "GATE_max_round_turns_per_year": 52,
+    "GATE_basis": "a candidate may not surrender more than 20% of the benchmark CAGR to spread. Declared, not fitted."
+   },
+   "from": "2009-08-31 19:00:00+00:00",
+   "to": "2020-12-31 17:00:00+00:00"
+  },
+  "DEV": {
+   "hold": {
+    "bars": 27589,
+    "years": 4.66,
+    "bars_per_year": 5920.6,
+    "price_first": 1923.19,
+    "price_last": 3511.1,
+    "price_mean": 2150.14,
+    "gross_dollars_per_unit": 1587.91,
+    "cost_dollars_one_round_turn": 0.33,
+    "total_return_pct": 82.55,
+    "cagr_pct": 13.787,
+    "max_drawdown_pct": -21.87,
+    "longest_underwater_years": 1.15,
+    "ann_volatility_pct": 14.67,
+    "sharpe_rf0": 0.88,
+    "annual_dollar_gain_per_unit": 340.77
+   },
+   "budget": {
+    "cagr_pct": 13.787,
+    "mean_price": 2150.14,
+    "drag_per_round_turn_pct_of_capital": 0.01535,
+    "affordable_round_turns_per_year": {
+     "10%_of_return": {
+      "round_turns": 89,
+      "one_per_days": 4.1
+     },
+     "20%_of_return": {
+      "round_turns": 179,
+      "one_per_days": 2.0
+     },
+     "50%_of_return": {
+      "round_turns": 449,
+      "one_per_days": 0.8
+     },
+     "100%_of_return": {
+      "round_turns": 898,
+      "one_per_days": 0.4
+     }
+    },
+    "schedule_cost": {
+     "twice daily": {
+      "round_turns_per_year": 504,
+      "annual_drag_pct_of_capital": 7.735,
+      "share_of_cagr_pct": 56.1,
+      "verdict": "marginal"
+     },
+     "daily": {
+      "round_turns_per_year": 252,
+      "annual_drag_pct_of_capital": 3.868,
+      "share_of_cagr_pct": 28.1,
+      "verdict": "marginal"
+     },
+     "every 2 days": {
+      "round_turns_per_year": 126,
+      "annual_drag_pct_of_capital": 1.934,
+      "share_of_cagr_pct": 14.0,
+      "verdict": "viable"
+     },
+     "weekly": {
+      "round_turns_per_year": 52,
+      "annual_drag_pct_of_capital": 0.798,
+      "share_of_cagr_pct": 5.8,
+      "verdict": "viable"
+     },
+     "fortnightly": {
+      "round_turns_per_year": 25,
+      "annual_drag_pct_of_capital": 0.384,
+      "share_of_cagr_pct": 2.8,
+      "verdict": "viable"
+     },
+     "monthly": {
+      "round_turns_per_year": 12,
+      "annual_drag_pct_of_capital": 0.184,
+      "share_of_cagr_pct": 1.3,
+      "verdict": "viable"
+     },
+     "quarterly": {
+      "round_turns_per_year": 4,
+      "annual_drag_pct_of_capital": 0.061,
+      "share_of_cagr_pct": 0.4,
+      "verdict": "viable"
+     }
+    },
+    "GATE_max_round_turns_per_year": 179,
+    "GATE_basis": "a candidate may not surrender more than 20% of the benchmark CAGR to spread. Declared, not fitted."
+   },
+   "from": "2021-01-04 02:00:00+00:00",
+   "to": "2025-09-02 14:00:00+00:00"
+  }
+ },
+ "eras": {
+  "2009-12": {
+   "bars": 19160,
+   "mean_price": 1449.84,
+   "drag_per_round_turn_pct": 0.02276,
+   "weekly_drag_pct": 1.184,
+   "monthly_drag_pct": 0.273
+  },
+  "2013-16": {
+   "bars": 23478,
+   "mean_price": 1272.06,
+   "drag_per_round_turn_pct": 0.02594,
+   "weekly_drag_pct": 1.349,
+   "monthly_drag_pct": 0.311
+  },
+  "2017-20": {
+   "bars": 23509,
+   "mean_price": 1423.79,
+   "drag_per_round_turn_pct": 0.02318,
+   "weekly_drag_pct": 1.205,
+   "monthly_drag_pct": 0.278
+  },
+  "2021-24": {
+   "bars": 23645,
+   "mean_price": 1983.67,
+   "drag_per_round_turn_pct": 0.01664,
+   "weekly_drag_pct": 0.865,
+   "monthly_drag_pct": 0.2
+  },
+  "2025-26": {
+   "bars": 3944,
+   "mean_price": 3148.2,
+   "drag_per_round_turn_pct": 0.01048,
+   "weekly_drag_pct": 0.545,
+   "monthly_drag_pct": 0.126
+  }
+ },
+ "binding_gate_round_turns_per_year": 52,
+ "forms_ruled_out": [
+  "twice daily"
+ ],
+ "forms_viable": [
+  "weekly",
+  "fortnightly",
+  "monthly",
+  "quarterly"
+ ]
+}

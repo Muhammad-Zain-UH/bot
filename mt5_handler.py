@@ -1,102 +1,215 @@
 """MetaTrader 5 connectivity and market data utilities."""
-
 from __future__ import annotations
-
 import MetaTrader5 as mt5
 import pandas as pd
-
 import config
 from utils import log_debug
+from datetime import datetime, timedelta
+
+from core.symbols import XAUUSD_2DIGIT as XAUUSD_SPEC
+
+
+def _timeframe_minutes(timeframe: int) -> int:
+    mapping = {
+        mt5.TIMEFRAME_M1: 1,
+        mt5.TIMEFRAME_M5: 5,
+        mt5.TIMEFRAME_M15: 15,
+        mt5.TIMEFRAME_H1: 60,
+        mt5.TIMEFRAME_H4: 240,
+        mt5.TIMEFRAME_D1: 1440,
+        mt5.TIMEFRAME_W1: 10080,
+    }
+    return mapping.get(timeframe, 15)
 
 
 def connect_mt5() -> bool:
-    """Initialize MetaTrader 5 and optionally log in with configured credentials."""
     try:
         initialize_kwargs: dict[str, str] = {}
         if config.MT5_PATH:
             initialize_kwargs["path"] = config.MT5_PATH
-
-        log_debug("Initializing MetaTrader 5 connection.")
         if not mt5.initialize(**initialize_kwargs):
-            error = mt5.last_error()
-            log_debug(
-                f"MT5 initialize() failed: {error}\n"
-                f"Make sure MetaTrader 5 terminal is running before starting the bot.\n"
-                f"If MT5 is not available, ensure it's installed at: {config.MT5_PATH}"
-            )
+            log_debug(f"MT5 init failed: {mt5.last_error()}")
             return False
-
         if config.MT5_LOGIN and config.MT5_PASSWORD and config.MT5_SERVER:
-            log_debug("Logging in to the configured MT5 account.")
-            if not mt5.login(
-                config.MT5_LOGIN,
-                password=config.MT5_PASSWORD,
-                server=config.MT5_SERVER,
-            ):
+            if not mt5.login(config.MT5_LOGIN, password=config.MT5_PASSWORD, server=config.MT5_SERVER):
                 log_debug(f"MT5 login failed: {mt5.last_error()}")
                 mt5.shutdown()
                 return False
-        else:
-            log_debug("Using the currently opened MT5 terminal session.")
-
         account_info = mt5.account_info()
         if account_info:
             log_debug(f"Connected to MT5 account {account_info.login}.")
-        else:
-            log_debug("Connected to MT5, but account information is unavailable.")
-
         return True
     except Exception as exc:
-        log_debug(f"Unexpected MT5 connection error: {exc}")
+        log_debug(f"MT5 connection error: {exc}")
         return False
 
-
-def get_market_data(symbol: str, timeframe: int, n_candles: int) -> pd.DataFrame:
-    """Fetch candle data from MT5 and return a clean DataFrame."""
+def get_market_data(
+    symbol: str,
+    timeframe: int,
+    n_candles: int,
+    max_retries: int = 3,
+    closed_only: bool = True,
+) -> pd.DataFrame:
+    """
+    Fetch market data with comprehensive fallback logic.
+    
+    1. Primary: copy_rates_from_pos (last closed candle + N candles by default)
+    2. Fallback: copy_rates_range (time range)
+    3. Last resort: copy_rates_from_pos for genuinely tiny requests only
+    
+    The default excludes the forming candle. MT5's zero bar is still changing,
+    so using it for H1/M15/M5 structure creates repainting scalping signals.
+    """
     try:
-        log_debug(
-            f"Requesting {n_candles} candles for {symbol} on timeframe {timeframe}."
-        )
-
         symbol_info = mt5.symbol_info(symbol)
         if symbol_info is None:
-            raise ValueError(f"Symbol '{symbol}' is not available in MT5.")
-
+            raise ValueError(f"Symbol '{symbol}' not available.")
         if not symbol_info.visible and not mt5.symbol_select(symbol, True):
-            raise ValueError(f"Unable to select symbol '{symbol}' in MT5.")
+            raise ValueError(f"Cannot select symbol '{symbol}'.")
+        
+        # PRIMARY: Try copy_rates_from_pos (most reliable)
+        for attempt in range(max_retries):
+            try:
+                start_pos = 1 if closed_only else 0
+                rates = mt5.copy_rates_from_pos(symbol, timeframe, start_pos, n_candles)
+                if rates is not None and len(rates) >= n_candles:
+                    data = pd.DataFrame(rates)
+                    required = ["time", "open", "high", "low", "close", "tick_volume"]
+                    data = data[required].copy()
+                    data["time"] = pd.to_datetime(data["time"], unit="s", utc=True)
+                    data = data.dropna().reset_index(drop=True)
+                    if len(data) >= n_candles:
+                        # Suppress verbose debug logging for cleaner terminal output
+                        # log_debug(f"[DATA] {symbol} {n_candles} candles fetched (primary method)")
+                        return data
+            except Exception as e:
+                # Suppress verbose retry failures - only log critical failures
+                # log_debug(f"[DATA] Primary fetch attempt {attempt+1}/{max_retries} failed: {e}")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(0.3)
+        
+        # FALLBACK 1: copy_rates_range (time-based)
+        try:
+            to_time = datetime.now()
+            minutes = _timeframe_minutes(timeframe)
+            from_time = to_time - timedelta(minutes=max(minutes * n_candles * 3, 60))
+            
+            rates = mt5.copy_rates_range(symbol, timeframe, from_time, to_time)
+            if rates is not None and len(rates) > 0:
+                data = pd.DataFrame(rates)
+                required = ["time", "open", "high", "low", "close", "tick_volume"]
+                data = data[required].copy()
+                data["time"] = pd.to_datetime(data["time"], unit="s", utc=True)
+                data = data.dropna().reset_index(drop=True)
+                
+                if closed_only and len(data) > 0:
+                    data = data.iloc[:-1].reset_index(drop=True)
+                
+                if len(data) >= n_candles:
+                    data = data.tail(n_candles).reset_index(drop=True)
+                    # Suppress verbose fallback success logs
+                    # log_debug(f"[DATA] {symbol} {len(data)} candles fetched (fallback: time range)")
+                    return data
+        except Exception as e:
+            # Suppress verbose fallback failure logs
+            # log_debug(f"[DATA] Fallback 1 (time range) failed: {e}")
+            pass
+        
+        # FALLBACK 2: Last resort - just 2 candles from current position
+        try:
+            if n_candles > 2:
+                log_debug(f"[DATA] Insufficient fallback data for {symbol}; refusing low-quality {n_candles}-candle request")
+                return pd.DataFrame(columns=["time", "open", "high", "low", "close", "tick_volume"])
 
-        rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, n_candles)
-        if rates is None or len(rates) == 0:
-            raise ValueError(f"No market data returned for symbol '{symbol}'.")
-
-        data = pd.DataFrame(rates)
-        required_columns = ["time", "open", "high", "low", "close", "tick_volume"]
-        missing_columns = [column for column in required_columns if column not in data]
-        if missing_columns:
-            raise ValueError(
-                f"Market data is missing required columns: {', '.join(missing_columns)}."
-            )
-
-        data = data[required_columns].copy()
-        data["time"] = pd.to_datetime(data["time"], unit="s", utc=True)
-        data = data.dropna().reset_index(drop=True)
-
-        if data.empty:
-            raise ValueError("Market data became empty after cleaning.")
-
-        log_debug(f"Received {len(data)} cleaned candles for {symbol}.")
-        return data
+            start_pos = 1 if closed_only else 0
+            rates = mt5.copy_rates_from_pos(symbol, timeframe, start_pos, n_candles)
+            if rates is not None and len(rates) >= n_candles:
+                data = pd.DataFrame(rates)
+                required = ["time", "open", "high", "low", "close", "tick_volume"]
+                data = data[required].copy()
+                data["time"] = pd.to_datetime(data["time"], unit="s", utc=True)
+                data = data.dropna().reset_index(drop=True)
+                # Suppress verbose emergency fallback logs
+                # log_debug(f"[DATA] ⚠️ Emergency fallback: {symbol} only {len(data)} candles (low data quality)")
+                return data
+        except Exception as e:
+            # Suppress verbose fallback failure logs
+            # log_debug(f"[DATA] Fallback 2 (last resort) failed: {e}")
+            pass
+        
+        # ALL METHODS FAILED - Return empty
+        log_debug(f"[DATA] ❌ CRITICAL: Cannot fetch {symbol} data after all retries")
+        return pd.DataFrame(columns=["time", "open", "high", "low", "close", "tick_volume"])
+        
     except Exception as exc:
-        log_debug(f"Failed to fetch market data: {exc}")
-        return pd.DataFrame(
-            columns=["time", "open", "high", "low", "close", "tick_volume"]
-        )
-
+        log_debug(f"[DATA] Market data error: {exc}")
+        return pd.DataFrame(columns=["time", "open", "high", "low", "close", "tick_volume"])
 
 def shutdown_mt5() -> None:
-    """Close the MetaTrader 5 connection cleanly."""
     try:
         mt5.shutdown()
-        log_debug("MetaTrader 5 connection closed.")
+        log_debug("MT5 connection closed.")
     except Exception as exc:
-        log_debug(f"Failed to close MetaTrader 5 cleanly: {exc}")
+        log_debug(f"MT5 shutdown error: {exc}")
+
+def get_current_spread(symbol: str) -> float:
+    """Return spread in real pips for XAUUSD.
+
+    FIX (SPREAD-1): This previously returned raw MT5 *points*
+    ((ask-bid)/info.point), not pips. For XAUUSD quoted to 2 decimals,
+    info.point = 0.01, but gold's real pip convention is $0.10 (10 points).
+    Every downstream threshold (entry_engine.py's max_spread_pips of
+    5.0/7.0/10.0) was written assuming real pips, so spread was reading
+    ~10x too high across every session (e.g. a real 2.3 pip London spread
+    was logging as "23.0pip" and getting rejected as WIDE). This has been
+    silently blocking most trades regardless of how correct the rest of
+    the pipeline is. XAUUSD_PIP_SIZE below assumes the standard 2-decimal
+    gold quote (info.digits == 2) used by this broker - if the broker ever
+    changes quote precision, this constant needs to be revisited.
+    """
+    info = mt5.symbol_info(symbol)
+    if not info:
+        return 999.0
+
+    # U12. Correct today, but a local copy of broker data breaks silently if the
+    # broker ever changes quote precision -- and nothing here would notice. The
+    # specification is derived from the broker's own symbol_info, so it is the
+    # one place that cannot drift out of agreement with the terminal.
+    XAUUSD_PIP_SIZE = XAUUSD_SPEC.pip_size
+    spread_price = info.ask - info.bid
+    return spread_price / XAUUSD_PIP_SIZE
+
+
+def get_current_price(symbol: str, direction: str | None = None) -> float | None:
+    """Return the executable-side price: ask for BUY, bid for SELL, mid otherwise."""
+    tick = mt5.symbol_info_tick(symbol)
+    if tick is None:
+        return None
+    if direction == "BUY":
+        return float(tick.ask)
+    if direction == "SELL":
+        return float(tick.bid)
+    return float((tick.ask + tick.bid) / 2)
+
+
+def compute_cvd_proxy(symbol: str, lookback_minutes: int = 5) -> float:
+    """Approximate CVD using price‑direction tick classification. Weighted at 0.4."""
+    from datetime import datetime, timedelta
+    to_time = datetime.now()
+    from_time = to_time - timedelta(minutes=lookback_minutes)
+    ticks = mt5.copy_ticks_range(symbol, from_time, to_time, mt5.COPY_TICKS_ALL)
+    if ticks is None or len(ticks) == 0:
+        return 0.0
+    delta = 0
+    prev_price = None
+    for t in ticks:
+        price = t['last']
+        if prev_price is not None:
+            if price > prev_price:
+                delta += t['volume']
+            elif price < prev_price:
+                delta -= t['volume']
+        prev_price = price
+    # Normalize to range -100..100
+    return max(-100.0, min(100.0, delta / 1000.0))

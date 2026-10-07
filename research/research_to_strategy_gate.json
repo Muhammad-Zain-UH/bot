@@ -1,0 +1,559 @@
+{
+ "document": "research/RESEARCH_TO_STRATEGY_GATE.md",
+ "status": "BINDING",
+ "purpose": "Defines what a market hypothesis must demonstrate before it may become a strategy-design candidate. Contains no hypothesis, feature, threshold or result.",
+ "stop_rule": {
+  "statement": "Failure at any gate stops promotion for that candidate.",
+  "no_retry_by_redefinition": "A failed gate may not be re-attempted by redefining feature, label, horizon, population or threshold on the same data. That is a new hypothesis and inherits the accumulated multiple-testing burden of every version attempted.",
+  "no_skipping": "A gate may not be skipped because a later gate is considered more important.",
+  "inconclusive_is_not_a_pass": "INCONCLUSIVE stops promotion exactly as NOT SUPPORTED does. The distinction is for institutional memory only."
+ },
+ "related_binding_standards": [
+  "research/STATISTICAL_RESEARCH_CONTROLS.md",
+  "research/phase1_statistical_controls.py",
+  "research/dataset_access.py"
+ ],
+ "production_status": {
+  "role": "FROZEN HISTORICAL CONTROL",
+  "no_further_optimisation": true,
+  "frozen_baselines": [
+   "baselines/baseline_004",
+   "baselines/baseline_008"
+  ],
+  "implementation_issues": "documented, NOT repaired (repair would alter the control)",
+  "must_not_be_used_as_a_comparison_benchmark": "Beating a control with no demonstrated edge establishes nothing."
+ },
+ "safety_invariants": {
+  "live_trading_impossible": {
+   "location": "core/safety.py:69",
+   "declaration": "LIVE_TRADING_ENABLED: Final[bool] = False",
+   "env_override_permitted": false
+  },
+  "prohibited": [
+   "mt5.order_send()",
+   "live orders",
+   "demo orders",
+   "account modification",
+   "parsing .hcc files",
+   "parsing .tkc files"
+  ],
+  "mt5_access": "read-only history and metadata"
+ },
+ "gates": [
+  {
+   "id": "G0",
+   "name": "MARKET HYPOTHESIS",
+   "requires_before_computation": [
+    "economic mechanism",
+    "direction of expected effect",
+    "observable causal variables",
+    "exact feature definition",
+    "exact label definition",
+    "forecast horizon",
+    "eligible population",
+    "exclusions",
+    "baseline",
+    "expected effect scale",
+    "why the effect should survive transaction costs",
+    "required data timeframe",
+    "required historical regimes"
+   ],
+   "cardinal_rule": "No hypothesis may be created merely because a feature/label combination produces a large statistic.",
+   "reject_if": [
+    "mechanism restates the feature",
+    "direction unstated or two-sided",
+    "any definition contains a parameter to be chosen later",
+    "expected effect scale absent",
+    "predicted effect below measured cost",
+    "required data or regimes absent from the dataset"
+   ]
+  },
+  {
+   "id": "G1",
+   "name": "CAUSAL DEFINITION",
+   "requirement": "Explicit proof that feature information ends before label information begins.",
+   "mandatory_checks": [
+    "no shared price point",
+    "no future-derived normalisation",
+    "no future regime classification",
+    "no accidental full-series leakage",
+    "prefix reconstruction test (deviation must be exactly 0.0)"
+   ],
+   "any_failure": "REJECT",
+   "note": "The prefix test does not substitute for the full-series-leakage check. A full-series computation can be causal and still be the wrong number. State which window each indicator uses and why the consumer will have that window."
+  },
+  {
+   "id": "G2",
+   "name": "PRE-REGISTERED TEST",
+   "mechanical_check": {
+    "rule": "The specification commit must contain no results file, analysis script or panel.",
+    "verify": [
+     "git log -1 --format=%H -- <spec>",
+     "git show --name-only --format= <sha>"
+    ],
+    "precedents": {
+     "original_continuation_hypothesis.md": "1110636",
+     "production_path_spec.md": "9692a3d"
+    },
+    "implemented_in": "research/production_path_verification.py (check 7)"
+   },
+   "freeze_before_computation": [
+    "exact hypothesis count",
+    "family structure",
+    "correction method",
+    "significance threshold",
+    "decision rule (support / against / inconclusive)"
+   ],
+   "power_precheck": {
+    "rule": "If the declared expected effect is below the minimum detectable effect at its horizon, the test cannot inform the hypothesis and must not be run as though it could. Record UNTESTABLE instead.",
+    "measured_reference_phase3": {
+     "population": "~60,638 sided M15 decisions",
+     "1h": {
+      "median_se": 0.0249,
+      "mde_2se_atr": 0.05,
+      "mde_corrected_atr": 0.076
+     },
+     "2h": {
+      "median_se": 0.0453,
+      "mde_2se_atr": 0.091,
+      "mde_corrected_atr": 0.138
+     },
+     "4h": {
+      "median_se": 0.0844,
+      "mde_2se_atr": 0.169,
+      "mde_corrected_atr": 0.256
+     }
+    },
+    "null_interpretation": "A null at 4h means 'no effect larger than about 0.26 ATR', not 'no effect'. That is above round-turn cost, so a tradable 4h effect can hide below this programme's 4h resolution."
+   }
+  },
+  {
+   "id": "G3",
+   "name": "CORRECT STATISTICAL INFERENCE",
+   "must_report": [
+    "raw observation statistics",
+    "non-overlapping headline statistics",
+    "overlap ratio",
+    "weighting method",
+    "block statistics as secondary diagnostics only",
+    "confidence interval and n on every cell"
+   ],
+   "headline_estimator": "non-overlapping",
+   "prohibited": [
+    "unweighted block means as the headline estimator",
+    "unweighted block means as a tiebreak or overriding robustness check"
+   ],
+   "estimator_sign_disagreement": {
+    "on_flag": "requires investigation and explanation BEFORE promotion",
+    "may_not": [
+     "be reported silently",
+     "be suppressed",
+     "be resolved by preferring the more favourable estimator"
+    ],
+    "observed_base_rates": {
+     "phase1_clean": "43 of 84",
+     "continuation_audit": "5 of 9",
+     "phase3": "13 of 24"
+    }
+   },
+   "two_sample_contrasts": {
+    "problem": "Pass and fail samples are each internally non-overlapping but their forward windows may overlap each other; measured up to 99.97%. The pooled SE then assumes an independence that does not hold.",
+    "required": [
+     "report cross-group forward-window overlap per cell",
+     "re-estimate with a moving-block bootstrap, block length declared in advance",
+     "report both estimators; a sign disagreement between them means the effect is noise and must be reported as such"
+    ]
+   }
+  },
+  {
+   "id": "G4",
+   "name": "MULTIPLE-TESTING CONTROL",
+   "freeze_before_computation": [
+    "hypothesis count",
+    "family structure",
+    "correction method",
+    "significance threshold"
+   ],
+   "baseline_frozen_before_condition_evaluated": true,
+   "must_report": [
+    "pre-declared hypothesis count",
+    "nominal alpha",
+    "observed exceedances at |t|>=2 and at the corrected threshold",
+    "expected null exceedances (0.0455 x declared count)",
+    "Bonferroni threshold computed from the declared count",
+    "Bonferroni survivors",
+    "Benjamini-Hochberg survivors"
+   ],
+   "uncomputable_cells": "Padded as non-rejections so m stays the declared count. Dropping them shrinks m and makes Benjamini-Hochberg more liberal.",
+   "not_a_result": [
+    "largest t",
+    "number of significant cells"
+   ],
+   "repeated_attempts_accumulate": true,
+   "post_hoc_addition": "PROHIBITED"
+  },
+  {
+   "id": "G5",
+   "name": "TEMPORAL REPLICATION",
+   "must_survive": [
+    "TRAIN",
+    "DEV",
+    "pre-defined temporal segments",
+    "appropriate H1 regime context",
+    "relevant volatility regimes"
+   ],
+   "reject_if": [
+    "the candidate exists only in one favourable period",
+    "the sign flips across pre-defined segments"
+   ],
+   "asymmetry": "Permitted where the economic mechanism genuinely predicts it, documented in the pre-registration BEFORE results. An asymmetry found afterwards and explained as predicted is post-hoc rationalisation.",
+   "drift_signature": "Positive long and negative short in a direction-normalised metric is the signature of drift, not of the claimed mechanism."
+  },
+  {
+   "id": "G6",
+   "name": "REGIME ROBUSTNESS",
+   "standing_dataset_limitation": {
+    "no_multi_year_bear_market": true,
+    "arm_net_pct": {
+     "TRAIN": 33.63,
+     "DEV": 44.24,
+     "FINAL_OOS": 18.24
+    },
+    "consequence": "A candidate whose mechanism depends on falling markets cannot be validated on this dataset and must be recorded as UNTESTABLE rather than tested in a proxy regime. Downtrend strips inside a rising market are not a bear regime."
+   },
+   "median_atr_usd_by_arm": {
+    "TRAIN": 2.085,
+    "DEV": 3.564,
+    "FINAL_OOS": 8.932
+   },
+   "threshold_units": "Thresholds must be scale-relative (ATR or equivalent), justified in the pre-registration. Absolute-dollar thresholds have era-dependent selectivity by construction."
+  },
+  {
+   "id": "G7",
+   "name": "ECONOMIC / COST TEST",
+   "runs_only_after": [
+    "G3",
+    "G4",
+    "G5",
+    "G6"
+   ],
+   "minimum_contents": [
+    "spread (measured)",
+    "slippage over a grid: 0, 0.25, 0.5, 1.0 x spread",
+    "expected holding-period cost",
+    "expected movement (gross, ATR units)",
+    "expected net movement with confidence interval"
+   ],
+   "slippage_may_be_optimised": false,
+   "cost_convention": {
+    "round_turn": "1 x spread",
+    "formula": "ask = mid + S/2, bid = mid - S/2",
+    "measured_median_usd": 0.33,
+    "in_atr_units": {
+     "TRAIN": 0.158,
+     "DEV": 0.093
+    },
+    "correction_note": "Earlier reports stated 2 x spread. One spread, not two."
+   },
+   "quintile_separation_is_not_expected_return": {
+    "statement": "A Q5-Q1 spread of 0.10 ATR does not mean a rule earns 0.10 ATR. A rule trading Q5 earns mean(Q5) - cost, and mean(Q5) is typically a fraction of the separation; it may be negative while the separation is large, because the separation can be produced entirely by Q1.",
+    "applies_equally_to": "pass-vs-fail differences: a rule earns mean(pass) - cost, not mean(pass) - mean(fail)"
+   },
+   "stop_rule": "A candidate that does not survive gross economics stops here."
+  },
+  {
+   "id": "G8",
+   "name": "EXECUTION REALISM",
+   "timeframe_roles": {
+    "M15": "primary structural research",
+    "M5": "entry / confirmation",
+    "M1": "execution / path",
+    "ticks": "spread and execution-cost evidence"
+   },
+   "prohibited": [
+    "using M1 or tick data to manufacture a directional edge",
+    "third-party data for execution or fill claims",
+    "parsing .hcc or .tkc files"
+   ],
+   "availability_must_be_verified": {
+    "current_gaps_in_authorised_window": {
+     "M1": "zero bars",
+     "M5": "zero bars in TRAIN",
+     "D1": "absent from the dataset"
+    },
+    "sentinel_rule": "A 1-row response from copy_rates_range is a sentinel for an unmaterialised period, not data.",
+    "monotonicity": "Availability is not monotonic in lookback, so bisection over it is invalid. Use full year-by-year scans with expected-count validation."
+   },
+   "clock": {
+    "mt5_server_offset_hours": 3.0,
+    "rule": "Every timestamp in a report states its zone. Session logic is UTC-based."
+   }
+  },
+  {
+   "id": "G9",
+   "name": "FINAL_OOS VALIDATION",
+   "arm": {
+    "from_utc": "2025-09-02",
+    "to_utc": "2026-10-01",
+    "m15_rows": 24989
+   },
+   "enforcement": "research/dataset_access.py raises OOSLockedError",
+   "token": "OOS-AUTHORISATION-NOT-ISSUED",
+   "unlock_requires_all": [
+    "hypothesis frozen",
+    "TRAIN/DEV evidence sufficient",
+    "statistical controls pass",
+    "economic screen passes",
+    "execution assumptions frozen",
+    "strategy design frozen",
+    "explicit written authorisation from the strategy architect",
+    "record of date, git SHA and candidate specification SHA at the moment of opening"
+   ],
+   "supplies_none_of": [
+    "quantile cutoff",
+    "feature selection",
+    "threshold selection",
+    "candidate selection",
+    "parameter tuning"
+   ],
+   "one_look_only": "A revised candidate on a used OOS is a new candidate on a spent arm.",
+   "any_failure": "ends that candidate",
+   "purge_embargo": {
+    "m15_bars": 16,
+    "equivalent_hours": 4,
+    "rule": "Dropped after each boundary so no forward window spans two arms. Panels are truncated at the arm boundary BEFORE any feature or label is computed, and the truncation is asserted."
+   }
+  },
+  {
+   "id": "G10",
+   "name": "CONTROLLED STRATEGY DESIGN",
+   "frozen_separately": [
+    "entry",
+    "exit",
+    "stop",
+    "target",
+    "sizing",
+    "risk",
+    "execution",
+    "session",
+    "failure handling"
+   ],
+   "why_separately": "Freezing them together allows a choice in one to be justified by an outcome in another.",
+   "optimisation_separated_from_validation": {
+    "search_on": "TRAIN only, with the search space declared in advance",
+    "DEV": "measures the chosen configuration; does not select it",
+    "FINAL_OOS": "measures the frozen design once",
+    "reselection_after_DEV": "returns the candidate to G2 as a new pre-registration"
+   },
+   "never_used_to_select_between_options": [
+    "backtest performance",
+    "signal count",
+    "win rate",
+    "trade frequency"
+   ],
+   "prohibited_statements": [
+    "more signals is better",
+    "fewer signals is worse",
+    "profitability improved",
+    "any claim that a strategy choice is optimal",
+    "any claim of profitability"
+   ],
+   "insufficient_evidence": "record UNRESOLVED or INCONCLUSIVE; do not force a classification",
+   "four_historical_trades": "Forensic illustration only. n=4. They support no statistic, no threshold and no selection."
+  },
+  {
+   "id": "G11",
+   "name": "PAPER / SHADOW TEST",
+   "definition": "A frozen strategy runs against live market data WITHOUT placing orders, for a pre-declared duration with acceptance criteria set before the period begins.",
+   "purpose": "detect divergence between replay and live behaviour, not to re-estimate the edge",
+   "required": [
+    "documented comparison of paper decisions against deterministic replay over the same period",
+    "an explanation of every divergence"
+   ]
+  },
+  {
+   "id": "G12",
+   "name": "LIVE READINESS REVIEW",
+   "requirements": [
+    "deterministic replay (fingerprinted)",
+    "no lookahead (exhaustive window-mapping audit, not sampled)",
+    "broker execution validation against the actual broker",
+    "spread/slippage validation matching the G7 assumptions",
+    "order rejection handling",
+    "reconnect handling",
+    "duplicate-order protection",
+    "position-state reconciliation",
+    "logging sufficient to reconstruct any decision after the fact",
+    "kill switch",
+    "paper/shadow period completed"
+   ],
+   "never_implied_by_backtest_performance": true,
+   "note": "Nothing in G11 or G12 authorises changing the live-trading safety invariant. Relaxing it is a separate decision with its own authorisation."
+  }
+ ],
+ "architecture_status": {
+  "phases": [
+   {
+    "phase": "Phase 1 (clean rerun)",
+    "outcome": "NO ROBUST CONDITIONAL STRUCTURE DETECTED",
+    "hypotheses": 84,
+    "bonferroni_threshold_t": 3.434,
+    "survivors_bonferroni": 0,
+    "survivors_bh": 0,
+    "max_abs_t": 3.182,
+    "max_abs_t_cell": "vol_transition@1h",
+    "observed_abs_t_ge_2": 6,
+    "expected_abs_t_ge_2": 3.82,
+    "features_excluded_for_endpoint_coupling": 6,
+    "report": "research/PHASE1_CLEAN_REPORT.md"
+   },
+   {
+    "phase": "Phase 2 (infrastructure correction)",
+    "outcome": "Phase 1 headline RETRACTED; estimator failure identified and fixed",
+    "original_claimed_t": -14.62,
+    "corrected_t": -0.33,
+    "cells_flagged_sign_disagreement": "43 of 84",
+    "report": "research/PHASE1_CLEAN_REPORT.md"
+   },
+   {
+    "phase": "Original continuation hypothesis",
+    "outcome": "NOT SUPPORTED",
+    "hypotheses": 9,
+    "bonferroni_threshold_t": 2.773,
+    "survivors_bonferroni": 0,
+    "max_abs_t": 0.688,
+    "note": "Both confirmation layers subtract from bias alone at every horizon. Bias alone INCONCLUSIVE.",
+    "report": "research/ORIGINAL_CONTINUATION_AUDIT_REPORT.md"
+   },
+   {
+    "phase": "Phase 3 (production path decomposition)",
+    "outcome": "NO PREDEFINED PRODUCTION LAYER DEMONSTRATES ROBUST INCREMENTAL INFORMATION",
+    "hypotheses": 21,
+    "bonferroni_threshold_t": 3.038,
+    "survivors_bonferroni": 0,
+    "survivors_bh": 0,
+    "max_abs_t_analytic": 1.338,
+    "max_abs_t_bootstrap": 1.957,
+    "observed_abs_t_ge_2": 0,
+    "expected_abs_t_ge_2": 0.956,
+    "negative_point_estimates": "17 of 21",
+    "classifications": {
+     "bias_alone": "INCONCLUSIVE",
+     "h1_regime": "NOT SUPPORTED",
+     "displacement": "NOT SUPPORTED",
+     "structure_confirmation": "INCONCLUSIVE",
+     "sweep": "NOT SUPPORTED",
+     "poi_fvg": "NOT SUPPORTED",
+     "session_gate": "NOT SUPPORTED",
+     "l3_pullback": "NOT SUPPORTED",
+     "entry_trigger": "DESCRIPTIVE ONLY",
+     "l7_gate": "DESCRIPTIVE ONLY",
+     "l4_liquidity": "DESCRIPTIVE ONLY"
+    },
+    "report": "research/PRODUCTION_PATH_AUDIT_REPORT.md"
+   }
+  ],
+  "implementation_issues_documented_not_repaired": [
+   {
+    "issue": "L6 restates L5",
+    "evidence": "poi_score takes 9 distinct values across 60,638 decisions and equals exactly 68.0 on 89.44%. Threshold is 60 with a confirmed sweep and 70 without, and 68 lies between, so on those bars L6's verdict is 100% determined by L5's. Overall agreement 94.38%."
+   },
+   {
+    "issue": "structure confirmation cannot contradict bias",
+    "evidence": "get_h1_structure takes the bias as input; 0 contradicting classifications in 60,638 sided decisions. 'Confirmed' means only 'not BROKEN and not UNKNOWN', true of 81.22%."
+   },
+   {
+    "issue": "session gate is clock-based",
+    "evidence": "KILL_ZONES_UTC = ((8, 10), (12, 14)); 17.60% pass; |t| <= 0.23 analytic, <= 0.21 bootstrap."
+   },
+   {
+    "issue": "L2 $8 threshold is price-level based",
+    "evidence": "h1_atr is a 14-bar mean of high-low in dollars, not a Wilder ATR, on an instrument that went from ~1,800 to ~4,600. Passed 6.19% of TRAIN but 41.90% of DEV sided decisions, and blocked 0 of 15,735 in the 2026 run."
+   },
+   {
+    "issue": "historical trades used a bypassed micro-scalp path",
+    "evidence": "All four baseline_008 signals were MICRO_SCALP MOMENTUM entries on one identical path with L3 and L6 bypassed by regime flags: six of eight layers evaluated. The documented eight-layer path has never produced a trade."
+   },
+   {
+    "issue": "production EMA initialisation differs from full-series EMA research",
+    "evidence": "Production passes 60 H1 bars so ema_50 is SMA-seeded and advanced ten steps. Full-series research differs on 13.0% of bias labels (one outright sign flip) and 83.5% of bias strengths, median |diff| 0.608 on a 0-10 scale."
+   },
+   {
+    "issue": "further recorded discrepancies",
+    "evidence": "detect_choch is not a textbook CHoCH implementation; breaker-block construction is not present despite being referenced; sweep implementation and documentation disagree; rr == tp_ratio is a tautology; the L2 BOS flip can change side after L1 sets it; compute_cvd_proxy reads tick.last and tick.volume, both 0% populated; layer_funnel.json merges L5_SWEEP (3,064) with L5_SWEEP_WAIT (1,936) into one bucket of 5,000; all four trades record confidence = 0.0 while graded 'A'."
+   }
+  ],
+  "named_research_failure_modes": [
+   {
+    "failure": "unweighted block means as headline",
+    "produced": "t = -14.62 from nothing, surviving seven artifact controls",
+    "rule": "G3 headline/weighting/sign-disagreement rules"
+   },
+   {
+    "failure": "full-series indicator leakage",
+    "produced": "a research bias population differing from production's on 13% of bars",
+    "rule": "G1 check 4"
+   },
+   {
+    "failure": "bisection over non-monotonic availability",
+    "produced": "a false '7.74 years of tick history'",
+    "rule": "G8 availability"
+   },
+   {
+    "failure": "1-row sentinels counted as data",
+    "produced": "a false '24 years API-accessible, contiguous'",
+    "rule": "G8 availability"
+   },
+   {
+    "failure": "round-turn cost stated as 2 x spread",
+    "produced": "overstated costs across several reports",
+    "rule": "G7 cost convention"
+   },
+   {
+    "failure": "server time read as UTC",
+    "produced": "a false conclusion that the broker session schedule had changed",
+    "rule": "G8 clock"
+   },
+   {
+    "failure": "endpoint coupling",
+    "produced": "features correlating with labels by arithmetic",
+    "rule": "G1 check 1"
+   },
+   {
+    "failure": "cross-group forward-window overlap ignored",
+    "produced": "standard errors assuming an independence that was 99.97% violated",
+    "rule": "G3 two-sample contrasts"
+   },
+   {
+    "failure": "dropping uncomputable cells from the correction",
+    "produced": "a Benjamini-Hochberg procedure made silently more liberal",
+    "rule": "G4 uncomputable cells"
+   }
+  ]
+ },
+ "commit_verification": {
+  "implemented_in": "research/production_path_verification.py",
+  "exits_nonzero_on_failure": true,
+  "checks": [
+   "FINAL_OOS token unchanged",
+   "FINAL_OOS inaccessible (OOSLockedError raised)",
+   "dataset fingerprints unchanged",
+   "split manifest unchanged",
+   "frozen baselines unchanged (baseline_008 asserted by the script; baseline_004 frozen by standing constraint, not yet covered by it)",
+   "production code unchanged",
+   "pre-registration predates results (git history)",
+   "exact hypothesis count frozen before testing",
+   "statistical guardrail self-tests pass",
+   "working tree contains only intended research changes"
+  ],
+  "implementation_gap": "research/production_path_verification.py check 5 covers baseline_008 only. baseline_004 is frozen by standing constraint and should be added when that script is next touched."
+ },
+ "scope_exclusions": [
+  "proposes no hypothesis",
+  "identifies no candidate",
+  "suggests no location for an edge",
+  "ranks nothing",
+  "makes no profitability claim",
+  "claims no strategy choice is optimal"
+ ]
+}
