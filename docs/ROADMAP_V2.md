@@ -231,7 +231,7 @@ its minutes exist.
   ≥ 0 at 2×.
 
 **H08 — Intraday momentum into COMEX settlement.** `r_early` = mid log return
-18:00 (previous day) → 12:00 NY; `r_late` = 12:00 → 13:30 NY.
+18:00 (previous day) → 12:00 NY; `r_late` = 12:00 → 14:00 NY (broker H1 cannot resolve the 13:30 settlement; 12:00–14:00 contains it).
 Trade variable `y = sign(r_early) × r_late`; days with `r_early = 0` are dropped.
 - Mechanism: intraday momentum (Gao, Han, Li & Zhou, 2018, *Journal of
   Financial Economics*): late-session hedging and late-informed trading follow

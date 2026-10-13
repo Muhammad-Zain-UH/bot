@@ -149,10 +149,30 @@ def build(raw_dir: Path, out_dir: Path, point: float) -> tuple[dict[str, pd.Data
     return frames, weeks
 
 
+TRAIN_D1_DAYS = ("2004-06-14", "2020-12-31")      # first and last trading day (17:00 NY close)
+
+
+def _ny_close_utc(day: str, day_offset: int = 0) -> str:
+    wall = pd.Timestamp(day) + pd.Timedelta(days=day_offset, hours=SESSION_CLOSE_HOUR_NY)
+    return str(wall.tz_localize(NEW_YORK).tz_convert("UTC"))
+
+
 def split_manifest(h1: dict) -> dict:
     """research_split_manifest_h1.json with its arm boundaries, purge rule and OOS
     lock copied unchanged; row counts and statistics are not copied (they were
-    computed on the fixed -3 h labels)."""
+    computed on the fixed -3 h labels). TRAIN_D1 extends TRAIN backwards for
+    daily research only; DEV and FINAL_OOS are unchanged."""
+    arms = {a: {"from_utc": v["from_utc"], "to_utc": v["to_utc"]} for a, v in h1["arms"].items()}
+    first, last = TRAIN_D1_DAYS
+    arms["TRAIN_D1"] = {
+        "first_trading_day": first, "last_trading_day": last,
+        "from_utc": _ny_close_utc(first, -1), "to_utc": _ny_close_utc(last),
+        "use": "daily and weekly research (batch 2) only, D1 bars at the 17:00 New York "
+               "boundary built from H4 (gold/data/broker_daily.py); backward extension of "
+               "TRAIN, ends at the 2020-12-31 close, inside the TRAIN/DEV gap",
+        "clock_note": "the broker clock convention before 2009-08 is unconfirmed; a 1 h "
+                      "shift is negligible for daily data",
+    }
     return {
         "status": "broker v1b split: boundaries copied unchanged from "
                   "research/research_split_manifest_h1.json",
@@ -164,8 +184,7 @@ def split_manifest(h1: dict) -> dict:
         "oos_prohibitions": h1["oos_prohibitions"],
         "purge_embargo": h1["purge_embargo"],
         "membership_rule": "from_utc <= bar open time <= to_utc, as research/dataset_access.load_arm",
-        "arms": {a: {"from_utc": v["from_utc"], "to_utc": v["to_utc"]}
-                 for a, v in h1["arms"].items()},
+        "arms": arms,
         "enforcement": "gold/data/store.load_broker_v1b raises "
                        "research.dataset_access.OOSLockedError on any FINAL_OOS read "
                        "without the manifest token",

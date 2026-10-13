@@ -33,6 +33,8 @@ Series, and why each
               below.
 ``DGS10``     Nominal 10-year Treasury yield. Supporting, and part of the
               identity below.
+``DFF``       Effective federal funds rate, daily (added 2026-10-13 for the V2
+              financing model: a long CFD pays DFF + markup overnight).
 
 ``SP500`` is deliberately **absent**. FRED serves only a rolling 10 years of it
 (2016-10-03 onwards), which does not reach TRAIN's 2009 start. ``VIXCLS`` carries
@@ -44,6 +46,11 @@ FRED maintains ``DFII10 ~= DGS10 - T10YIE`` (real = nominal - breakeven). Holdin
 all three means the download can be checked for **coherence**, not merely for
 having arrived -- a hash proves bytes are unchanged, and says nothing about
 whether they are right. See ``research/verify_cross_asset.py``.
+
+Raw files are write-once: a series already on disk whose bytes match the
+manifest is kept, not re-downloaded; one whose bytes do not match is refused.
+``dataset_sha256`` stays defined over the original six series (the value H06
+cites); ``dataset_sha256_all`` covers every series.
 
 Run: ``python research/acquire_cross_asset.py``
 """
@@ -73,7 +80,10 @@ SERIES: dict[str, str] = {
     "VIXCLS": "CBOE Volatility Index: VIX",
     "T10YIE": "10-Year Breakeven Inflation Rate",
     "DGS10": "Market Yield on U.S. Treasury Securities at 10-Year Constant Maturity",
+    "DFF": "Federal Funds Effective Rate",
 }
+# The six series frozen on 2026-10-01; dataset_sha256 (cited by H06) covers these.
+ORIGINAL_SERIES = ("DFII10", "DFII5", "DTWEXBGS", "VIXCLS", "T10YIE", "DGS10")
 
 # FRED writes a lone "." for a missing observation in some series and an empty
 # field in others. Both mean "no observation", and neither is a zero.
@@ -175,11 +185,23 @@ def main() -> int:
     print("CROSS-ASSET ACQUISITION (FRED)")
     print("=" * 78)
 
+    previous = (json.loads(MANIFEST.read_text(encoding="utf-8"))
+                if MANIFEST.exists() else {})
     entries: dict[str, dict] = {}
     for series_id in SERIES:
+        target = RAW / f"{series_id}.csv"
+        old = previous.get("series", {}).get(series_id)
+        if target.exists():
+            if old is None or hashlib.sha256(target.read_bytes()).hexdigest() != old["sha256"]:
+                raise AcquisitionError(
+                    f"{series_id}: {target} exists but does not match the manifest; raw "
+                    "files are write-once -- inspect it by hand")
+            entries[series_id] = old
+            print(f"  {series_id:<10} kept (bytes match the manifest)")
+            continue
         body = fetch(series_id)
         entry = describe(series_id, body)
-        target = RAW / f"{series_id}.csv"
+        entry["acquired_utc"] = datetime.now(timezone.utc).isoformat()
         target.write_bytes(body)  # raw bytes, byte-for-byte as served
         entries[series_id] = entry
         print(
@@ -192,7 +214,7 @@ def main() -> int:
     manifest = {
         "namespace": "data/cross_asset_v1",
         "source": "FRED (Federal Reserve Bank of St. Louis), public CSV endpoint",
-        "acquired_utc": datetime.now(timezone.utc).isoformat(),
+        "acquired_utc": previous.get("acquired_utc", datetime.now(timezone.utc).isoformat()),
         "acquisition_script": "research/acquire_cross_asset.py",
         "raw_preserved": True,
         "transformations_applied": "none",
@@ -208,7 +230,11 @@ def main() -> int:
             "risk-sentiment mechanism instead, with coverage from 1990."
         ),
         "series": entries,
+        "dataset_sha256_series": sorted(ORIGINAL_SERIES),
         "dataset_sha256": hashlib.sha256(
+            "".join(entries[s]["sha256"] for s in sorted(ORIGINAL_SERIES)).encode()
+        ).hexdigest(),
+        "dataset_sha256_all": hashlib.sha256(
             "".join(entries[s]["sha256"] for s in sorted(entries)).encode()
         ).hexdigest(),
     }

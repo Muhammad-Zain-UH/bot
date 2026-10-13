@@ -175,6 +175,20 @@ def load_broker_v1b(tf: str, arm: str, oos_authorisation: str | None = None, *,
     return df[(df["time"] >= lo) & (df["time"] <= hi)].reset_index(drop=True)
 
 
+def load_broker_v1b_d1(arm: str, oos_authorisation: str | None = None, **kwargs) -> pd.DataFrame:
+    """D1 bars (17:00 New York boundary) built from v1b H4 for one arm, keeping only
+    sessions that lie wholly inside the arm. Use arm "TRAIN_D1" for the long
+    daily history. Raises OOSLockedError like load_broker_v1b."""
+    from gold.data.broker_daily import SESSION_CLOSE_HOUR_NY, daily_bars
+    h4 = load_broker_v1b("H4", arm, oos_authorisation, **kwargs)
+    d1 = daily_bars(h4)
+    arms = _split(kwargs.get("manifest", MANIFEST_H1_V1B))["arms"]
+    lo, hi = pd.Timestamp(arms[arm]["from_utc"]), pd.Timestamp(arms[arm]["to_utc"])
+    close = (d1["session"] + pd.Timedelta(hours=SESSION_CLOSE_HOUR_NY)) \
+        .dt.tz_localize(NEW_YORK).dt.tz_convert("UTC")
+    return d1[(d1["time"] >= lo) & (close <= hi)].reset_index(drop=True)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--write-manifest", action="store_true")

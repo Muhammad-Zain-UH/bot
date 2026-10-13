@@ -84,11 +84,20 @@ def main() -> int:
           f"{len(entries)} series verified, mismatches: {mismatches or 'none'}")
 
     # --- 2. dataset-level hash ---------------------------------------
+    # dataset_sha256 covers the original six series (the value H06 cites);
+    # dataset_sha256_all covers every series, including DFF (added 2026-10-13).
+    original = manifest.get("dataset_sha256_series", sorted(entries))
     recomputed = hashlib.sha256(
+        "".join(entries[s]["sha256"] for s in sorted(original)).encode()
+    ).hexdigest()
+    recomputed_all = hashlib.sha256(
         "".join(entries[s]["sha256"] for s in sorted(entries)).encode()
     ).hexdigest()
-    check(2, "dataset_sha256 recomputes", recomputed == manifest["dataset_sha256"],
-          f"{recomputed[:24]}...")
+    check(2, "dataset_sha256 and dataset_sha256_all recompute",
+          recomputed == manifest["dataset_sha256"]
+          and recomputed_all == manifest.get("dataset_sha256_all", recomputed_all),
+          f"{recomputed[:24]}... over {len(original)} series; "
+          f"{recomputed_all[:24]}... over {len(entries)}")
 
     # --- 3. coherence: real = nominal - breakeven --------------------
     real = load_series("DFII10")
@@ -182,6 +191,15 @@ def main() -> int:
     )
     check(6, "missing business days are a small minority", worst < 5.0,
           "; ".join(gap_report))
+
+    # --- 7. DFF: a plausible policy-rate range --------------------------
+    # The financing model reads DFF as an annual percentage. A level outside
+    # [-1, 25] % would mean the wrong series or a unit change, not a market move.
+    if "DFF" in entries:
+        dff = load_series("DFF").loc[train_start:dev_end]
+        check(7, "DFF lies in [-1, 25] % over TRAIN..DEV",
+              len(dff) > 0 and dff.min() >= -1.0 and dff.max() <= 25.0,
+              f"{len(dff)} observations, range {dff.min():.2f}..{dff.max():.2f} %")
 
     # ---------------- report ----------------
     print("=" * 78)

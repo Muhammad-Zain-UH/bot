@@ -85,7 +85,30 @@
       "first_date": "1962-01-02",
       "last_date": "2026-10-01",
       "value_column": "DGS10"
+    },
+    "DFF": {
+      "series_id": "DFF",
+      "title": "Federal Funds Effective Rate",
+      "source_url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DFF",
+      "sha256": "a93504210b53532fda653a7ee8d543b00b1780c83f2131e35bb94827a973c2df",
+      "bytes": 424203,
+      "rows": 26398,
+      "missing_observations": 0,
+      "observed_rows": 26398,
+      "first_date": "1954-07-01",
+      "last_date": "2026-10-08",
+      "value_column": "DFF",
+      "acquired_utc": "2026-10-13T06:46:13.841498+00:00"
     }
   },
-  "dataset_sha256": "540d63a0d8f36f955991f45e3918a6a17abe4a2f92fc688d94e30d153c300da7"
+  "dataset_sha256_series": [
+    "DFII10",
+    "DFII5",
+    "DGS10",
+    "DTWEXBGS",
+    "T10YIE",
+    "VIXCLS"
+  ],
+  "dataset_sha256": "540d63a0d8f36f955991f45e3918a6a17abe4a2f92fc688d94e30d153c300da7",
+  "dataset_sha256_all": "f87a55606881610922a534be271dcb31388d442d79aaef107a1a3531b493c188"
 }

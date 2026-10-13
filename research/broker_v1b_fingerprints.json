@@ -53,5 +53,204 @@
       "first_utc": "2004-06-11T01:00:00+00:00",
       "last_utc": "2026-10-01T09:00:00+00:00"
     }
+  },
+  "cost_calibration": {
+    "window_utc": [
+      "2026-10-05T00:00:00+00:00",
+      "2026-10-09T21:00:00+00:00"
+    ],
+    "outside_every_arm": "after FINAL_OOS ends 2026-10-01; the 2026-09-24 sample is not used",
+    "method": "k_cost = max(1, median tick (ask - bid) / median H1 bar spread_usd, same hours)",
+    "calibrated_utc": "2026-10-13T06:44:16+00:00",
+    "server": "MetaQuotes-Demo",
+    "symbol_point": 0.01,
+    "k_cost": 4.625,
+    "k_cost_unfloored": 4.625,
+    "tick_spread_median_usd": 0.37,
+    "bar_spread_median_usd": 0.08,
+    "hours_used": 108,
+    "ticks_used": 1982669,
+    "tick_spread_per_ny_hour": {
+      "0": {
+        "median_usd": 0.47,
+        "p95_usd": 0.62,
+        "ticks": 47989
+      },
+      "1": {
+        "median_usd": 0.46,
+        "p95_usd": 0.61,
+        "ticks": 69626
+      },
+      "2": {
+        "median_usd": 0.37,
+        "p95_usd": 0.5,
+        "ticks": 84323
+      },
+      "3": {
+        "median_usd": 0.37,
+        "p95_usd": 0.48,
+        "ticks": 98493
+      },
+      "4": {
+        "median_usd": 0.36,
+        "p95_usd": 0.47,
+        "ticks": 98273
+      },
+      "5": {
+        "median_usd": 0.34,
+        "p95_usd": 0.47,
+        "ticks": 74489
+      },
+      "6": {
+        "median_usd": 0.34,
+        "p95_usd": 0.45,
+        "ticks": 76085
+      },
+      "7": {
+        "median_usd": 0.35,
+        "p95_usd": 0.46,
+        "ticks": 97916
+      },
+      "8": {
+        "median_usd": 0.36,
+        "p95_usd": 0.51,
+        "ticks": 133009
+      },
+      "9": {
+        "median_usd": 0.37,
+        "p95_usd": 0.48,
+        "ticks": 170053
+      },
+      "10": {
+        "median_usd": 0.35,
+        "p95_usd": 0.48,
+        "ticks": 165765
+      },
+      "11": {
+        "median_usd": 0.35,
+        "p95_usd": 0.47,
+        "ticks": 139893
+      },
+      "12": {
+        "median_usd": 0.32,
+        "p95_usd": 0.52,
+        "ticks": 111243
+      },
+      "13": {
+        "median_usd": 0.33,
+        "p95_usd": 0.47,
+        "ticks": 106580
+      },
+      "14": {
+        "median_usd": 0.3,
+        "p95_usd": 0.42,
+        "ticks": 92571
+      },
+      "15": {
+        "median_usd": 0.3,
+        "p95_usd": 0.41,
+        "ticks": 79769
+      },
+      "18": {
+        "median_usd": 0.63,
+        "p95_usd": 1.19,
+        "ticks": 18843
+      },
+      "19": {
+        "median_usd": 0.6,
+        "p95_usd": 0.73,
+        "ticks": 19214
+      },
+      "20": {
+        "median_usd": 0.49,
+        "p95_usd": 0.65,
+        "ticks": 68436
+      },
+      "21": {
+        "median_usd": 0.51,
+        "p95_usd": 0.66,
+        "ticks": 94359
+      },
+      "22": {
+        "median_usd": 0.47,
+        "p95_usd": 0.64,
+        "ticks": 74532
+      },
+      "23": {
+        "median_usd": 0.48,
+        "p95_usd": 0.63,
+        "ticks": 61208
+      }
+    },
+    "spread_usd_completeness_h1_train_dev": {
+      "2009": {
+        "bars": 1953,
+        "zero_or_missing_share": 1.0
+      },
+      "2010": {
+        "bars": 5634,
+        "zero_or_missing_share": 0.8513
+      },
+      "2011": {
+        "bars": 5726,
+        "zero_or_missing_share": 0.1126
+      },
+      "2012": {
+        "bars": 5847,
+        "zero_or_missing_share": 0.0655
+      },
+      "2013": {
+        "bars": 5874,
+        "zero_or_missing_share": 0.0026
+      },
+      "2014": {
+        "bars": 5872,
+        "zero_or_missing_share": 0.022
+      },
+      "2015": {
+        "bars": 5843,
+        "zero_or_missing_share": 0.0009
+      },
+      "2016": {
+        "bars": 5889,
+        "zero_or_missing_share": 0.0053
+      },
+      "2017": {
+        "bars": 5861,
+        "zero_or_missing_share": 0.0003
+      },
+      "2018": {
+        "bars": 5873,
+        "zero_or_missing_share": 0.0007
+      },
+      "2019": {
+        "bars": 5871,
+        "zero_or_missing_share": 0.0009
+      },
+      "2020": {
+        "bars": 5903,
+        "zero_or_missing_share": 0.0017
+      },
+      "2021": {
+        "bars": 5897,
+        "zero_or_missing_share": 0.1848
+      },
+      "2022": {
+        "bars": 5917,
+        "zero_or_missing_share": 0.2604
+      },
+      "2023": {
+        "bars": 5894,
+        "zero_or_missing_share": 0.0414
+      },
+      "2024": {
+        "bars": 5938,
+        "zero_or_missing_share": 0.0015
+      },
+      "2025": {
+        "bars": 3944,
+        "zero_or_missing_share": 0.0015
+      }
+    }
   }
 }
