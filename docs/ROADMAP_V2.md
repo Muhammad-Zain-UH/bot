@@ -170,6 +170,10 @@ exactly like `research/dataset_access.py`.
 **Rates.** Add `DFF` (effective fed funds, daily) to the existing FRED
 acquisition (`research/acquire_cross_asset.py`) for the financing model.
 
+**Data decision 2026-10-13 (owner).** Batch 1 uses the broker H1 data (2009-08 → 2026-10, split `research/research_split_manifest_h1.json`), because AWS S3 access and the Dukascopy feed are both blocked.
+It reads `data/research_v1b` (built by `gold/data/build_broker_v1b.py`), which replaces the fixed −3 h server offset of `data/research_v1` with a DST-correct UTC rule (New York + 7 h before 2020-07-01, Europe/Athens after) and flags weeks whose reopens disagree (`utc_suspect`); H4 before 2009-08 has an unconfirmed clock convention and is used only for daily and weekly research (batch 2), where a 1 h shift is negligible.
+Dukascopy remains the planned extension and cross-check once reachable.
+
 ---
 
 ## 5. Gate amendments V2 (added to `research/RESEARCH_TO_STRATEGY_GATE.md`)

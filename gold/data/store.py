@@ -3,6 +3,7 @@
     from gold.data.store import load_v2
     h1 = load_v2("H1", "TRAIN")
     load_v2("H1", "FINAL_OOS")          # raises research.dataset_access.OOSLockedError
+    h1 = load_broker_v1b("H1", "DEV")   # broker bars, DST-correct UTC (data/research_v1b)
 
 Arms are trading days that end at 17:00 America/New_York (ROADMAP_V2 §4). The
 first trading day after each boundary is purged: it belongs to no arm. A bar
@@ -31,6 +32,12 @@ from research.dataset_access import (DatasetIntegrityError, OOSLockedError, _fin
 
 REPO = Path(__file__).resolve().parents[2]
 MANIFEST_V2 = REPO / "research" / "research_split_manifest_v2.json"
+BROKER_V1B_DIR = REPO / "data" / "research_v1b" / "bars"
+BROKER_V1B_FINGERPRINTS = REPO / "research" / "broker_v1b_fingerprints.json"
+MANIFEST_H1_V1B = REPO / "research" / "research_split_manifest_h1_v1b.json"
+BROKER_V1B_COLUMNS = ["time", "open", "high", "low", "close", "tick_volume", "spread_usd",
+                      "utc_suspect"]
+BROKER_V1B_TIMEFRAMES = ("M1", "M5", "M15", "H1", "H4")
 OOS_TOKEN = "OOS-AUTHORISATION-NOT-ISSUED"
 # Trading days (17:00 New York close), inclusive -- ROADMAP_V2 §4.
 ARM_DAYS = {"TRAIN": (dt.date(2003, 5, 5), dt.date(2016, 12, 30)),
@@ -38,7 +45,8 @@ ARM_DAYS = {"TRAIN": (dt.date(2003, 5, 5), dt.date(2016, 12, 30)),
             "FINAL_OOS": (dt.date(2025, 9, 2), dt.date(2026, 10, 1))}
 PURGE_TRADING_DAYS = 1
 
-__all__ = ["load_v2", "build_manifest", "OOSLockedError", "DatasetIntegrityError"]
+__all__ = ["load_v2", "load_broker_v1b", "build_manifest", "OOSLockedError",
+           "DatasetIntegrityError"]
 
 
 def close_utc(day: dt.date) -> pd.Timestamp:
@@ -98,16 +106,32 @@ def build_manifest() -> dict:
     }
 
 
-def verify_frame(tf: str, df: pd.DataFrame, fingerprints: Path = FINGERPRINTS) -> None:
+def verify_frame(tf: str, df: pd.DataFrame, fingerprints: Path = FINGERPRINTS,
+                 columns: list[str] = COLUMNS) -> None:
     if not fingerprints.exists():
         raise DatasetIntegrityError(f"{fingerprints} missing: build the dataset first")
     expect = json.loads(fingerprints.read_text(encoding="utf-8")).get("frames", {}).get(tf)
     if expect is None:
         raise DatasetIntegrityError(f"no fingerprint recorded for {tf}")
-    got = _fingerprint(df[COLUMNS])
+    got = _fingerprint(df[columns])
     if got != expect["values_sha256"]:
         raise DatasetIntegrityError(
             f"{tf} fingerprint mismatch: frozen {expect['values_sha256']} but recomputed {got}")
+
+
+def _checked_arms(manifest: Path, arm: str, oos_authorisation: str | None) -> dict:
+    """The manifest's arms; raises OOSLockedError for FINAL_OOS without the token."""
+    split = _split(manifest)
+    arms = split["arms"]
+    if arm not in arms:
+        raise KeyError(f"unknown arm {arm!r}; expected one of {sorted(arms)}")
+    if arm == "FINAL_OOS" and split.get("FINAL_OOS_LOCKED", True):
+        if oos_authorisation != split.get("oos_authorisation_token"):
+            raise OOSLockedError(
+                "FINAL_OOS is LOCKED. Loading it requires the manifest's authorisation "
+                "token, issued in writing by the owner, and opening it must be recorded "
+                "with the date, the git SHA and the candidate specification SHA.")
+    return arms
 
 
 def load_v2(tf: str, arm: str, oos_authorisation: str | None = None, *,
@@ -119,23 +143,36 @@ def load_v2(tf: str, arm: str, oos_authorisation: str | None = None, *,
         OOSLockedError: FINAL_OOS without the exact manifest token, before any read.
         DatasetIntegrityError: the frame does not match its recorded fingerprint.
     """
-    split = _split(manifest)
-    arms = split["arms"]
-    if arm not in arms:
-        raise KeyError(f"unknown arm {arm!r}; expected one of {sorted(arms)}")
     if tf not in TF_DURATION:
         raise KeyError(f"unknown timeframe {tf!r}; expected one of {sorted(TF_DURATION)}")
-    if arm == "FINAL_OOS" and split.get("FINAL_OOS_LOCKED", True):
-        if oos_authorisation != split.get("oos_authorisation_token"):
-            raise OOSLockedError(
-                "FINAL_OOS is LOCKED. Loading it requires the manifest's authorisation "
-                "token, issued in writing by the owner, and opening it must be recorded "
-                "with the date, the git SHA and the candidate specification SHA.")
+    arms = _checked_arms(manifest, arm, oos_authorisation)
     df = pd.read_parquet(bars_dir / f"XAUUSD_{tf}.parquet")
     verify_frame(tf, df, fingerprints)
     lo, hi = pd.Timestamp(arms[arm]["from_utc"]), pd.Timestamp(arms[arm]["to_utc"])
     inside = (df["time"] >= lo) & (df["time"] + TF_DURATION[tf] <= hi)
     return df[inside].reset_index(drop=True)
+
+
+def load_broker_v1b(tf: str, arm: str, oos_authorisation: str | None = None, *,
+                    bars_dir: Path = BROKER_V1B_DIR,
+                    fingerprints: Path = BROKER_V1B_FINGERPRINTS,
+                    manifest: Path = MANIFEST_H1_V1B) -> pd.DataFrame:
+    """Load one arm of the DST-corrected broker bars ("M1", "M5", "M15", "H1", "H4").
+
+    Arm membership as in research/dataset_access.load_arm: from_utc <= time <= to_utc
+    on the bar open, with the boundaries of research_split_manifest_h1.json.
+
+    Raises:
+        OOSLockedError: FINAL_OOS without the exact manifest token, before any read.
+        DatasetIntegrityError: the frame does not match its recorded fingerprint.
+    """
+    if tf not in BROKER_V1B_TIMEFRAMES:
+        raise KeyError(f"unknown timeframe {tf!r}; expected one of {BROKER_V1B_TIMEFRAMES}")
+    arms = _checked_arms(manifest, arm, oos_authorisation)
+    df = pd.read_parquet(bars_dir / f"XAUUSD_{tf}.parquet")
+    verify_frame(tf, df, fingerprints, BROKER_V1B_COLUMNS)
+    lo, hi = pd.Timestamp(arms[arm]["from_utc"]), pd.Timestamp(arms[arm]["to_utc"])
+    return df[(df["time"] >= lo) & (df["time"] <= hi)].reset_index(drop=True)
 
 
 def main(argv: list[str] | None = None) -> int:

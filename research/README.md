@@ -1,3 +1,5 @@
+> **Warning (2026-10-13):** `data/research_v1` converts server time with a fixed −3 h, which labels every US-winter bar (and, from late 2020, the weeks when only the US is on summer time) 1 h early; every result built on it inherits this. Use `data/research_v1b` (`gold/data/store.load_broker_v1b`) and exclude `utc_suspect` bars from session-based tests.
+
 # Research harness — edge discovery
 
 Analysis-only. **Nothing here is imported by production, and nothing here may

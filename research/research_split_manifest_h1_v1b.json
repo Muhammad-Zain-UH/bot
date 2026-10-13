@@ -1,0 +1,39 @@
+{
+  "status": "broker v1b split: boundaries copied unchanged from research/research_split_manifest_h1.json",
+  "dataset": "data/research_v1b/bars (DST-correct UTC), fingerprints in research/broker_v1b_fingerprints.json",
+  "FINAL_OOS_LOCKED": true,
+  "oos_authorisation_token": "OOS-AUTHORISATION-NOT-ISSUED",
+  "oos_unlock_requirements": [
+    "explicit written authorisation from the strategy architect",
+    "record the date, the git SHA and the candidate specification SHA at the moment it is opened",
+    "one look only; a revised candidate on a used OOS is a new candidate on a spent arm"
+  ],
+  "oos_prohibitions": [
+    "supplies no quantile cutoff",
+    "supplies no feature selection",
+    "supplies no threshold selection",
+    "supplies no candidate selection",
+    "supplies no parameter tuning"
+  ],
+  "purge_embargo": {
+    "h1_bars": 4,
+    "equivalent_hours": 4,
+    "rationale": "the longest GO horizon on H1 is 4h = 4 bars (VIABILITY_REPORT s.2); dropped AFTER each boundary so no forward window spans two arms. The existing TRAIN/DEV gap is 81.0 h, already far larger."
+  },
+  "membership_rule": "from_utc <= bar open time <= to_utc, as research/dataset_access.load_arm",
+  "arms": {
+    "TRAIN": {
+      "from_utc": "2009-08-31 19:00:00+00:00",
+      "to_utc": "2020-12-31 17:00:00+00:00"
+    },
+    "DEV": {
+      "from_utc": "2021-01-04 02:00:00+00:00",
+      "to_utc": "2025-09-02 14:15:00+00:00"
+    },
+    "FINAL_OOS": {
+      "from_utc": "2025-09-02T18:30:00+00:00",
+      "to_utc": "2026-10-01T11:30:00+00:00"
+    }
+  },
+  "enforcement": "gold/data/store.load_broker_v1b raises research.dataset_access.OOSLockedError on any FINAL_OOS read without the manifest token"
+}

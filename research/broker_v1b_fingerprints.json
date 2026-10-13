@@ -1,0 +1,57 @@
+{
+  "rule": "server time before 2020-07-01: UTC = (server - 7 h) localised to America/New_York; from 2020-07-01: server time localised to Europe/Athens; both converted to UTC",
+  "utc_suspect": "weekly reopen check, never used to set the offset; 8 trading weeks flagged",
+  "h4_before_h1_history": "2004-06 -> 2009-08: clock convention unconfirmed (H4 hides a 1 h shift); utc_suspect stays False there",
+  "source": "data/research_v1/raw_server (unmodified)",
+  "symbol_point": 0.01,
+  "spread_note": "spread_usd = MT5 bar 'spread' field x symbol_info.point, stored as delivered; the exact definition of the MT5 bar spread is broker-dependent",
+  "columns": [
+    "time",
+    "open",
+    "high",
+    "low",
+    "close",
+    "tick_volume",
+    "spread_usd",
+    "utc_suspect"
+  ],
+  "raw_file_sha256": {
+    "M1": "27cec436291c3f426ce0b684e0226e5d96359456021afe47ed1f8792681806cd",
+    "M5": "c6792213a5f7a47ff4b2db4438cf7522441967d92540e9df583c1b22dbecb7b0",
+    "M15": "01b10ad2ac4bf6a6be02099fb1dc5d65acd17542e50f322276dab20b6f10d9f6",
+    "H1": "625203816933a9bda045593016704cf1ed1f9b890cf3d19ef28adda41a6ba74f",
+    "H4": "722fa61a4b2ce8a2551c296ef829120c0d540c64fc703266552cb0daf7cd61a0"
+  },
+  "frames": {
+    "M1": {
+      "values_sha256": "6ce3628084eebd7dbc553ace54e47da0a7294b6c145fca890f9270e41d712d86",
+      "rows": 100287,
+      "first_utc": "2026-06-17T04:32:00+00:00",
+      "last_utc": "2026-10-01T11:31:00+00:00"
+    },
+    "M5": {
+      "values_sha256": "554403424b56d1e25621e3ef74cfcdaa53346337c6c06f67b3648193cf73fd39",
+      "rows": 100058,
+      "first_utc": "2025-04-25T01:55:00+00:00",
+      "last_utc": "2026-10-01T11:30:00+00:00"
+    },
+    "M15": {
+      "values_sha256": "d5264c7d24738ad95dae5a9394e776458301cc2662bf74e74e963a3e0aa2e8bb",
+      "rows": 100020,
+      "first_utc": "2022-06-30T07:00:00+00:00",
+      "last_utc": "2026-10-01T11:30:00+00:00"
+    },
+    "H1": {
+      "values_sha256": "70662780e006b6a7a304cec5248aa175595116eadfde56e71ac3fd506a23610c",
+      "rows": 100001,
+      "first_utc": "2009-08-31T19:00:00+00:00",
+      "last_utc": "2026-10-01T11:00:00+00:00"
+    },
+    "H4": {
+      "values_sha256": "25a7a526286b5344e8b2a801c9e9b8bd03089c80b13fec2f0640dcc2b9c892df",
+      "rows": 34174,
+      "first_utc": "2004-06-11T01:00:00+00:00",
+      "last_utc": "2026-10-01T09:00:00+00:00"
+    }
+  }
+}

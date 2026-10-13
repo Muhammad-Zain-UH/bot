@@ -33,3 +33,4 @@ Every `*.py` file in the repository root: `main_production.py`, `main.py`,
 
 ## Bugs noticed later
 One line each, nothing more.
+- 2026-10-13: the fixed −3 h server offset labels every US-winter bar (and, from late 2020, every bar in the weeks when only the US is on summer time) 1 h early in `data/research_v1` and in everything built on it, including the legacy kill zones.
