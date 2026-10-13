@@ -227,6 +227,17 @@ class TestPower(unittest.TestCase):
         self.assertAlmostEqual(med, math.log1p(0.4 / 2000))     # zero spread row is missing
         self.assertAlmostEqual(missing, 1 / 3)
 
+    def test_h08_spec_cost_uses_12_and_13_bars_and_fills_zero_with_hour_median(self):
+        h1 = h1_fixture()
+        h1["spread_usd"] = 0.2
+        h1.loc[h1.time.dt.tz_convert(NEW_YORK).dt.hour == 13, "spread_usd"] = 0.4
+        h1.loc[h1.time == ts("2024-03-12 16:00"), "spread_usd"] = 0.0     # 12:00 EDT bar
+        m = h08_intraday_momentum.momentum(h1)
+        c = power.h08_spec_cost(h1, 2.0)
+        i = int(np.flatnonzero(m["day"] == pd.Timestamp("2024-03-12"))[0])
+        self.assertAlmostEqual(c.iloc[i], math.log1p(2.0 * (0.2 + 0.4) / 2 / m["price_entry_usd"].iloc[i]))
+        self.assertTrue(np.allclose(c, np.log1p(0.6 / m["price_entry_usd"].to_numpy())))
+
 
 if __name__ == "__main__":
     unittest.main()

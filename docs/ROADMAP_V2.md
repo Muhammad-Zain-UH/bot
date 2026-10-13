@@ -211,24 +211,7 @@ and a small test count. All constructions are causal; anchors use the last M1
 close at or before the anchor minute (within 5 minutes, else the day is
 dropped). Time windows use `zoneinfo`, never fixed UTC offsets.
 
-### Batch 1 — intraday time structure (TRAIN/DEV on Dukascopy M1, flat by 17:00 NY, so no financing)
-
-**H07 — Session return structure.** Trading day = 18:00 → 17:00
-America/New_York, split into six blocks in New York time:
-B1 18–22, B2 22–02, B3 02–06 (London open), B4 06–10 (COMEX open, 08:30 US
-data), B5 10–14 (London PM auction, COMEX settlement 13:30), B6 14–17.
-Variable: mid log return of each block per day; a block is dropped if < 80% of
-its minutes exist.
-- Mechanism: price discovery and hedging flows are concentrated in specific
-  sessions; an Asia-up / US-down asymmetry is widely reported for gold but has
-  not been established out of sample.
-- Tests (6): mean block return ≠ 0 in TRAIN. Direction `d_b` = sign of the
-  TRAIN mean.
-- Controls: drift-adjusted version `r_b − (h_b/H_day)·r_day` has the same sign
-  with |t| ≥ 2; sign identical in all three TRAIN eras (2003–07, 2008–12,
-  2013–16).
-- DEV: one-sided test in direction `d_b`; net per trade > 0 at 1× DEV cost and
-  ≥ 0 at 2×.
+### Batch 1 — intraday time structure (TRAIN/DEV on broker H1 per the §4 data note; flat intraday, so no financing)
 
 **H08 — Intraday momentum into COMEX settlement.** `r_early` = mid log return
 18:00 (previous day) → 12:00 NY; `r_late` = 12:00 → 14:00 NY (broker H1 cannot resolve the 13:30 settlement; 12:00–14:00 contains it).
@@ -242,16 +225,7 @@ Trade variable `y = sign(r_early) × r_late`; days with `r_early = 0` are droppe
   mean(r_late | r_early < 0) < 0; positive in all three TRAIN eras.
 - DEV: one-sided; net > 0 at 1× cost, ≥ 0 at 2×.
 
-**H09 — London PM auction reversal.** `r_pre` = 14:00 → 15:00
-Europe/London, `r_post` = 15:00 → 16:00. `y = −sign(r_pre) × r_post`.
-- Mechanism: hedging flows into the fix, then unwinding (Caminschi & Heaney,
-  2014, *Journal of Futures Markets*, on the old London PM fixing).
-- Test (1): TRAIN restricted to the old-fix era 2003-05-05 → 2015-03-19.
-  DEV (2017–2025) is entirely the ICE auction era, which began 2015-03-20.
-- Pre-declared expectation: weaker in DEV. Low prior; included because it is
-  cheap and the regime break is known in advance.
-
-Batch 1 total: 8 tests.
+Batch 1 total: 1 test (H08), owner decision 2026-10-13 after the blinded P2 power check.
 
 ### Batch 2 — slow, externally established effects (D1, financing included)
 
@@ -290,6 +264,8 @@ both on notional.
 - **SMC/ICT patterns in any form.** Closed by the audits in §1.2.
 - **Machine learning on OHLC features.** Only as a meta-filter on a sleeve
   that has already passed, never as the source of an edge.
+- **H07 session return structure.** Six exploratory blocks with no pre-specified direction; their multiple-testing burden made batch 1 untestable on broker H1 (`research/POWER_V2.md`).
+- **H09 London PM auction reversal.** Weak prior, and the 2015-03-20 change to the ICE auction is a regime break inside the data; not testable on broker H1 either.
 - **Re-running H01–H04 on the longer data.** Their measured effects were 1/5 to
   1/3 of cost; more data would sharpen the estimate, not lift it above cost.
 
@@ -303,7 +279,7 @@ Only hypotheses that pass TRAIN **and** DEV continue.
    mechanics, frozen before any DEV trade simulation:
    - catastrophe stop at 3 × ATR(14, M15) from entry (fixed, not tuned);
    - event filter (§6, Parked);
-   - no position through 17:00 NY rollover for intraday sleeves;
+   - intraday sleeves flat by 15:55 New York (the broker's daily break now starts at 16:00 NY), so no position through the rollover;
    - Friday flat for intraday sleeves.
 2. **Trade simulation** with `gold/sim` on M1: entry and exit at real bid/ask ×
    `k_cost`, stop checked on M1, stop-first if stop and exit share a bar,

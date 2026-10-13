@@ -89,6 +89,52 @@ def weekly(d1: pd.DataFrame) -> dict:
             **{f"sharpe_se_sr{sr}": round(sharpe_se(sr, years), 3) for sr in SHARPES}}
 
 
+def h08_spec_cost(h1: pd.DataFrame, k_cost: float) -> pd.Series:
+    """Per-day H08 round-turn cost in log units as in research/v2/H08_SPEC.md:
+    k_cost x (spread of the 12:00 NY bar + spread of the 13:00 NY bar) / 2 over the
+    12:00 close; a missing or zero spread takes that New York hour's median in h1."""
+    from gold.hyp.anchors import NEW_YORK, Bars, local_time
+    m = h08_intraday_momentum.momentum(h1)
+    bars = Bars(h1)
+    t12, t13 = (local_time(m["day"], h, NEW_YORK) for h in (12, 13))
+    s12 = bars.spread_of_bar_ending_at(t12 + pd.Timedelta(hours=1))
+    s13 = bars.spread_of_bar_ending_at(t13 + pd.Timedelta(hours=1))
+    spread = h1["spread_usd"].replace(0, np.nan)
+    hour_median = spread.groupby(h1["time"].dt.tz_convert(NEW_YORK).dt.hour).median()
+    s12 = pd.Series(s12).replace(0, np.nan).fillna(hour_median[12])
+    s13 = pd.Series(s13).replace(0, np.nan).fillna(hour_median[13])
+    return pd.Series(cost_in_log_units(round_turn_cost_usd(s12, s13, k_cost), m["price_entry_usd"]))
+
+
+def h08_only(train: pd.DataFrame, dev: pd.DataFrame, k_cost: float) -> dict:
+    """Batch 1 = H08 alone. Counts, sds and costs only."""
+    from statistics import NormalDist
+    nd = NormalDist()
+    yt = h08_intraday_momentum.momentum(train)["y"]
+    yd = h08_intraday_momentum.momentum(dev)["y"]
+    cost = float(h08_spec_cost(dev, k_cost).median())
+    z_train, z_dev = bonferroni_t(1, ALPHA), nd.inv_cdf(1 - ALPHA)
+    n_t, sd_t, n_d, sd_d = len(yt), float(yt.std(ddof=1)), len(yd), float(yd.std(ddof=1))
+    mde_t, mde_d = mde(sd_t, n_t, z_train), mde(sd_d, n_d, z_dev)
+    power = {f"{m}x_cost": nd.cdf(m * cost * math.sqrt(n_d) / sd_d - z_dev) for m in (1.0, 1.5)}
+    return {"cost_log": cost, "train": {"n": n_t, "sd": sd_t, "z": z_train, "mde": mde_t,
+                                        "mde_over_cost": mde_t / cost, "testable": mde_t <= cost},
+            "dev": {"n": n_d, "sd": sd_d, "z_one_sided": z_dev, "mde": mde_d,
+                    "mde_over_cost": mde_d / cost, "power": power}}
+
+
+def main_h08() -> int:
+    from gold.data.build_broker_v1b import FINGERPRINTS
+    from gold.data.store import load_broker_v1b
+    k = json.loads(FINGERPRINTS.read_text(encoding="utf-8"))["cost_calibration"]["k_cost"]
+    r = h08_only(load_broker_v1b("H1", "TRAIN"), load_broker_v1b("H1", "DEV"), k)
+    out = json.loads(OUT.read_text(encoding="utf-8"))
+    out["h08_only"] = r
+    OUT.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(r, indent=2))
+    return 0
+
+
 def main() -> int:
     from gold.data.build_broker_v1b import FINGERPRINTS
     from gold.data.store import load_broker_v1b, load_broker_v1b_d1
@@ -117,4 +163,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main_h08() if sys.argv[1:] == ["--h08"] else main())
