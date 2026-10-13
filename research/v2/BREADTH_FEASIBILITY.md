@@ -57,3 +57,23 @@ volume_min 0.01 lots except NZDCAD, NZDCHF, NZDJPY (0.1). Margin currency and th
 - The asset classes of the external evidence for breadth (equity indices, bonds, commodities) are not tradable here.
 - Notional, spreads, swaps are today's; σ is the year to 2025-09-01; the N = 25 jump is NZDCAD's 0.1-lot minimum.
 - Gold's broker swap today is −1.10 %/yr long, far below the V2 financing model (DFF + 2.5 %).
+
+## Index CFDs (2026-10-13; `research/v2/breadth_indices.py`, all fields in `breadth_indices.csv`)
+All 26 have trade_mode **0 = disabled**. First D1 = first H4 for each; spread in bp of live bid; swap %/yr of notional.
+| Index | First D1/H4 | Contract | vol min/step | Spread bp | Swap L / S % | Index | First D1/H4 | Contract | vol min/step | Spread bp | Swap L / S % |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| AUS200 | 2019-04-29 | 10 | 0.1/0.1 | 2.27 | -2.83 / -0.17 | CA60 | 2020-04-29 | 1 | 1/1 | 3.81 | -1.39 / -1.04 |
+| CHINA50 | 2007-01-04 | 1 | 0.1/0.1 | 4.22 | -2.96 / -2.45 | CHINAH | 2017-03-13 | 1 | 1/1 | 3.67 | -5.00 / +0.31 |
+| DE40 | 2012-08-06 | 1 | 0.1/0.1 | 0.20 | -1.01 / -1.61 | ESP35 | 2019-04-29 | 1 | 1/1 | 24.64 | disabled |
+| EUSTX50 | 2019-04-29 | 1 | 1/1 | 3.06 | disabled | FRA40 | 2019-04-29 | 1 | 1/1 | 2.04 | disabled |
+| HK50 | 2019-10-23 | 1 | 1/1 | 3.70 | disabled | IT40 | 2012-08-06 | 1 | 0.1/0.1 | 1.99 | -0.85 / -1.36 |
+| JPN225 | 2019-04-29 | 100 | 1/1 | 1.33 | disabled | MIDDE50 | 2014-11-13 | 1 | 1/1 | 6.61 | -1.76 / -2.81 |
+| NETH25 | 2011-09-20 | 1 | 1/1 | 0.88 | -1.29 / -1.93 | NOR25 | 2020-04-29 | 1 | 1/1 | 4.54 | -2.21 / -0.74 |
+| SA40 | 2020-04-28 | 1 | 1/1 | 0.98 | -3.94 / +0.57 | SE30 | 2020-04-20 | 1 | 1/1 | 1.34 | -1.89 / -1.00 |
+| SWI20 | 2012-03-22 | 1 | 1/1 | 0.57 | -1.38 / -2.42 | TECHDE30 | 2015-06-01 | 1 | 1/1 | 163.16 | -1.48 / -2.31 |
+| UK100 | 2020-09-23 | 10 | 0.1/0.1 | 1.08 | -1.82 / -0.71 | US2000 | 2012-08-06 | 1 | 1/1 | 19.63 | -1.95 / -1.82 |
+| US30 | 2012-08-06 | 1 | 0.1/0.1 | 0.23 | -1.55 / -1.40 | US30M | 2021-11-22 | 0.1 | 1/1 | 0.38 | disabled |
+| US500 | 2012-08-06 | 1 | 0.1/0.1 | 0.64 | -1.45 / -1.22 | US500M | 2019-12-17 | 10 | 1/1 | 4.48 | disabled |
+| USTEC | 2022-07-06 | 1 | 0.1/0.1 | 0.33 | -0.98 / -0.90 | USTECH100M | 2020-06-01 | 1 | 1/1 | 0.92 | disabled |
+
+Only **CHINA50** (D1 from 2007) meets the 2010 rule; as if enabled: N = 10/15/20 unchanged, N = 25 $37,228 (was $42,507), all 30 $88,127.
