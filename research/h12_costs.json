@@ -1,0 +1,214 @@
+{
+  "window_utc": [
+    "2026-10-05T00:00:00+00:00",
+    "2026-10-09T21:00:00+00:00"
+  ],
+  "outside_every_arm": "after FINAL_OOS ends 2026-10-01",
+  "method": "median over ticks of (ask - bid) / bid, in bp",
+  "symbols": {
+    "AUDCAD": {
+      "tick_spread_median_bp": 0.5044,
+      "ticks": 1741779,
+      "swap_long_annual": 0.0234953309624871,
+      "swap_short_annual": -0.056535640128484575,
+      "swap_mode": "points"
+    },
+    "AUDCHF": {
+      "tick_spread_median_bp": 0.5189,
+      "ticks": 827904,
+      "swap_long_annual": 0.04464028664018699,
+      "swap_short_annual": -0.09934035618520486,
+      "swap_mode": "points"
+    },
+    "AUDJPY": {
+      "tick_spread_median_bp": 0.3627,
+      "ticks": 1669992,
+      "swap_long_annual": 0.018534658235471246,
+      "swap_short_annual": -0.04236493310964856,
+      "swap_mode": "points"
+    },
+    "AUDNZD": {
+      "tick_spread_median_bp": 0.3214,
+      "ticks": 1344738,
+      "swap_long_annual": -0.007338991253226269,
+      "swap_short_annual": -0.044621066819615716,
+      "swap_mode": "points"
+    },
+    "AUDUSD": {
+      "tick_spread_median_bp": 0.1438,
+      "ticks": 778696,
+      "swap_long_annual": 0.03297246917120734,
+      "swap_short_annual": -0.07745913392601089,
+      "swap_mode": "points"
+    },
+    "CADCHF": {
+      "tick_spread_median_bp": 1.3751,
+      "ticks": 640704,
+      "swap_long_annual": 0.0012502480682044996,
+      "swap_short_annual": -0.007501488409226997,
+      "swap_mode": "points"
+    },
+    "CADJPY": {
+      "tick_spread_median_bp": 0.6291,
+      "ticks": 1273914,
+      "swap_long_annual": -0.0036197676242070006,
+      "swap_short_annual": -0.002961628056169364,
+      "swap_mode": "points"
+    },
+    "CHFJPY": {
+      "tick_spread_median_bp": 0.3674,
+      "ticks": 1432991,
+      "swap_long_annual": -0.000960782191735207,
+      "swap_short_annual": -0.0001921564383470414,
+      "swap_mode": "points"
+    },
+    "EURAUD": {
+      "tick_spread_median_bp": 0.1869,
+      "ticks": 1471720,
+      "swap_long_annual": -0.053466585330973704,
+      "swap_short_annual": 0.021841668901163725,
+      "swap_mode": "points"
+    },
+    "EURCAD": {
+      "tick_spread_median_bp": 0.1879,
+      "ticks": 1510426,
+      "swap_long_annual": -0.002517158129016688,
+      "swap_short_annual": -0.0020594930146500177,
+      "swap_mode": "points"
+    },
+    "EURCHF": {
+      "tick_spread_median_bp": 0.2149,
+      "ticks": 1160421,
+      "swap_long_annual": 0.00039190448951136465,
+      "swap_short_annual": -0.006662376321693198,
+      "swap_mode": "points"
+    },
+    "EURGBP": {
+      "tick_spread_median_bp": 0.236,
+      "ticks": 972490,
+      "swap_long_annual": -0.005184812570386658,
+      "swap_short_annual": -0.0017282708567955528,
+      "swap_mode": "points"
+    },
+    "EURJPY": {
+      "tick_spread_median_bp": 0.1131,
+      "ticks": 2001978,
+      "swap_long_annual": -0.00041262401458679694,
+      "swap_short_annual": -0.0024757440875207816,
+      "swap_mode": "points"
+    },
+    "EURNZD": {
+      "tick_spread_median_bp": 0.4,
+      "ticks": 1562757,
+      "swap_long_annual": -0.031290621815841704,
+      "swap_short_annual": 0.012077082104359952,
+      "swap_mode": "points"
+    },
+    "EURUSD": {
+      "tick_spread_median_bp": 0.0,
+      "ticks": 1579367,
+      "swap_long_annual": -0.002283635583600726,
+      "swap_short_annual": -0.003262336548001037,
+      "swap_mode": "points"
+    },
+    "GBPAUD": {
+      "tick_spread_median_bp": 0.4215,
+      "ticks": 1934110,
+      "swap_long_annual": -0.04017152489900705,
+      "swap_short_annual": 0.013838994223581378,
+      "swap_mode": "points"
+    },
+    "GBPCAD": {
+      "tick_spread_median_bp": 0.3183,
+      "ticks": 2437852,
+      "swap_long_annual": -0.01275908298031398,
+      "swap_short_annual": 0.003479749903721995,
+      "swap_mode": "points"
+    },
+    "GBPCHF": {
+      "tick_spread_median_bp": 0.273,
+      "ticks": 1297188,
+      "swap_long_annual": 0.002648632567692053,
+      "swap_short_annual": -0.010263451199806704,
+      "swap_mode": "points"
+    },
+    "GBPJPY": {
+      "tick_spread_median_bp": 0.4293,
+      "ticks": 3563841,
+      "swap_long_annual": 0.0005228656211538898,
+      "swap_short_annual": -0.003834347888461859,
+      "swap_mode": "points"
+    },
+    "GBPUSD": {
+      "tick_spread_median_bp": 0.0,
+      "ticks": 1943383,
+      "swap_long_annual": -0.000551201316842598,
+      "swap_short_annual": -0.006063214485268579,
+      "swap_mode": "points"
+    },
+    "NZDCAD": {
+      "tick_spread_median_bp": 0.5007,
+      "ticks": 1154173,
+      "swap_long_annual": -0.013693845166351675,
+      "swap_short_annual": -0.03240876689369896,
+      "swap_mode": "points"
+    },
+    "NZDCHF": {
+      "tick_spread_median_bp": 0.646,
+      "ticks": 742098,
+      "swap_long_annual": -0.021888937224767778,
+      "swap_short_annual": -0.053158847545864606,
+      "swap_mode": "points"
+    },
+    "NZDJPY": {
+      "tick_spread_median_bp": 0.5633,
+      "ticks": 2069314,
+      "swap_long_annual": -0.011522575814301763,
+      "swap_short_annual": -0.025102754452585984,
+      "swap_mode": "points"
+    },
+    "NZDUSD": {
+      "tick_spread_median_bp": 0.1784,
+      "ticks": 522383,
+      "swap_long_annual": 0.018220391863222267,
+      "swap_short_annual": -0.04359879481556757,
+      "swap_mode": "points"
+    },
+    "USDCAD": {
+      "tick_spread_median_bp": 0.0701,
+      "ticks": 1016464,
+      "swap_long_annual": -0.0020670922129077873,
+      "swap_short_annual": -0.0010335461064538936,
+      "swap_mode": "points"
+    },
+    "USDCHF": {
+      "tick_spread_median_bp": 0.1204,
+      "ticks": 966093,
+      "swap_long_annual": 0.0004423058276941723,
+      "swap_short_annual": -0.004423058276941723,
+      "swap_mode": "points"
+    },
+    "USDJPY": {
+      "tick_spread_median_bp": 0.1264,
+      "ticks": 2029888,
+      "swap_long_annual": -0.000232986567013433,
+      "swap_short_annual": -0.0013979194020805978,
+      "swap_mode": "points"
+    },
+    "XAGUSD": {
+      "tick_spread_median_bp": 3.0583,
+      "ticks": 382748,
+      "swap_long_annual": -0.013922287268445578,
+      "swap_short_annual": 0.001210633675517007,
+      "swap_mode": "points"
+    },
+    "XAUUSD": {
+      "tick_spread_median_bp": 0.8828,
+      "ticks": 1982669,
+      "swap_long_annual": -0.011001892258485859,
+      "swap_short_annual": -0.004016563840399599,
+      "swap_mode": "points"
+    }
+  },
+  "swap_source": "research/v2/breadth_metadata.csv (MT5 symbol_info, 2026-10-13), annual fraction of notional"
+}

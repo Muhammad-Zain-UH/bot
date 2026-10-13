@@ -1,0 +1,1200 @@
+{
+  "rule": "server time before 2020-07-01: (server - 7 h) in America/New_York; from 2020-07-01: server time in Europe/Athens; converted to UTC",
+  "d1": "built from H4 at the 17:00 New York boundary (gold/data/broker_daily.py)",
+  "spread_px": "MT5 bar spread x point, quote-currency price units",
+  "export_to_server": "2026-10-01T23:59:00+00:00",
+  "symbols": {
+    "AUDCAD": {
+      "raw_sha256": {
+        "H1": "13a4109cfaeb29d8730b6f7617724d7514d26287f87acd5e1b08a7f31580f506",
+        "H4": "f8181c405d1725e7a26509a46ea0f704792312062792386923adf2a182cbac82",
+        "D1": "6ea57db35eaa7000fabff9c7ac12320cc82d8efd5d93c6ad1a3887a40e294adc"
+      },
+      "point": 1e-05,
+      "frames": {
+        "H1": {
+          "values_sha256": "78f48595ebc43043dbd735e4553c9910ddbc1a4f619f686d4d9c349cd01b780f",
+          "rows": 125352,
+          "first_utc": "1993-04-26T21:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "28d2164ec57b4dd64c7b5e6cc0f49533057c03805cba4f3d23be402f036777a7",
+          "rows": 34092,
+          "first_utc": "1993-04-26T21:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "a5d946a9b6e01b2f2082f6bdc98a856b88e2c64adf3560c06b0b8d35ac99811f",
+          "rows": 8650,
+          "first_utc": "1993-04-26T21:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "2007-02-12"
+    },
+    "AUDCHF": {
+      "raw_sha256": {
+        "H1": "f0824dd0d88a94b08d405cae936db58d3a83c6d387dddc836cbf58934290084b",
+        "H4": "ce5edfdfd4cb123a2360aced0edf0f81636c765bf06943cd8e34e9081ad61cae",
+        "D1": "cccde6d60bc338079d01de4e0466b861a82c41966b7ef0bf7ff1c97482c45f70"
+      },
+      "point": 1e-05,
+      "frames": {
+        "H1": {
+          "values_sha256": "6366c183439cca162369226ecafaaeb13bc8c5944b6f40f6a346eabf6665b90c",
+          "rows": 123545,
+          "first_utc": "1993-05-13T21:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "0f8656bacef2e02e3d5f7327c225ce101f068dce7efd15c377951025efd6182a",
+          "rows": 33664,
+          "first_utc": "1993-05-13T21:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "b7b8c5642911e8bc3b2fc3201c682066d1a252737953018f312e5a072e19959c",
+          "rows": 8580,
+          "first_utc": "1993-05-13T21:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "2007-05-01"
+    },
+    "AUDJPY": {
+      "raw_sha256": {
+        "H1": "85df80b169959c02c0f3b913a1ed1120311d74033d724604baf66233d1b503d3",
+        "H4": "16912511ff3459a6dc9c677ef73928664be8360db4c9851ee5b19e4028134fae",
+        "D1": "438d1c5931b415273ce9fccdde50de0dec8b0da1ddf56035d6d87c0a73f93278"
+      },
+      "point": 0.001,
+      "frames": {
+        "H1": {
+          "values_sha256": "0489a77ca1ac0d454123fcd3ab52afe582c204edbd059f840ca28a5437582cd0",
+          "rows": 172159,
+          "first_utc": "1993-05-16T21:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "61357ea8aed8ad429cd2167d1ffda28df4dc368b179f0d507864a7a5c4677ba4",
+          "rows": 44289,
+          "first_utc": "1993-05-16T21:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "86004c94bbcb617ef983fefcfb3fe6b6b668fd095d826c374fe7ed5551546d92",
+          "rows": 8619,
+          "first_utc": "1993-05-16T21:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "1999-01-07"
+    },
+    "AUDNZD": {
+      "raw_sha256": {
+        "H1": "5201a48965e6f11166b5b04ca35f6d3fed3da78875037449d7b10f9a04308081",
+        "H4": "2ffcbaf7bae24a72c0aeb50b5856465376ebce0ffc843b08b18824241bd944ad",
+        "D1": "f35d4222016d1bdc0a6d9c71f47e49a26851e935cebc1169ed65fc40dce5c7f0"
+      },
+      "point": 1e-05,
+      "frames": {
+        "H1": {
+          "values_sha256": "7f9470879c0404da59d327e0b056296341e3fc012d321b87ed12225eaa17bb50",
+          "rows": 123532,
+          "first_utc": "1993-04-04T21:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "e0dcb56513d64a3db5a6aa17c91fe547b1feb48783c15cbd637a0d40210e95ad",
+          "rows": 33668,
+          "first_utc": "1993-04-04T21:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "2e5d13df7b860602723474d5acd902f398ae92f0cfe0f1cf48d6672124d69e49",
+          "rows": 8579,
+          "first_utc": "1993-04-04T21:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "2007-05-01"
+    },
+    "AUDUSD": {
+      "raw_sha256": {
+        "H1": "6a9692848e2a0e3a884c0c6dd6cdeae2de1598d202781bc52258a044890b985a",
+        "H4": "624d65d4bd7bc09d3a6eaebe9e3a05967382d428149f16f84eb18bb88d0ee722",
+        "D1": "2a01c9346ef3701adcfbb9588aae8383836350b7031bdb98f3b72ebc12ed3302"
+      },
+      "point": 1e-05,
+      "frames": {
+        "H1": {
+          "values_sha256": "2338fd7f679008aa760494c111944f83f1c2e0cce6fc844335e73e7c7cf8bc99",
+          "rows": 173662,
+          "first_utc": "1993-04-26T21:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "1346d96d36087091f01c9482d8fb392195d645c499488777d9a9c7d50fbe7ae5",
+          "rows": 44681,
+          "first_utc": "1993-04-26T21:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "03ce46305587de5768576f0b29b874e1660af477624a048d8c4b26e75b244756",
+          "rows": 8693,
+          "first_utc": "1993-04-26T21:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "1999-01-04"
+    },
+    "CADCHF": {
+      "raw_sha256": {
+        "H1": "9eb609e829550b61f56a8f2c5ae8dfb95492906c9176eaef3186f6e71c8c0ef6",
+        "H4": "7a3664e02d94b7dc94dc474ba10f8db1c32a1b4c49db3e08381619a4f85cc9fd",
+        "D1": "7edcdfd15453e4e57561d1e0f7706cc1271899186fbec983ff6510db2c48b703"
+      },
+      "point": 1e-05,
+      "frames": {
+        "H1": {
+          "values_sha256": "6085fb662a03c1c0a33b1eba113602716f5ccf91270524b62cc7c0293ecec987",
+          "rows": 121711,
+          "first_utc": "1993-05-18T21:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "36e7b9c0b3174754d398d4c8d06020ea01c3a60e4ce2597a285d5d9b17f219fa",
+          "rows": 33201,
+          "first_utc": "1993-05-18T21:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "d53b98546d3d220b1d19e72ba6f90d518b4423ef59c159b7692fa5152b53d998",
+          "rows": 8501,
+          "first_utc": "1993-05-18T21:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "2007-05-10"
+    },
+    "CADJPY": {
+      "raw_sha256": {
+        "H1": "64202b52bb41570f6fcee3feb53a123802ac07e5060be80cdddbad9245154c98",
+        "H4": "86a109a04aa2f8e5bc51f2663dab85822becdd3123db755dea0acc2566f4bc1b",
+        "D1": "b5551ed7de7ce11d5a6fa09fb3acdfaa65a9ff3a5984a8537e76f28389a1d8b0"
+      },
+      "point": 0.001,
+      "frames": {
+        "H1": {
+          "values_sha256": "3f4455b4f9d12ef49b981aa5e5b6623b53a024a0d24f465ec4816b0687abb583",
+          "rows": 121472,
+          "first_utc": "2007-02-12T09:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "062298f4c968036b69ff0d8ecdc44fb3f4e167d1f11a7856b196e8e58e80610d",
+          "rows": 30461,
+          "first_utc": "2007-02-12T06:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "6f5d306ae37c676f87aae7e4c8dc0ae5e58759059437c56bc890c387f2892cb2",
+          "rows": 5087,
+          "first_utc": "2007-02-11T22:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "2007-02-12"
+    },
+    "CHFJPY": {
+      "raw_sha256": {
+        "H1": "b5afc585baf74df607923b3050d904fdb23675d8ab1fa026d3f061002f21202f",
+        "H4": "0af4e0f549b9c6929070b3c9c98bce4044a2ea2da61fd241cbd76ea6fd808afd",
+        "D1": "d014d0b1de746dbc8b99ba4a9623a30406d200851141692d2f8fc55980ae5fa5"
+      },
+      "point": 0.001,
+      "frames": {
+        "H1": {
+          "values_sha256": "e3d14cde98a705ef1c4376f93d435e32ef8ca9a712a0ed281f03f2af76f76232",
+          "rows": 172341,
+          "first_utc": "1992-02-18T22:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "c8dc73ae21f4063dafeda4a836d0298375dcec459e6fd22cb9e7b708f17fd851",
+          "rows": 44437,
+          "first_utc": "1992-02-18T22:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "3d1afc266bf88526c0b7922ef1f737dc8535168ad64706e3bc6bdd7e378e7e46",
+          "rows": 8755,
+          "first_utc": "1992-02-18T22:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "1999-01-08"
+    },
+    "EURAUD": {
+      "raw_sha256": {
+        "H1": "63f5d49ee50e7e52da39df0a3fa6297afe327131b6ecf43687006e3373c5727c",
+        "H4": "220219b4accecc0524b5e4666ba04c15cace8832b7d9f41562757d7ceffd8a1d",
+        "D1": "e298be8c82978d88a2d03ac173c13a23620c411cbc23a7f9a71a5341029be43e"
+      },
+      "point": 1e-05,
+      "frames": {
+        "H1": {
+          "values_sha256": "53d42376322893097c380664bb2f3f960bd5f51f8f9d1ba6ba262900f437e73d",
+          "rows": 137870,
+          "first_utc": "2004-06-16T21:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "8549af94a2a471f8481fe321ee8111bb60f53c0dcdab02c5a5482b60e3cd05f0",
+          "rows": 34611,
+          "first_utc": "2004-06-16T21:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "981d5cb7678af3a3f20b6d11dd7e17b250fa60d2b84808cb28150da90552a804",
+          "rows": 5782,
+          "first_utc": "2004-06-16T21:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "2004-06-17"
+    },
+    "EURCAD": {
+      "raw_sha256": {
+        "H1": "befec0420e71cd9c079d34212b51de6c8ba938c01ce8fa4ebb1979d53d5b9dab",
+        "H4": "bf382a9cd20e307985a848074f2a2247d91bb7e6f6e4478f04c677f314138b85",
+        "D1": "0e13e37c11e72faed5beaf207b33aa6a298fa19f61d61f501f11cd00b14d3bc3"
+      },
+      "point": 1e-05,
+      "frames": {
+        "H1": {
+          "values_sha256": "1b5fe67334ee2eb8060b08a484bb0432e010af2558849786382cf020b8c31d87",
+          "rows": 122050,
+          "first_utc": "1999-08-01T21:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "cb4682fce5857ebccacd117591748bfca38769f7441c47dacbcc0f6a7a5dd574",
+          "rows": 32014,
+          "first_utc": "1999-08-01T21:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "4ee1633f8934f3eaaccf9f8d07c083af09905297049ba88123ee46122162bedf",
+          "rows": 6895,
+          "first_utc": "1999-08-01T21:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "2007-05-10"
+    },
+    "EURCHF": {
+      "raw_sha256": {
+        "H1": "4946642b06da7dd9fc5f228cb32348328096f997cd1169694ef79ce9a6b561e3",
+        "H4": "e9d9b7c1d40e2f305510574d262dda53fb049cf3182b6f48507079ac091dbea3",
+        "D1": "4984dd8a498ba4119d198dd590a1995768641aa745b8b01fb2faeb79d9f244e8"
+      },
+      "point": 1e-05,
+      "frames": {
+        "H1": {
+          "values_sha256": "1b88a27913be587d4be789ba3d1adeea7854986b9c1f282a43c5ead1eed98249",
+          "rows": 173407,
+          "first_utc": "1993-04-27T21:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "6ce55ef261f090f0603b33e46b8fa6d29363922b48b6f27d981afecf691cff3b",
+          "rows": 44621,
+          "first_utc": "1993-04-27T21:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "fdf696035162d81f8b5df1945ac6a5cd9b4fe61173de4cd57e15ffa38ae159ba",
+          "rows": 8680,
+          "first_utc": "1993-04-27T21:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "1999-01-04"
+    },
+    "EURGBP": {
+      "raw_sha256": {
+        "H1": "b0406100ca06edea2caebe304dd198887b5b7009c2a3baa062a64efa82c80d8b",
+        "H4": "c0c4ceb0ba9d22a88c1470a85f0dded9047521454129526a39e81d49cdb23a95",
+        "D1": "2d846fca3c21243db7f020b59f859a497c6df5a6d0cf22de750d19b6730a6457"
+      },
+      "point": 1e-05,
+      "frames": {
+        "H1": {
+          "values_sha256": "5a9b0df7f0135587bd42a67ff77266dee99a3fc7fb9313899654707a696dfe93",
+          "rows": 173600,
+          "first_utc": "1993-05-02T21:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "a37fc4279cb7fd635383f007d7ce76779a9b1376595aa1de5898bc80e950fb6d",
+          "rows": 44656,
+          "first_utc": "1993-05-02T21:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "3d9ed7e343722faa35b454630f811a24f3b16d51c73525ea23bce872634ba08d",
+          "rows": 8686,
+          "first_utc": "1993-05-02T21:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "1999-01-04"
+    },
+    "EURJPY": {
+      "raw_sha256": {
+        "H1": "bf7067c324bc844179e6f229eb8179fead8f49abdbae8cc3925d714c18fdcba2",
+        "H4": "8f8798defc9ef5d94cd030ecb933b3b5fbd2d873553403c7ec8fdf4a79aa71d7",
+        "D1": "b363019ebe46cb49b85ebf137948230275417d79baf645a5ef260717a787d8bc"
+      },
+      "point": 0.001,
+      "frames": {
+        "H1": {
+          "values_sha256": "23772383f171d917d00fd83b4ccca245d569ef87734d6be5aec46ec108405259",
+          "rows": 170490,
+          "first_utc": "1993-04-26T21:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "8773a5a1fe8c664bdad508e9a071e601e7c966f13291f177b57a59fb9249282d",
+          "rows": 43886,
+          "first_utc": "1993-04-26T21:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "e95930e5ca1fea26e549f8014f5f668946a9b6a0af9b66d0497ca94583f86179",
+          "rows": 8563,
+          "first_utc": "1993-04-26T21:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "1999-01-04"
+    },
+    "EURNZD": {
+      "raw_sha256": {
+        "H1": "6dee8d275a0b6a074d6b0d33c51e80bc9d50584157f7c3b0e4b981b1cde4f8d3",
+        "H4": "a6792d62e0eeb05a36df833bc7a200f174f2ff8717ecf637253482f16f959fa7",
+        "D1": "01b0ea8588c00b410e1af3fa26ab9b0dc74585b67305e29fa6e01e40099a773f"
+      },
+      "point": 1e-05,
+      "frames": {
+        "H1": {
+          "values_sha256": "d49269fa4a06e81d03fa21a3f888a431bffd38f580b106b722b1ddb918101a3f",
+          "rows": 120169,
+          "first_utc": "1999-01-04T22:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "d69524a1b1b39edb224a958c320d0c32d3e959c4a331b934a076588fa51c64aa",
+          "rows": 31717,
+          "first_utc": "1999-01-04T22:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "410484917bdf75cd7c8c53dfab499b9175c755519f699aca9f60c60de3c02e59",
+          "rows": 7029,
+          "first_utc": "1999-01-04T22:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "2007-05-14"
+    },
+    "EURUSD": {
+      "raw_sha256": {
+        "H1": "edf15ef027bbabf936947145c1f2ba4a36e0c9f79dd9ee455905eb9521fdd25f",
+        "H4": "2f3572259677c738abb8a0468b2122d671ae95ec8e11d04950eae7c395fd98cb",
+        "D1": "6f191be120754aacb29ec6dff2c30d6a6b827e3fd79880e85380c2296e744786"
+      },
+      "point": 1e-05,
+      "frames": {
+        "H1": {
+          "values_sha256": "1847ce896c1048331c47b0be6a414dbee034e7ab92902beb9b4c9e3b381722fc",
+          "rows": 179432,
+          "first_utc": "1971-01-03T22:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "a8693a199d7fa3f24731820b0363bc68d9389609a3b0e022bf453ebd33c0b4fe",
+          "rows": 50373,
+          "first_utc": "1971-01-03T22:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "f5d19434db415b10253e57e79d5dfe98de30b7ce45031b491320585786eeaa20",
+          "rows": 14375,
+          "first_utc": "1971-01-03T22:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "1999-01-04"
+    },
+    "GBPAUD": {
+      "raw_sha256": {
+        "H1": "b197994d11d3d7ebeda08ee10e59ac38dcb1de865cbe9bc5a120a35b9ea141f4",
+        "H4": "07e4fa6977a4a61fca28c6cff14f02ac6c9dfa709077680bff75ee8297b0f240",
+        "D1": "e14031e5d372d60d28065ae37207320bd2b2ea4649b655d5ca5c4f987e0e033d"
+      },
+      "point": 1e-05,
+      "frames": {
+        "H1": {
+          "values_sha256": "c105f53318b990e66be8c32a77bcb2cc5f8e62acbe3ebc3a74d65243c078f0a9",
+          "rows": 118026,
+          "first_utc": "2007-08-21T15:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "55cf8e854ddf3f7b6fc86751a6076bec718ad666c3b83c382cc0bb246934d874",
+          "rows": 29594,
+          "first_utc": "2007-08-21T13:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "bc9df6dc6f0f27c600d50e76fce0775b051b363cff1d310f0a10d64915959907",
+          "rows": 4944,
+          "first_utc": "2007-08-20T21:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "2007-08-21"
+    },
+    "GBPCAD": {
+      "raw_sha256": {
+        "H1": "acb59833d4d76c274458837eb5baaeed493168a6f974c8622fc7879eee391eaf",
+        "H4": "aaffd3b392007e7cd7a22df289b64fd5dee905f904924b212a09238796519557",
+        "D1": "877a717a6c6d3e38533f7eb4c9b7a1b3edd82a251ac70d772be8ac0eed9d564f"
+      },
+      "point": 1e-05,
+      "frames": {
+        "H1": {
+          "values_sha256": "9dbcdef1cad39ee76eabd45cd50478253cbd882edcb5e7ee574827527554df13",
+          "rows": 118081,
+          "first_utc": "2007-08-21T07:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "da32679dab02a50fee0d77d509d5607dd6944af26b3464a9fa0aeb09a23a1382",
+          "rows": 29609,
+          "first_utc": "2007-08-21T05:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "92c9d0949ddd24a87841a9b05adaec63663a5b7426fb8f6c306add56b15ac8c7",
+          "rows": 4948,
+          "first_utc": "2007-08-20T21:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "2007-08-21"
+    },
+    "GBPCHF": {
+      "raw_sha256": {
+        "H1": "c11848d75004ec7389cedc500528d7ad97f35bb1f10245a50d3ae75e0ad3d0bf",
+        "H4": "7b906ab0453704e18ffc3ee52caf78d8aa4d9ed9c479e3030cc4cf66f54c917d",
+        "D1": "a43d1b65c295d11831b728065c163b0b865175e8a71ce63b9fcf5e8d58ed2675"
+      },
+      "point": 1e-05,
+      "frames": {
+        "H1": {
+          "values_sha256": "4c05c4383752771a19a1113e1abb0b897ba708b77867a13dbd0e2f9874e60f69",
+          "rows": 172597,
+          "first_utc": "1993-04-06T21:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "e064e4580b203a5c5615d3f2c8239af9c2f6c11bf11ea49369017fb2b0ecfda5",
+          "rows": 44405,
+          "first_utc": "1993-04-06T21:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "f56ca2e6bb2aece07aee33d1bca1a9ed01b24303220690a2f6787c9e8c038deb",
+          "rows": 8644,
+          "first_utc": "1993-04-06T21:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "1999-01-05"
+    },
+    "GBPJPY": {
+      "raw_sha256": {
+        "H1": "b7d317486265ff8920534fef7e1e199c9db8d5524b638ba2b5f81e0d297f3b92",
+        "H4": "a00d584a8a70662691ad2bbf322654ce37bf82dacc52c18f60c57a525cc24920",
+        "D1": "00ff70c311872566281eaaa7a7160fb5b2f571cc6af375851172d3476441da9b"
+      },
+      "point": 0.001,
+      "frames": {
+        "H1": {
+          "values_sha256": "7491c8837ca32b249d1dd256e6e54e2ef38d50ac6b53d46fc446f50b788d14d7",
+          "rows": 173598,
+          "first_utc": "1993-04-18T21:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "a4e4f6f893e959798a142b575d630ffc03d72a45d0d48592c79ab32f2d32f3e6",
+          "rows": 44670,
+          "first_utc": "1993-04-18T21:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "aca7b2248381ec36c1de6d03e9461ac87b711b2d5a52c9debfc1312267cc9f33",
+          "rows": 8690,
+          "first_utc": "1993-04-18T21:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "1999-01-04"
+    },
+    "GBPUSD": {
+      "raw_sha256": {
+        "H1": "2b3bac24ef5479acaa15bea2fc90fdb986ad1712074ad4524603e48d53e12a49",
+        "H4": "306db4ee9ce7f16f0499d7c6b5b7c9a061813a9c1943ca40aa1f5d917564a831",
+        "D1": "3bcd8d50469d2fe892a0d14a9d31ee564490a7780a1823956c9cc92bc97574f9"
+      },
+      "point": 1e-05,
+      "frames": {
+        "H1": {
+          "values_sha256": "fc913526a1da3a8e926e4cb29a229a86de646275a9f7d1da69eedc5e65fbdccd",
+          "rows": 173657,
+          "first_utc": "1993-05-11T21:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "8ad649bd166111edd98d000015f42433779e35978f58dacd8a1e4473bae7d9dc",
+          "rows": 44675,
+          "first_utc": "1993-05-11T21:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "e3f0a05547202dde96bdda97f4509881e4fcb97c92d315c15d787d76d7351844",
+          "rows": 8682,
+          "first_utc": "1993-05-11T21:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "1999-01-04"
+    },
+    "NZDCAD": {
+      "raw_sha256": {
+        "H1": "e70133f767daff8649a019eda9347eabe78e71888b604f388423f6ff23d98548",
+        "H4": "7c3a5e65d731da502bc5ea527b2a802f2f2da84b97f5660f6179477966697642",
+        "D1": "579ff6a6e8e077de00007a2e84beee50ad3ffdd80d877300c76e98cc1db537d6"
+      },
+      "point": 1e-05,
+      "frames": {
+        "H1": {
+          "values_sha256": "5b87cac0e8b8913ab7ae748ae4e2c2b81a7a724a4e7a05c2e500302a9083af92",
+          "rows": 117254,
+          "first_utc": "2007-08-20T15:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "0ad174d15e62a37d5fd19965b80e6a254ea376fa4bfd7b5779924e23183e29ec",
+          "rows": 29499,
+          "first_utc": "2007-08-20T13:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "abf00d6195b7651087276a756b5df7c1592062197bf61bf0b8bc32b07d055953",
+          "rows": 4938,
+          "first_utc": "2007-08-19T21:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "2007-08-20"
+    },
+    "NZDCHF": {
+      "raw_sha256": {
+        "H1": "0eb545e47bf5a651cc605de476d416014d4293481a1fa69230ae81e8bf8e5973",
+        "H4": "8ef3090aace693321b08b1a80c7865e23a085915768b40a10c294b79e44c9156",
+        "D1": "3bac27da4fdceaecaa4879cc09a6e529f1daa91bce814230289e87d56a08fbef"
+      },
+      "point": 1e-05,
+      "frames": {
+        "H1": {
+          "values_sha256": "5c043661b46621d75178696821b8fee1c471e26f1e606d7f0b8ff492bbec0d54",
+          "rows": 117732,
+          "first_utc": "2007-08-20T22:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "6580b112f51a96d5a13cf9e99ba0634b6bbb88f8c1901a36159c255011305c6f",
+          "rows": 29619,
+          "first_utc": "2007-08-20T21:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "022db6efa7f37e5a67aabc4ad47680b8e5f168d00fc88c479ed9e24517837490",
+          "rows": 4955,
+          "first_utc": "2007-08-20T21:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "2007-08-21"
+    },
+    "NZDJPY": {
+      "raw_sha256": {
+        "H1": "1e1b7e82022519290b92a1a18fad4d8800adb5b1f9d70196cbe99abfaaf3a888",
+        "H4": "1c381323eb8ec266bc763871e3e312f77b7c063d63c7575eba7356dce73f220f",
+        "D1": "1f431f26a2fe0b7c51f1b807a47fbd34127adbbc48bdec1b455b78b606a85c26"
+      },
+      "point": 0.001,
+      "frames": {
+        "H1": {
+          "values_sha256": "3a941f366191014f8b805b642f39b951e6843f1419edb4dda9e0437eb0abb8e6",
+          "rows": 121150,
+          "first_utc": "2007-02-12T08:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "f67c16f3ca3f7f51b31d9f94bee29cf27513447ed645ba4af2ba5e65a2f6c1e4",
+          "rows": 30486,
+          "first_utc": "2007-02-12T06:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "d421663ce51f1fea32b9f49cdfd26e892de62351930b2d87f0748d1bc5e4a1d2",
+          "rows": 5099,
+          "first_utc": "2007-02-11T22:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "2007-02-12"
+    },
+    "NZDUSD": {
+      "raw_sha256": {
+        "H1": "b98380af7ee21644a279b82ed77f785901746eccd3a6d7bd662130689d1c391d",
+        "H4": "f2e62440162a0d5ef5be410c0aa27f034cf371df9853272160b892ceb6b4e391",
+        "D1": "d59ac6ddca9a2af42dee8480106485454836ded8c9ecd42aef643f263d44bada"
+      },
+      "point": 1e-05,
+      "frames": {
+        "H1": {
+          "values_sha256": "2e78c9c9bc8f2124a837c22910a2b5b76d666987793ca1ebfe7d3d4725204707",
+          "rows": 167436,
+          "first_utc": "1994-01-31T22:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "7934e3f8d55754059789a6e3ec90bf3ee1d555e025a5f8fafd0fab4d1e823fd3",
+          "rows": 43185,
+          "first_utc": "1994-01-31T22:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "80f272a3371ea77dc98af9921deab6a70689c204eed4b63df2b5a15f17865797",
+          "rows": 8497,
+          "first_utc": "1994-01-31T22:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "2000-01-03"
+    },
+    "USDCAD": {
+      "raw_sha256": {
+        "H1": "f5f33002d0924fa9e130615e6b34d8f8c4c3b923c8ffbfe10a0e3bbaf7bb277c",
+        "H4": "282defeddac6f6f94d048a39d4e17c0a66ccb0a5ec1a66ca858ecb11a31545df",
+        "D1": "fee366cb1538540e047e840e8e0c4b868f0c06254b1a17abf24f54ce0a0fe7b0"
+      },
+      "point": 1e-05,
+      "frames": {
+        "H1": {
+          "values_sha256": "395ceb228a2413e331959a0a9787fb5372abacc851bc2f795a4c188dc6301307",
+          "rows": 173640,
+          "first_utc": "1993-04-27T21:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "149148595efe4f430a9f025f54ba5dc3f2b5ee0f6e5b3b51f4fed3f3ad79573f",
+          "rows": 44687,
+          "first_utc": "1993-04-27T21:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "84616e459579ac5e1e3dac7be7032bd59bc131cb86f034d009a55df39417f8ca",
+          "rows": 8693,
+          "first_utc": "1993-04-27T21:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "1999-01-04"
+    },
+    "USDCHF": {
+      "raw_sha256": {
+        "H1": "63e6e45d6fd1c15f188bb675bfe096c17596ca973863d13d29345978a257210c",
+        "H4": "afe77d8128076ea7a0ad8ce0e5ec128b39b189b54f6d925a7ec8c7754f332bc9",
+        "D1": "a8e177a08bc0bc8cbbe77eacd72e05849ef6fa989952335e16f610a1b0bc0f53"
+      },
+      "point": 1e-05,
+      "frames": {
+        "H1": {
+          "values_sha256": "16b30236e0158dd39742e8d8a140ae7f780eda8969a6153b3b19ef258485b690",
+          "rows": 179268,
+          "first_utc": "1971-01-03T22:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "d9b5be614372d93e37d1e2b536bd7d8e571fb075d510cc6c07e798c0c5e1a905",
+          "rows": 50322,
+          "first_utc": "1971-01-03T22:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "9a5e140fa889f15cad451d759e545fa8a4418cd1ef217d015802e21c1aae10ce",
+          "rows": 14332,
+          "first_utc": "1971-01-03T22:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "1999-01-04"
+    },
+    "USDJPY": {
+      "raw_sha256": {
+        "H1": "2e6c461060398caa1894da1a84e03031e7c2d899e80c793ec0f72c22bef4b05b",
+        "H4": "82c0a209c05c65adb3732775e76413e60ddb3b901e65e1adc885facf3abedfa7",
+        "D1": "aeb22b7628feaf0468cfccbdc7b1aa78b4c9ba381bd74528dca4d73897c4f229"
+      },
+      "point": 0.001,
+      "frames": {
+        "H1": {
+          "values_sha256": "172ea00cfcfd35a982f80a8ba079839d4e485480e5c2cfb0115f089290778e98",
+          "rows": 179343,
+          "first_utc": "1971-01-03T22:00:00+00:00",
+          "last_utc": "2026-10-01T20:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "1bceb1ac6e8e67eb516470005c6fd41832f9add3d851ee22c6a3b3a3084b84a3",
+          "rows": 50366,
+          "first_utc": "1971-01-03T22:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "6166c45683a21edc7c2783f014c1d360ddb070d321208afb6b7e82cf78d134b5",
+          "rows": 14378,
+          "first_utc": "1971-01-03T22:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "1999-01-04"
+    },
+    "XAGUSD": {
+      "raw_sha256": {
+        "H1": "9b14e29c104d1231e693bccfffe55db9d6febfcaa096f3331daa4b8aa06e8d4c",
+        "H4": "112350895e35363d35a934b1c2b0b5ca5f577dc4c5e5e85e16e696a056b0e284",
+        "D1": "9318c3a744a8b58f556c3f68346b5abffc48696aa0956e2386102ba2e438c086"
+      },
+      "point": 0.001,
+      "frames": {
+        "H1": {
+          "values_sha256": "218c3934882fd8b03e169dbddbf5b082f3a7999357753b00cd91cdaec91c1c88",
+          "rows": 105038,
+          "first_utc": "2008-11-07T21:00:00+00:00",
+          "last_utc": "2026-10-01T19:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "d2978d292a23d90044a8254b5df36ebd77baa77f8cd4c6c8a466a77d970676bf",
+          "rows": 27574,
+          "first_utc": "2008-11-07T18:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "9460af76b1a15d1b5e4e2214726218e185929c78ffc7ae8c5931963b89f1da13",
+          "rows": 4612,
+          "first_utc": "2008-11-06T22:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "2008-11-10"
+    },
+    "XAUUSD": {
+      "raw_sha256": {
+        "H1": "cfcd4847b02e9dd7de7b7d3890fb8d1680631335f649541b9956cd2e5d12f517",
+        "H4": "fd227f7bfe9e8f050aed20c4b8c9484d722187a799b3414d16543128f1345a67",
+        "D1": "06800ba33b3c4aad36a2c7385dfd7c4fdfecc0d6868445080abe376f792d79e7"
+      },
+      "point": 0.01,
+      "frames": {
+        "H1": {
+          "values_sha256": "aaa7a9af72d486a4b315e737d8238274bfe30ca553be69da97d9079c802970af",
+          "rows": 129728,
+          "first_utc": "2004-06-11T04:00:00+00:00",
+          "last_utc": "2026-10-01T19:00:00+00:00"
+        },
+        "H4": {
+          "values_sha256": "bd8fef8ac7823369eaee7e5a6f05910ff252734761ee45ff9f62b29ef85770fa",
+          "rows": 34176,
+          "first_utc": "2004-06-11T01:00:00+00:00",
+          "last_utc": "2026-10-01T17:00:00+00:00"
+        },
+        "D1": {
+          "values_sha256": "ce6e6e2a27b9cc6c4ae0aa2adf505ada6e11c499c38c38d9a81a877fd5a1ea4d",
+          "rows": 5732,
+          "first_utc": "2004-06-10T21:00:00+00:00",
+          "last_utc": "2026-09-30T21:00:00+00:00"
+        }
+      },
+      "intraday_start": "2004-06-11"
+    }
+  },
+  "clock_check_train_dev": {
+    "AUDCAD": {
+      "expected_ny_hour": 17,
+      "months": 223,
+      "months_off": {},
+      "weeks": 986,
+      "weeks_at_expected": 900,
+      "mismatch_weeks_hours": {
+        "17": 49,
+        "18": 17
+      }
+    },
+    "AUDCHF": {
+      "expected_ny_hour": 17,
+      "months": 220,
+      "months_off": {
+        "2009-01": 21
+      },
+      "weeks": 970,
+      "weeks_at_expected": 885,
+      "mismatch_weeks_hours": {
+        "17": 46,
+        "18": 17
+      }
+    },
+    "AUDJPY": {
+      "expected_ny_hour": 17,
+      "months": 319,
+      "months_off": {
+        "2006-11": 4,
+        "2009-01": 21
+      },
+      "weeks": 1397,
+      "weeks_at_expected": 1289,
+      "mismatch_weeks_hours": {
+        "17": 56,
+        "18": 17
+      }
+    },
+    "AUDNZD": {
+      "expected_ny_hour": 17,
+      "months": 220,
+      "months_off": {
+        "2009-01": 21
+      },
+      "weeks": 969,
+      "weeks_at_expected": 884,
+      "mismatch_weeks_hours": {
+        "17": 46,
+        "18": 17
+      }
+    },
+    "AUDUSD": {
+      "expected_ny_hour": 17,
+      "months": 320,
+      "months_off": {},
+      "weeks": 1408,
+      "weeks_at_expected": 1306,
+      "mismatch_weeks_hours": {
+        "17": 56,
+        "18": 17
+      }
+    },
+    "CADCHF": {
+      "expected_ny_hour": 17,
+      "months": 217,
+      "months_off": {
+        "2009-01": 18
+      },
+      "weeks": 953,
+      "weeks_at_expected": 871,
+      "mismatch_weeks_hours": {
+        "17": 45,
+        "18": 17
+      }
+    },
+    "CADJPY": {
+      "expected_ny_hour": 17,
+      "months": 223,
+      "months_off": {},
+      "weeks": 992,
+      "weeks_at_expected": 902,
+      "mismatch_weeks_hours": {
+        "17": 48,
+        "18": 17,
+        "20": 1
+      }
+    },
+    "CHFJPY": {
+      "expected_ny_hour": 17,
+      "months": 319,
+      "months_off": {
+        "2006-11": 3,
+        "2009-01": 21
+      },
+      "weeks": 1397,
+      "weeks_at_expected": 1294,
+      "mismatch_weeks_hours": {
+        "17": 55,
+        "18": 18
+      }
+    },
+    "EURAUD": {
+      "expected_ny_hour": 17,
+      "months": 255,
+      "months_off": {},
+      "weeks": 1131,
+      "weeks_at_expected": 1040,
+      "mismatch_weeks_hours": {
+        "17": 51,
+        "18": 17
+      }
+    },
+    "EURCAD": {
+      "expected_ny_hour": 17,
+      "months": 220,
+      "months_off": {},
+      "weeks": 973,
+      "weeks_at_expected": 888,
+      "mismatch_weeks_hours": {
+        "17": 46,
+        "18": 17
+      }
+    },
+    "EURCHF": {
+      "expected_ny_hour": 17,
+      "months": 320,
+      "months_off": {},
+      "weeks": 1407,
+      "weeks_at_expected": 1305,
+      "mismatch_weeks_hours": {
+        "17": 56,
+        "18": 17,
+        "20": 1
+      }
+    },
+    "EURGBP": {
+      "expected_ny_hour": 17,
+      "months": 320,
+      "months_off": {},
+      "weeks": 1408,
+      "weeks_at_expected": 1302,
+      "mismatch_weeks_hours": {
+        "17": 56,
+        "18": 17
+      }
+    },
+    "EURJPY": {
+      "expected_ny_hour": 17,
+      "months": 317,
+      "months_off": {
+        "2000-05": 2,
+        "2000-08": 1
+      },
+      "weeks": 1389,
+      "weeks_at_expected": 1279,
+      "mismatch_weeks_hours": {
+        "17": 56,
+        "18": 17
+      }
+    },
+    "EURNZD": {
+      "expected_ny_hour": 17,
+      "months": 217,
+      "months_off": {
+        "2009-01": 21
+      },
+      "weeks": 952,
+      "weeks_at_expected": 868,
+      "mismatch_weeks_hours": {
+        "17": 45,
+        "18": 17
+      }
+    },
+    "EURUSD": {
+      "expected_ny_hour": 17,
+      "months": 320,
+      "months_off": {},
+      "weeks": 1409,
+      "weeks_at_expected": 1307,
+      "mismatch_weeks_hours": {
+        "17": 56,
+        "18": 17
+      }
+    },
+    "GBPAUD": {
+      "expected_ny_hour": 17,
+      "months": 217,
+      "months_off": {},
+      "weeks": 964,
+      "weeks_at_expected": 876,
+      "mismatch_weeks_hours": {
+        "17": 45,
+        "18": 17,
+        "20": 1
+      }
+    },
+    "GBPCAD": {
+      "expected_ny_hour": 17,
+      "months": 217,
+      "months_off": {},
+      "weeks": 966,
+      "weeks_at_expected": 877,
+      "mismatch_weeks_hours": {
+        "17": 45,
+        "18": 17,
+        "20": 1
+      }
+    },
+    "GBPCHF": {
+      "expected_ny_hour": 17,
+      "months": 318,
+      "months_off": {},
+      "weeks": 1400,
+      "weeks_at_expected": 1298,
+      "mismatch_weeks_hours": {
+        "17": 56,
+        "18": 17
+      }
+    },
+    "GBPJPY": {
+      "expected_ny_hour": 17,
+      "months": 320,
+      "months_off": {},
+      "weeks": 1408,
+      "weeks_at_expected": 1303,
+      "mismatch_weeks_hours": {
+        "17": 56,
+        "18": 17
+      }
+    },
+    "GBPUSD": {
+      "expected_ny_hour": 17,
+      "months": 320,
+      "months_off": {},
+      "weeks": 1408,
+      "weeks_at_expected": 1303,
+      "mismatch_weeks_hours": {
+        "17": 56,
+        "18": 17
+      }
+    },
+    "NZDCAD": {
+      "expected_ny_hour": 17,
+      "months": 217,
+      "months_off": {
+        "2007-08": 16
+      },
+      "weeks": 958,
+      "weeks_at_expected": 866,
+      "mismatch_weeks_hours": {
+        "17": 45,
+        "18": 17
+      }
+    },
+    "NZDCHF": {
+      "expected_ny_hour": 17,
+      "months": 217,
+      "months_off": {
+        "2007-08": 16
+      },
+      "weeks": 962,
+      "weeks_at_expected": 870,
+      "mismatch_weeks_hours": {
+        "17": 45,
+        "18": 17
+      }
+    },
+    "NZDJPY": {
+      "expected_ny_hour": 17,
+      "months": 223,
+      "months_off": {},
+      "weeks": 991,
+      "weeks_at_expected": 895,
+      "mismatch_weeks_hours": {
+        "17": 48,
+        "18": 17,
+        "16": 1
+      }
+    },
+    "NZDUSD": {
+      "expected_ny_hour": 17,
+      "months": 308,
+      "months_off": {},
+      "weeks": 1355,
+      "weeks_at_expected": 1266,
+      "mismatch_weeks_hours": {
+        "17": 55,
+        "18": 17
+      }
+    },
+    "USDCAD": {
+      "expected_ny_hour": 17,
+      "months": 320,
+      "months_off": {},
+      "weeks": 1408,
+      "weeks_at_expected": 1297,
+      "mismatch_weeks_hours": {
+        "17": 56,
+        "18": 17
+      }
+    },
+    "USDCHF": {
+      "expected_ny_hour": 17,
+      "months": 320,
+      "months_off": {},
+      "weeks": 1408,
+      "weeks_at_expected": 1304,
+      "mismatch_weeks_hours": {
+        "17": 56,
+        "18": 17
+      }
+    },
+    "USDJPY": {
+      "expected_ny_hour": 17,
+      "months": 320,
+      "months_off": {},
+      "weeks": 1408,
+      "weeks_at_expected": 1307,
+      "mismatch_weeks_hours": {
+        "17": 56,
+        "18": 17
+      }
+    },
+    "XAGUSD": {
+      "expected_ny_hour": 18,
+      "months": 202,
+      "months_off": {
+        "2010-12": 19
+      },
+      "weeks": 895,
+      "weeks_at_expected": 815,
+      "mismatch_weeks_hours": {
+        "18": 56,
+        "19": 2
+      }
+    },
+    "XAUUSD": {
+      "expected_ny_hour": 18,
+      "months": 255,
+      "months_off": {
+        "2010-12": 19
+      },
+      "weeks": 1137,
+      "weeks_at_expected": 1026,
+      "mismatch_weeks_hours": {
+        "18": 65,
+        "19": 2
+      }
+    }
+  }
+}

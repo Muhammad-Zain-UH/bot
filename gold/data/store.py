@@ -189,6 +189,36 @@ def load_broker_v1b_d1(arm: str, oos_authorisation: str | None = None, **kwargs)
     return d1[(d1["time"] >= lo) & (close <= hi)].reset_index(drop=True)
 
 
+def load_h12(symbol: str, tf: str, arm: str, oos_authorisation: str | None = None, *,
+             bars_dir: Path | None = None, fingerprints: Path | None = None,
+             manifest: Path | None = None) -> pd.DataFrame:
+    """One arm of one H12 symbol ("H1", "H4" or "D1"; D1 at the 17:00 New York boundary).
+    D1 keeps sessions wholly inside the arm; H1/H4 keep bars with from_utc <= open <= to_utc.
+
+    Raises:
+        OOSLockedError: FINAL_OOS without the exact manifest token, before any read.
+        DatasetIntegrityError: the frame does not match its recorded fingerprint.
+    """
+    from gold.data import build_h12 as h12
+    from gold.data.broker_daily import SESSION_CLOSE_HOUR_NY
+    if symbol not in h12.SYMBOLS or tf not in h12.TIMEFRAMES:
+        raise KeyError(f"unknown H12 symbol/timeframe {symbol!r}/{tf!r}")
+    arms = _checked_arms(manifest or h12.MANIFEST, arm, oos_authorisation)
+    df = pd.read_parquet((bars_dir or h12.BARS) / f"{symbol}_{tf}.parquet")
+    fp = fingerprints or h12.FINGERPRINTS
+    if not fp.exists():
+        raise DatasetIntegrityError(f"{fp} missing: build the H12 dataset first")
+    expect = json.loads(fp.read_text(encoding="utf-8"))["symbols"].get(symbol, {}).get("frames", {}).get(tf)
+    if expect is None or _fingerprint(df) != expect["values_sha256"]:
+        raise DatasetIntegrityError(f"{symbol} {tf}: fingerprint missing or mismatched")
+    lo, hi = pd.Timestamp(arms[arm]["from_utc"]), pd.Timestamp(arms[arm]["to_utc"])
+    if tf == "D1":
+        close = (df["session"] + pd.Timedelta(hours=SESSION_CLOSE_HOUR_NY)) \
+            .dt.tz_localize(NEW_YORK).dt.tz_convert("UTC")
+        return df[(df["time"] >= lo) & (close <= hi)].reset_index(drop=True)
+    return df[(df["time"] >= lo) & (df["time"] <= hi)].reset_index(drop=True)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--write-manifest", action="store_true")
