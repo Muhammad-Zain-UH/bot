@@ -1,10 +1,14 @@
-# Gold programme — conclusion
+# Gold and V2 programme — conclusion
 
-**No single-instrument gold edge was found at the resolution available.** Every pre-registered
-test from the legacy audits through V2 batch 2 failed its own pre-declared rules; FINAL_OOS was
-never opened. Per ROADMAP_V2 §8 the remaining options are breadth, alerts only, or stop.
+**Programme closed 2026-10-13: no strategy survived.** Every pre-registered test, from the legacy
+audits through V2 batch 2 and the final multi-asset hypothesis H12, failed its own pre-declared
+rules. Per the owner decision under ROADMAP_V2 §8 the systematic-strategy programme has ended;
+there is no live trading.
 
-## Every pre-registered gold test (one line each: verdict — deciding number)
+**FINAL_OOS (2025-09-02 → 2026-10-01) was never opened** by any test in the programme. It remains
+unspent and available for one genuinely new hypothesis, pre-registered before it is touched.
+
+## Every pre-registered test in the programme (one line each: verdict — deciding number)
 
 | Test | Verdict | Deciding number |
 |---|---|---|
@@ -19,6 +23,7 @@ never opened. Per ROADMAP_V2 §8 the remaining options are breadth, alerts only,
 | H08 intraday momentum into COMEX settlement | NOT SUPPORTED | TRAIN t = 0.48 (p = 0.63, N 2,798); DEV net −$0.21/oz per trade |
 | H10 time-series momentum (long/short) | NOT SUPPORTED | 2009–12 = 62.6 % of TRAIN P&L (cap 60 %); DEV Sharpe 0.03 |
 | H11 volatility-managed long exposure | NOT SUPPORTED | max drawdown worse than hold (56.3 % vs 50.5 % TRAIN; 25.4 % vs 22.6 % DEV) |
+| H12 multi-asset TSMOM (27 FX + gold + silver) | NOT SUPPORTED | net Sharpe −0.28 TRAIN (≥ 0.30 required), −0.97 DEV; gross TRAIN Sharpe −0.001 |
 
 H07 and H09 were parked before any outcome was seen (not testable on broker H1, `research/POWER_V2.md`).
 
@@ -48,4 +53,5 @@ H05 and H06 used the earlier H1 split without financing (hold Sharpe 0.313 / 1.0
 - It shows that none of these rules beat cash (long/short) or holding gold (exposure rules) in
   both arms, after realistic cost and financing.
 - It does not show that gold has no edge at all: single-instrument Sharpe SEs of 0.26–0.50
-  cannot resolve a true Sharpe of 0.3–0.5, which is why ROADMAP_V2 §8 points to breadth.
+  cannot resolve a true Sharpe of 0.3–0.5. Breadth (H12) was tried on everything tradable at
+  this broker and its signal earned nothing even before cost.

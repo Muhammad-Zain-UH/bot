@@ -302,6 +302,8 @@ Only hypotheses that pass TRAIN **and** DEV continue.
 
 ## 8. Stop rule — what happens if nothing survives
 
+**Status 2026-10-13: programme ended — no strategy survived (batch 1 H08, batch 2 H10/H11, final H12 all NOT SUPPORTED); no live trading; FINAL_OOS never opened (`research/v2/CONCLUSION_GOLD.md`).**
+
 If batch 1 and batch 2 produce no survivor, the honest conclusion is: no
 single-instrument gold edge was found at the resolution available. Then
 choose one of these, and do not build a trading bot on unvalidated rules:
