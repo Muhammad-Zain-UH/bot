@@ -47,11 +47,14 @@ def execution(h4: pd.DataFrame, decision_session: pd.Timestamp) -> tuple[pd.Time
 
 
 def run(d1: pd.DataFrame, h4: pd.DataFrame, targets: pd.Series, dff: pd.Series,
-        cost_per_unit: float = COST_PER_UNIT) -> pd.DataFrame:
+        cost_per_unit: float = COST_PER_UNIT, financing_fn=None) -> pd.DataFrame:
     """Daily P&L from the first execution to the end of d1.
 
     targets: target position per decision session (index = session Timestamp).
-    dff: effective fed funds rate in percent, indexed by date (forward-filled here).
+    dff: effective fed funds rate in percent, indexed by date (forward-filled here); unused
+        when financing_fn is given.
+    financing_fn: optional (position, nights) -> financing charge in log units, replacing the
+        DFF model (H12 uses the broker's swaps).
     """
     from gold.data.broker_daily import session_of
     execs = {}
@@ -65,7 +68,7 @@ def run(d1: pd.DataFrame, h4: pd.DataFrame, targets: pd.Series, dff: pd.Series,
     first = min(execs)
     d = d1.reset_index(drop=True)
     start = int(np.flatnonzero((d["session"] >= first).to_numpy())[0])
-    dff = dff.sort_index()
+    dff = dff.sort_index() if financing_fn is None else None
     rows, pos = [], 0.0
     for k in range(start, len(d)):
         s, c, c_prev = d.at[k, "session"], d.at[k, "close"], d.at[k - 1, "close"]
@@ -79,9 +82,12 @@ def run(d1: pd.DataFrame, h4: pd.DataFrame, targets: pd.Series, dff: pd.Series,
             gross = pos * math.log(c / c_prev)
         nxt = d.at[k + 1, "session"] if k + 1 < len(d) else s + pd.offsets.BDay(1)
         nights = (nxt - s).days
-        rate = float(dff.loc[:s].iloc[-1]) / 100 if len(dff.loc[:s]) else float("nan")
-        side = "long" if pos > 0 else "short"
-        fin = float(financing_usd(abs(pos), nights, side, rate)) if pos != 0 else 0.0
+        if financing_fn is not None:
+            fin = float(financing_fn(pos, nights))
+        else:
+            rate = float(dff.loc[:s].iloc[-1]) / 100 if len(dff.loc[:s]) else float("nan")
+            side = "long" if pos > 0 else "short"
+            fin = float(financing_usd(abs(pos), nights, side, rate)) if pos != 0 else 0.0
         cost = cost_per_unit * delta
         rows.append({"session": s, "position": pos, "delta": delta, "gross": gross, "cost": cost,
                      "financing": fin, "net": gross - cost - fin,
