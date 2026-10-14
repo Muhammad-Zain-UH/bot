@@ -7,7 +7,9 @@ The rules, across ``data/``, ``execution/``, ``backtest/`` and ``tools/``:
 
 1. No ``MetaTrader5`` import outside ``tools/`` (the read-only exporter is the
    single permitted exception, and it is separately constrained below).
-2. No call to ``order_send`` anywhere.
+2. No call to ``order_send`` anywhere -- except ``execution/mt5_broker.py`` (owner decision
+   2026-10-14, forward test S1), whose single ``order_send`` is asserted below to sit in ``_send``
+   after the demo-account check and the ``LIVE_TRADING_ENABLED`` assertion.
 3. ``core.safety.LIVE_TRADING_ENABLED`` remains ``False``.
 4. The MT5 export tool reads only -- ``copy_rates_*`` and ``symbol_info`` -- and
    references no order-placement API at all.
@@ -21,6 +23,10 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SIMULATION_PACKAGES = ("data", "execution", "backtest")
+
+#: The demo-only S1 broker, and the calls it alone may make.
+DEMO_ONLY_BROKER = "execution/mt5_broker.py"
+DEMO_ONLY_ALLOWED_CALLS = {"order_send", "positions_get"}
 
 FORBIDDEN_MT5_CALLS = {
     "order_send", "order_check", "order_calc_margin", "order_calc_profit",
@@ -92,12 +98,32 @@ class NoOrderPlacementTests(unittest.TestCase):
         for package in (*SIMULATION_PACKAGES, "tools"):
             for path in _python_files(package):
                 forbidden = _called_attributes(_parse(path)) & FORBIDDEN_MT5_CALLS
+                if f"{package}/{path.name}" == DEMO_ONLY_BROKER:
+                    forbidden -= DEMO_ONLY_ALLOWED_CALLS
                 if forbidden:
                     offenders[f"{package}/{path.name}"] = forbidden
         self.assertEqual(
             offenders, {},
             f"Phase 2A must not call any order-placement or position API: {offenders}",
         )
+
+    def test_demo_broker_sends_only_after_the_demo_check(self) -> None:
+        """Exactly one order_send, inside _send, preceded in that function by require_demo()
+        and assert_live_trading_disabled(); the module imports no MetaTrader5."""
+        tree = _parse(REPO_ROOT / DEMO_ONLY_BROKER)
+        sends = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                 and n.func.attr == "order_send"]
+        self.assertEqual(len(sends), 1)
+        fn = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_send"][0]
+        first: dict[str, int] = {}
+        for c in ast.walk(fn):
+            if isinstance(c, ast.Call):
+                name = c.func.attr if isinstance(c.func, ast.Attribute) else getattr(c.func, "id", "")
+                first[name] = min(first.get(name, c.lineno), c.lineno)
+        self.assertIn("order_send", first)
+        self.assertLess(first["require_demo"], first["order_send"])
+        self.assertLess(first["assert_live_trading_disabled"], first["order_send"])
+        self.assertNotIn("MetaTrader5", _imported_roots(tree))
 
     def test_live_trading_remains_disabled(self) -> None:
         from core.safety import LIVE_TRADING_ENABLED

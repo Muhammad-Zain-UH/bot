@@ -329,10 +329,22 @@ class OfflineTests(unittest.TestCase):
         self.assertIs(LIVE_TRADING_ENABLED, False)
 
     def test_no_order_placement_calls_in_the_integration_path(self) -> None:
+        """execution/mt5_broker.py (demo-only forward test S1, owner decision 2026-10-14) is not
+        on the integration path: nothing in data/, execution/ or backtest/ imports it (asserted
+        below), and its single guarded order_send is covered by tests/execution."""
         forbidden = {"order_send", "positions_get", "order_check"}
         for package in ("data", "execution", "backtest"):
             for path in (REPO_ROOT / package).glob("*.py"):
+                if f"{package}/{path.name}" == "execution/mt5_broker.py":
+                    continue
                 tree = ast.parse(path.read_text(encoding="utf-8"))
+                imported = {
+                    (node.module or "") if isinstance(node, ast.ImportFrom) else alias.name
+                    for node in ast.walk(tree) if isinstance(node, (ast.Import, ast.ImportFrom))
+                    for alias in node.names
+                }
+                with self.subTest(module=f"{package}/{path.name}", check="does not import the demo broker"):
+                    self.assertFalse(any("mt5_broker" in name for name in imported))
                 called = {
                     node.func.attr
                     for node in ast.walk(tree)

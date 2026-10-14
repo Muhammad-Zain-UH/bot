@@ -45,7 +45,7 @@ def _production_files() -> list[Path]:
     for pattern in PRODUCTION_GLOBS:
         for path in sorted(REPO_ROOT.glob(pattern)):
             rel = path.relative_to(REPO_ROOT).as_posix()
-            if rel.startswith(("tests/", "venv/", ".kilo/")):
+            if rel.startswith(("tests/", "gold/tests/", "venv/", ".kilo/")):
                 continue
             # Root-level ad-hoc test scripts are not shipped modules.
             if "/" not in rel and rel.startswith("test_"):
@@ -138,15 +138,17 @@ class InventoryIsComplete(unittest.TestCase):
             "moved, update the entry: " + repr(missing),
         )
 
-    def test_the_count_is_exactly_three(self) -> None:
-        """Phase 6G counted three. A fourth is a material change."""
-        self.assertEqual(len(self.observed), 3, sorted(self.observed))
+    def test_the_count_is_exactly_four(self) -> None:
+        """Phase 6G counted three; the fourth is the demo-only S1 broker (owner decision
+        2026-10-14). A fifth is a material change."""
+        self.assertEqual(len(self.observed), 4, sorted(self.observed))
 
-    def test_only_two_can_actually_run(self) -> None:
+    def test_only_three_can_actually_run(self) -> None:
         reachable = sorted(s.key for s in APPROVED_BROKER_CALLS if s.reachable)
         self.assertEqual(
             reachable,
-            [("main.py", "close_all_positions", "mt5.order_send"),
+            [("execution/mt5_broker.py", "_send", "self._mt5.order_send"),
+             ("main.py", "close_all_positions", "mt5.order_send"),
              ("main_production.py", "graceful_shutdown", "mt5.order_send")],
         )
 
@@ -229,11 +231,14 @@ class HistoricalReplayCannotReachABroker(unittest.TestCase):
     """B: the backtest path has no route to broker execution."""
 
     def test_no_mutating_call_in_the_canonical_stack(self) -> None:
+        """The one exception is the demo-only S1 broker's single guarded order path."""
         offenders = []
         for package in ("core", "data", "execution", "backtest"):
             for path in sorted((REPO_ROOT / package).glob("*.py")):
                 offenders.extend(_mutating_calls(path))
-        self.assertEqual(offenders, [], f"canonical stack can mutate a broker: {offenders}")
+        self.assertEqual([o[:3] for o in offenders],
+                         [("execution/mt5_broker.py", "_send", "self._mt5.order_send")],
+                         f"canonical stack can mutate a broker: {offenders}")
 
     def test_the_replay_never_touches_the_legacy_executor(self) -> None:
         forbidden = ("OrderExecutor", "execute_order", "_OPEN_TRADES", "order_execution")

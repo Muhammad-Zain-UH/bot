@@ -52,6 +52,8 @@ PRODUCTION_GLOBS = (
     "execution/*.py",
     "backtest/*.py",
     "tools/*.py",
+    "gold/*.py",        # the V2 package (gold/tests excluded); added 2026-10-14 with the
+    "gold/*/*.py",      # demo-only forward test so its broker surface is scanned too
 )
 
 
@@ -170,6 +172,27 @@ APPROVED_BROKER_CALLS: tuple[BrokerCallSite, ...] = (
             "fails this inventory instead of quietly arming an unsized order."
         ),
     ),
+    BrokerCallSite(
+        module="execution/mt5_broker.py",
+        function="_send",
+        call="self._mt5.order_send",
+        operation="OPEN/CLOSE",
+        lineage="CANONICAL",
+        reachable=True,
+        guards=("require_demo", "assert_live_trading_disabled"),
+        why=(
+            "Owner decision 2026-10-14: forward test S1 on the MetaQuotes-Demo account "
+            "(research/v2026/FORWARD_S1_SPEC.md). The single order path of MT5Broker. Before "
+            "EVERY order it raises unless account_info().trade_mode is DEMO, and it asserts "
+            "core.safety.LIVE_TRADING_ENABLED is still False. The MetaTrader5 module is injected, "
+            "never imported, so execution/ stays importable without a terminal."
+        ),
+        status=(
+            "DEMO ONLY, by owner decision. Live (real-money) trading remains disabled; any move "
+            "beyond demo requires the live-readiness review (ROADMAP_V2 section 7.7) and must "
+            "change this entry and its guards visibly."
+        ),
+    ),
 )
 
 #: Modules permitted to import MetaTrader5. Importing is not executing -- every
@@ -185,4 +208,11 @@ APPROVED_MT5_IMPORTERS: dict[str, str] = {
     ),
     "debug_l4.py": "Developer diagnostic script. No mutating call.",
     "stage1.py": "Developer diagnostic script. No mutating call.",
+    "gold/data/calibrate_cost.py": "Read-only: ticks and H1 bars for the cost calibration.",
+    "gold/data/build_h12.py": "Read-only: H1/H4/D1 export and tick spreads for the H12 universe.",
+    "gold/data/build_live_2026q4.py": "Read-only: H1/H4 export from 2026-10-01 for exploration.",
+    "gold/live/forward_s1.py": (
+        "Demo forward test S1. Imports MetaTrader5 only to inject it into "
+        "execution.mt5_broker.MT5Broker; places no order itself (no mutating call here)."
+    ),
 }

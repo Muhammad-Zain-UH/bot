@@ -4,7 +4,9 @@ Only :class:`~execution.paper_broker.PaperBroker` implements this in Phase 2A.
 **No live implementation exists anywhere in this package**, by design -- this
 phase must remain incapable of live trading. ``tests/execution`` asserts, by
 parsing the AST, that nothing under ``execution/`` imports ``MetaTrader5`` or
-calls ``order_send``.
+calls ``order_send`` -- with one inventoried exception since 2026-10-14 (owner
+decision): :mod:`execution.mt5_broker`, a DEMO-account-only broker for forward
+test S1, whose single ``order_send`` refuses any non-demo account first.
 
 Entry-timing provenance
 -----------------------
