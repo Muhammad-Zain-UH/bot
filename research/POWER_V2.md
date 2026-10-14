@@ -68,6 +68,20 @@ H14: cost per day = two round trips. Costs k_cost 4.625, zero spread → NY-hour
 **All three dropped**: the V2 test count returns to 1 (H08) and z to 1.96. Even at z = 1.96 none would
 be testable (H14 MDE / cost 1.35; H13a 6.3; H13b 6.8). Nothing in batch 3 is pre-registered.
 
+## H15 — Asia vs US session (owner decision 2026-10-15) — z = 2.241 (Bonferroni, 2 V2 tests: H08, H15)
+
+Cost = two round trips per day (median DEV 2.62 × 10⁻⁴ log; long-Asia-only 1.30).
+Owner power rule for H15, declared before this check: TESTABLE if MDE ≤ 2 × cost (published claims put the effect ≥ 2.5 × cost).
+
+| Arm | N days | sd(y) | z | MDE (×10⁻⁴) | MDE / cost | DEV power at 1× / 2× / 2.5× cost |
+|---|---|---|---|---|---|---|
+| TRAIN | 2,846 | 0.0080 | 2.241 (two-sided) | 3.37 | **1.29** — TESTABLE (≤ 2) | — |
+| DEV | 1,198 | 0.0076 | 1.645 (one-sided) | 3.61 | 1.38 | 0.33 / 0.77 / 0.91 |
+
+Under the earlier rule (MDE ≤ cost) H15 would not be testable; the 2× rule follows H14 (a similar
+variable, MDE / cost 1.72 at z = 2.498), so it is not blind to that power result. No mean has been seen.
+
 ## Changes
 - 2026-10-13: batch 1 reduced to H08 by owner decision; H08-only power added.
 - 2026-10-14: batch 3 power check added (all NOT TESTABLE).
+- 2026-10-15: H15 power check added (TESTABLE under the owner's 2 × cost rule).

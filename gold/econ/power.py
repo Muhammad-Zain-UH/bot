@@ -220,6 +220,54 @@ def main_batch3() -> int:
     return 0
 
 
+H15_TESTS = 2             # V2 cumulative: H08 + H15
+H15_TESTABLE_MULTIPLE = 2.0   # owner rule: TESTABLE if MDE <= 2 x cost (claims put the effect >= 2.5 x)
+
+
+def h15_cost(d: pd.DataFrame, hm: pd.Series, k_cost: float) -> tuple[np.ndarray, np.ndarray]:
+    """(two-round-trip cost, long-Asia-only cost) per day in log units; zero or missing
+    spreads take that New York hour's DEV median."""
+    s0 = filled(d["s_asia_start"], d["asia_start"], hm)
+    s11 = filled(d["s_11"], d["day"].dt.tz_localize("UTC") + pd.Timedelta(hours=10), hm)
+    s14 = filled(d["s_14"], d["day"].dt.tz_localize("UTC") + pd.Timedelta(hours=13), hm)
+    s_end = filled(d["s_us_end"], d["us_end"], hm)
+    asia = cost_in_log_units(round_turn_cost_usd(s0, s11, k_cost), d["p_asia_start"])
+    us = cost_in_log_units(round_turn_cost_usd(s14, s_end, k_cost), d["p_14"])
+    return np.asarray(asia + us), np.asarray(asia)
+
+
+def h15_power(train: pd.DataFrame, dev: pd.DataFrame, k_cost: float) -> dict:
+    from statistics import NormalDist
+    from gold.hyp.h15_asia_us import asia_us
+    nd = NormalDist()
+    z, z_dev = bonferroni_t(H15_TESTS, ALPHA), nd.inv_cdf(1 - ALPHA)
+    yt, yd = asia_us(train), asia_us(dev)
+    two, asia_only = h15_cost(yd, hour_median_spread(dev), k_cost)
+    cost = float(np.median(two))
+    sd_t, sd_d = float(yt["y"].std(ddof=1)), float(yd["y"].std(ddof=1))
+    se_t, se_d = sd_t / math.sqrt(len(yt)), sd_d / math.sqrt(len(yd))
+    mde = z * se_t
+    return {"z": z, "n_tests": H15_TESTS, "train": {"n": len(yt), "sd": sd_t, "se": se_t},
+            "dev": {"n": len(yd), "sd": sd_d, "se": se_d}, "cost_log_two_round_trips": cost,
+            "cost_log_long_asia_only": float(np.median(asia_only)), "mde": mde,
+            "mde_over_cost": mde / cost, "testable_rule": f"MDE <= {H15_TESTABLE_MULTIPLE} x cost",
+            "testable": bool(mde <= H15_TESTABLE_MULTIPLE * cost),
+            "dev_mde_over_cost": z_dev * se_d / cost,
+            "dev_power": {f"{m}x": nd.cdf(m * cost / se_d - z_dev) for m in (1.0, 2.0, 2.5)}}
+
+
+def main_h15() -> int:
+    from gold.data.build_broker_v1b import FINGERPRINTS
+    from gold.data.store import load_broker_v1b
+    k = json.loads(FINGERPRINTS.read_text(encoding="utf-8"))["cost_calibration"]["k_cost"]
+    r = h15_power(load_broker_v1b("H1", "TRAIN"), load_broker_v1b("H1", "DEV"), k)
+    out = json.loads(OUT.read_text(encoding="utf-8"))
+    out["h15"] = r
+    OUT.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(r, indent=2))
+    return 0
+
+
 def main() -> int:
     from gold.data.build_broker_v1b import FINGERPRINTS
     from gold.data.store import load_broker_v1b, load_broker_v1b_d1
@@ -249,4 +297,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main_h08() if sys.argv[1:] == ["--h08"]
-             else main_batch3() if sys.argv[1:] == ["--batch3"] else main())
+             else main_batch3() if sys.argv[1:] == ["--batch3"]
+             else main_h15() if sys.argv[1:] == ["--h15"] else main())
