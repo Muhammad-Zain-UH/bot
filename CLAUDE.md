@@ -43,8 +43,13 @@
 7. Tests: stdlib `unittest`, as the repo already does. Test behaviour, never
    source text. Every new data or feature function gets a truncation
    (no-lookahead) test.
-8. One task = one commit: `area: what changed -- verdict`. Data stays out of git.
-9. If you are blocked by a genuine owner choice, stop and ask one short
+8. Bars are BID-based. Never use the first bar after the daily reopen (or the
+   weekend reopen) for signals, entries or session statistics without
+   tick-level bid/ask verification; prefer mid prices from ticks wherever
+   possible. (Reopen spreads reached a $13.78 median in 2026; see
+   `research/v2026/REGIME_2026_EXPLORATION.md` section H.)
+9. One task = one commit: `area: what changed -- verdict`. Data stays out of git.
+10. If you are blocked by a genuine owner choice, stop and ask one short
    question with your recommended answer.
 
 ## Reply format at the end of every task (max 15 lines)

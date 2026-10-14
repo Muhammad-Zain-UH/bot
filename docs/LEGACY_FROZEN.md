@@ -34,3 +34,4 @@ Every `*.py` file in the repository root: `main_production.py`, `main.py`,
 ## Bugs noticed later
 One line each, nothing more.
 - 2026-10-13: the fixed −3 h server offset labels every US-winter bar (and, from late 2020, every bar in the weeks when only the US is on summer time) 1 h early in `data/research_v1` and in everything built on it, including the legacy kill zones.
+- 2026-10-14: `sweep_detector.detect_sweep` runs on bid M15 bars with no reopen or spread filter, so a reopen spread spike (the bid opening up to ~$14 below mid, `research/v2026/REGIME_2026_EXPLORATION.md` §H) can register as a liquidity sweep; the frequency was not measured.

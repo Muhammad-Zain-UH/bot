@@ -48,6 +48,8 @@ H05 and H06 used the earlier H1 split without financing (hold Sharpe 0.313 / 1.0
 - **Sessions**: the broker's daily break is now 16:00–18:00 New York (17:00–18:00 through DEV);
   intraday sleeves must be flat by 15:55 NY.
 - **Data reach**: broker H1 from 2009-08, H4 from 2004-06; Dukascopy (2003–) remains blocked.
+- **Reopen bid artifact** (REGIME_2026_EXPLORATION §H): first quote after the reopen at a $13.78 median spread since July 2026; first hour +30.8 × 10⁻⁴ on bid bars, −1.1 on mid, −33.4 for a buyer at the ask (all 285 weekday
+  reopens: −4.2). It inflates "Asia up, US down", so H15's NOT SUPPORTED is conservative (H14 never ran); ticks start 2025-05-27, so TRAIN/DEV bias is unmeasured.
 
 ## What this does and does not show
 - It shows that none of these rules beat cash (long/short) or holding gold (exposure rules) in
