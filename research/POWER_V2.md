@@ -54,5 +54,20 @@ SR 0.3–0.5 cannot be significant in either arm (D5); D1 bars from H4, pre-2009
 - In the calibration week the broker's daily break was 16:00–18:00 NY (DEV: 17:00–18:00);
   intraday sleeves must be flat by 15:55 NY (ROADMAP §7).
 
+## Batch 3 — H13a, H13b, H14 (owner decision 2026-10-14) — z = 2.498 (Bonferroni, 4 V2 tests)
+
+H13: round-minus-control difference, SE = √(sd_r²/N_r + sd_c²/N_c); cost = DEV round-level events.
+H14: cost per day = two round trips. Costs k_cost 4.625, zero spread → NY-hour DEV median. ×10⁻⁴ log.
+
+| Test | TRAIN N (round / control) | sd (round / control) | MDE | DEV cost | MDE / cost | DEV MDE / cost | DEV power 1× / 1.5× | Verdict |
+|---|---|---|---|---|---|---|---|---|
+| H13a | 568 / 1168 | 0.0078 / 0.0074 | 9.83 | 1.22 | 8.07 | 4.71 | 0.10 / 0.13 | NOT TESTABLE |
+| H13b | 305 / 535 | 0.0055 / 0.0065 | 10.58 | 1.22 | 8.69 | 6.75 | 0.08 / 0.10 | NOT TESTABLE |
+| H14 | 2,775 days | 0.0094 | 4.45 | 2.60 | 1.72 | 1.59 | 0.27 / 0.46 | NOT TESTABLE |
+
+**All three dropped**: the V2 test count returns to 1 (H08) and z to 1.96. Even at z = 1.96 none would
+be testable (H14 MDE / cost 1.35; H13a 6.3; H13b 6.8). Nothing in batch 3 is pre-registered.
+
 ## Changes
 - 2026-10-13: batch 1 reduced to H08 by owner decision; H08-only power added.
+- 2026-10-14: batch 3 power check added (all NOT TESTABLE).

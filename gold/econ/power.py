@@ -135,6 +135,91 @@ def main_h08() -> int:
     return 0
 
 
+BATCH3_TESTS = 4          # V2 cumulative: H08 + H13a + H13b + H14
+
+
+def hour_median_spread(h1: pd.DataFrame) -> pd.Series:
+    """Median non-zero spread_usd per New York hour of the bar open (utc_suspect bars excluded)."""
+    from gold.hyp.anchors import NEW_YORK
+    ok = ~h1["utc_suspect"] if "utc_suspect" in h1 else pd.Series(True, index=h1.index)
+    s = h1.loc[ok, "spread_usd"].replace(0, np.nan)
+    return s.groupby(h1.loc[ok, "time"].dt.tz_convert(NEW_YORK).dt.hour).median()
+
+
+def filled(spread, bar_open_utc, hour_median: pd.Series) -> np.ndarray:
+    """A zero or missing spread takes that New York hour's median."""
+    from gold.hyp.anchors import NEW_YORK
+    s = pd.Series(np.asarray(spread, float)).replace(0, np.nan)
+    hours = pd.Series(pd.to_datetime(np.asarray(bar_open_utc), utc=True)).dt.tz_convert(NEW_YORK).dt.hour
+    return s.fillna(hours.map(hour_median)).to_numpy()
+
+
+def _diff_stats(y: pd.DataFrame) -> dict:
+    r, c = y.loc[y.kind == "round", "y"], y.loc[y.kind == "control", "y"]
+    se = math.sqrt(r.var(ddof=1) / len(r) + c.var(ddof=1) / len(c))
+    return {"n_round": len(r), "n_control": len(c), "sd_round": float(r.std(ddof=1)),
+            "sd_control": float(c.std(ddof=1)), "se": se}
+
+
+def batch3(train: pd.DataFrame, dev: pd.DataFrame, k_cost: float, n_tests: int = BATCH3_TESTS) -> dict:
+    """Blinded power check for H13a, H13b (round minus control) and H14."""
+    from statistics import NormalDist
+    from gold.hyp import h13_round_levels as h13, h14_overnight as h14
+    nd = NormalDist()
+    z, z_dev = bonferroni_t(n_tests, ALPHA), nd.inv_cdf(1 - ALPHA)
+    hm = hour_median_spread(dev)
+    ev_t, ev_d = h13.events(train), h13.events(dev)
+    out = {"z": z, "n_tests": n_tests, "tests": {}}
+    for name, fn, price_col in (("H13a", h13.h13a, "level"), ("H13b", h13.h13b, "close_t")):
+        yt, yd = fn(ev_t), fn(ev_d)
+        rd = yd[yd.kind == "round"]
+        s_in = filled(rd["spread_t"], rd["time"], hm)
+        s_out = filled(rd["spread_t4"], rd["time_t4"], hm)
+        cost = float(np.median(cost_in_log_units(round_turn_cost_usd(s_in, s_out, k_cost), rd[price_col])))
+        tr, dv = _diff_stats(yt), _diff_stats(yd)
+        out["tests"][name] = {"train": tr, "dev": dv, "cost_log": cost}
+    d14t, d14d = h14.overnight_vs_ny(train), h14.overnight_vs_ny(dev)
+    s18 = filled(d14d["s_18"], local_ts(d14d["day"], 18, -1), hm)
+    s08 = filled(d14d["s_08"], local_ts(d14d["day"], 7, 0), hm)
+    s15 = filled(d14d["s_15"], local_ts(d14d["day"], 14, 0), hm)
+    c14 = (cost_in_log_units(round_turn_cost_usd(s18, s08, k_cost), d14d["p_18"])
+           + cost_in_log_units(round_turn_cost_usd(s08, s15, k_cost), d14d["p_08"]))
+    out["tests"]["H14"] = {"train": {"n": len(d14t), "sd": float(d14t["y"].std(ddof=1)),
+                                     "se": float(d14t["y"].std(ddof=1)) / math.sqrt(len(d14t))},
+                           "dev": {"n": len(d14d), "sd": float(d14d["y"].std(ddof=1)),
+                                   "se": float(d14d["y"].std(ddof=1)) / math.sqrt(len(d14d))},
+                           "cost_log": float(np.median(c14))}
+    for r in out["tests"].values():
+        r["mde"] = z * r["train"]["se"]
+        r["mde_over_cost"] = r["mde"] / r["cost_log"]
+        r["testable"] = bool(r["mde"] <= r["cost_log"])
+        r["dev_mde_over_cost"] = z_dev * r["dev"]["se"] / r["cost_log"]
+        r["dev_power"] = {f"{m}x": nd.cdf(m * r["cost_log"] / r["dev"]["se"] - z_dev) for m in (1.0, 1.5)}
+    return out
+
+
+def local_ts(days: pd.Series, hour: int, offset: int) -> pd.Series:
+    from gold.hyp.anchors import NEW_YORK, local_time
+    return local_time(days, hour, NEW_YORK, offset)
+
+
+def main_batch3() -> int:
+    from gold.data.build_broker_v1b import FINGERPRINTS
+    from gold.data.store import load_broker_v1b
+    k = json.loads(FINGERPRINTS.read_text(encoding="utf-8"))["cost_calibration"]["k_cost"]
+    r = batch3(load_broker_v1b("H1", "TRAIN"), load_broker_v1b("H1", "DEV"), k)
+    dropped = [n for n, t in r["tests"].items() if not t["testable"]]
+    if dropped:
+        r["dropped"] = dropped
+        r["n_tests_after_drop"] = BATCH3_TESTS - len(dropped)
+        r["z_after_drop"] = bonferroni_t(r["n_tests_after_drop"], ALPHA)
+    out = json.loads(OUT.read_text(encoding="utf-8"))
+    out["batch3"] = r
+    OUT.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(r, indent=2))
+    return 0
+
+
 def main() -> int:
     from gold.data.build_broker_v1b import FINGERPRINTS
     from gold.data.store import load_broker_v1b, load_broker_v1b_d1
@@ -163,4 +248,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main_h08() if sys.argv[1:] == ["--h08"] else main())
+    sys.exit(main_h08() if sys.argv[1:] == ["--h08"]
+             else main_batch3() if sys.argv[1:] == ["--batch3"] else main())
