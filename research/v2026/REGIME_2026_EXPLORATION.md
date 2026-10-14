@@ -179,3 +179,24 @@ Weekday first hour after reopen: NEW mean +16.2 × 10⁻⁴ (71 % > 0, n 228); D
 | 2026-08 | 21 | +9.48 | -5.08 | +6.20 | +3.93 | 21 / 0 |
 | 2026-09 | 22 | -6.92 | -5.64 | +5.66 | -3.00 | 21 / 0 |
 | 2026-10 | 9 | +0.18 | -0.88 | +1.10 | +1.71 | 9 / 0 |
+
+## H. Is the first-hour gain a bid-quote artifact? (tick data)
+
+MT5 ticks, bid and ask, 2025-05-27 → 2026-10-13 (the server's full tick history). Mean log return × 10⁻⁴ (n); spreads are medians in USD.
+
+| Measure | all weekday reopens | weekday reopens from 2026-07-01 | weekend reopens (Mondays) |
+|---|---|---|---|
+| First hour after reopen — (a) bid bars | +12.8 (285) | +30.8 (60) | +10.9 (74) |
+| First hour — (b) mid | +4.4 (285) | -1.1 (60) | +7.2 (74) |
+| First hour — (c) buyer: ask in, mid out | -4.2 (285) | -33.4 (60) | +3.2 (74) |
+| Last hour before break — (a) bid bars | -1.7 (285) | -2.8 (60) | +2.1 (74) |
+| Last hour — (b) mid | -1.4 (285) | -2.7 (60) | +2.5 (74) |
+| Last hour — (c) seller: mid in, bid out | -1.9 (285) | -3.1 (60) | +1.9 (74) |
+| Gap across the break — bid | -6.3 (285) | -31.1 (60) | -6.6 (74) |
+| Gap across the break — mid | +1.9 (285) | +1.0 (60) | -3.2 (74) |
+| Median spread, first 15 min after reopen | 0.190 (283) | 0.755 (60) | 0.480 (73) |
+| Median spread, last 15 min before break | 0.170 (277) | 0.240 (59) | 0.180 (70) |
+| Median spread at the first tick | 0.500 (285) | 13.785 (60) | 0.500 (74) |
+| Median (bar open − first tick bid) | 0.000 (285) | 0.000 (60) | 0.000 (74) |
+
+**Verdict: the first-hour gain is a bid-quote artifact.** Since 2026-07-01 the first quote after the reopen has a median spread of $13.78, so the bid opens far below the true price and 'recovers' as the spread narrows: bid bars show +30.8, mid prices -1.1 and a buyer paying the ask -33.4 × 10⁻⁴ per weekday reopen. The negative gap across the break is the same artifact (bid -31.1, mid +1.0). Over all 285 weekday reopens the buyer's first hour is -4.2. Section G's first-hour sum in NEW, and the WGC 'Asia' strength built on it, are spread artifacts of bid-only bars, not price moves. Other bid-bar research may carry the same bias at reopen bars; ticks exist only from 2025-05-27, so TRAIN and DEV cannot be checked this way. S1 enters 60 minutes after the reopen and is not built on the reopen bar's price.

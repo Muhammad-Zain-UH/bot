@@ -211,6 +211,7 @@ APPROVED_MT5_IMPORTERS: dict[str, str] = {
     "gold/data/calibrate_cost.py": "Read-only: ticks and H1 bars for the cost calibration.",
     "gold/data/build_h12.py": "Read-only: H1/H4/D1 export and tick spreads for the H12 universe.",
     "gold/data/build_live_2026q4.py": "Read-only: H1/H4 export from 2026-10-01 for exploration.",
+    "gold/live/paper_s1b.py": "Read-only S1b paper logger: H1 bars and tick history; sends no order.",
     "gold/live/forward_s1.py": (
         "Demo forward test S1. Imports MetaTrader5 only to inject it into "
         "execution.mt5_broker.MT5Broker; places no order itself (no mutating call here)."
