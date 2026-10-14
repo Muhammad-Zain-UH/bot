@@ -1,0 +1,307 @@
+{
+  "exported_utc": "2026-10-14T07:03:22+00:00",
+  "server": "MetaQuotes-Demo",
+  "rule": "v1b clock rule (Europe/Athens after 2020-07-01)",
+  "use": "exploratory only; FINAL_OOS opened 2026-10-14",
+  "symbols": {
+    "XAUUSD": {
+      "point": 0.01,
+      "frames": {
+        "H1": {
+          "raw_sha256": "60c3b5bdef3c38aa7eb6624672ee802df419cfd2c94af12c72485cd3a9ecfbd4",
+          "values_sha256": "010fb07a403a54218ec82bbf20fdfb9ce3858037119a25816ee6341b143bb8ba",
+          "rows": 185,
+          "dropped_incomplete": 0,
+          "first_utc": "2026-09-30T22:00:00+00:00",
+          "last_utc": "2026-10-13T06:00:00+00:00"
+        },
+        "H4": {
+          "raw_sha256": "4382074e5dc5eced9c6be7b1c10abdf30768c9641a0e3ca6025de91ab3984359",
+          "values_sha256": "b02ae69566afcb9f0480e13f1dbf5fbeaabff05a86f8cdd477644524d518d27b",
+          "rows": 53,
+          "dropped_incomplete": 1,
+          "first_utc": "2026-09-30T21:00:00+00:00",
+          "last_utc": "2026-10-14T01:00:00+00:00"
+        }
+      }
+    },
+    "XAGUSD": {
+      "point": 0.001,
+      "frames": {
+        "H1": {
+          "raw_sha256": "339c1dc3dd0a556cf465cbb718092adf6f9464f97d87740297b7ad6b394e7dc6",
+          "values_sha256": "e9037f34715d848678e6baa5fec6d6dbe2997dfac01eb55ed0537b43d0ab1860",
+          "rows": 190,
+          "dropped_incomplete": 0,
+          "first_utc": "2026-09-30T22:00:00+00:00",
+          "last_utc": "2026-10-13T11:00:00+00:00"
+        },
+        "H4": {
+          "raw_sha256": "39a20c2c23fa3d040ee72b4758239095df357480a92f73a065c99b4b29eebf46",
+          "values_sha256": "fb65df4f5fb029effaca6bef5f742e94a8ec90b3244dbce22593382d5fb1f238",
+          "rows": 52,
+          "dropped_incomplete": 0,
+          "first_utc": "2026-09-30T21:00:00+00:00",
+          "last_utc": "2026-10-13T09:00:00+00:00"
+        }
+      }
+    },
+    "EURUSD": {
+      "point": 1e-05,
+      "frames": {
+        "H1": {
+          "raw_sha256": "eb02ce38accc460bddb6c76de231c6b6b099843d2e574fdf0b78d49514dbc705",
+          "values_sha256": "45d94c02de7d9c21897ef340fe147081122929e49f43ed9051402b8cb8e3d3fc",
+          "rows": 207,
+          "dropped_incomplete": 0,
+          "first_utc": "2026-09-30T21:00:00+00:00",
+          "last_utc": "2026-10-13T11:00:00+00:00"
+        },
+        "H4": {
+          "raw_sha256": "20e49b6ed4bf86b7a1d6a03ee29675300c0ea26658416a006d2dffa744257fc0",
+          "values_sha256": "ecdc1339127243ef828bc2879ce8d11f21202ab6f89efc4e5d36d5bb89384860",
+          "rows": 52,
+          "dropped_incomplete": 0,
+          "first_utc": "2026-09-30T21:00:00+00:00",
+          "last_utc": "2026-10-13T09:00:00+00:00"
+        }
+      }
+    },
+    "USDJPY": {
+      "point": 0.001,
+      "frames": {
+        "H1": {
+          "raw_sha256": "b3f91b88b5a1121c170d4b0d7aab56f2c26b98a87a422a6eda84071bc334f08e",
+          "values_sha256": "2bd238b8e956c0ac50a8f7318603fdb73239b6ac791f0b004cbca05ada01fb62",
+          "rows": 207,
+          "dropped_incomplete": 0,
+          "first_utc": "2026-09-30T21:00:00+00:00",
+          "last_utc": "2026-10-13T11:00:00+00:00"
+        },
+        "H4": {
+          "raw_sha256": "e2f2843c22f318821b3ca0fdc23f6fa6f2d823c06f143048ce3a8386c95c11ec",
+          "values_sha256": "94456208315543e1f9c8200831c51e9e7f1cb22c3b9513241a2dc2671c22b1bb",
+          "rows": 54,
+          "dropped_incomplete": 1,
+          "first_utc": "2026-09-30T21:00:00+00:00",
+          "last_utc": "2026-10-14T01:00:00+00:00"
+        }
+      }
+    },
+    "GBPUSD": {
+      "point": 1e-05,
+      "frames": {
+        "H1": {
+          "raw_sha256": "d9b29724e7c70ac786dd3bfa06155e04972b6432efe2bb23453d2c57f7ad38c4",
+          "values_sha256": "b4354c4aeb01a6df7f59e8731bf6aa59936872f33d62dd4de6c3fbc313b0f252",
+          "rows": 207,
+          "dropped_incomplete": 0,
+          "first_utc": "2026-09-30T21:00:00+00:00",
+          "last_utc": "2026-10-13T11:00:00+00:00"
+        },
+        "H4": {
+          "raw_sha256": "8de46da8dfeabed12940e81ad861900092ffa15e8c83d0c6429522f8dc1942ed",
+          "values_sha256": "8a4ae382db83383297f0bfab2cb1855c1421181ff828c7561b23b590b8f1834b",
+          "rows": 52,
+          "dropped_incomplete": 0,
+          "first_utc": "2026-09-30T21:00:00+00:00",
+          "last_utc": "2026-10-13T09:00:00+00:00"
+        }
+      }
+    },
+    "AUDUSD": {
+      "point": 1e-05,
+      "frames": {
+        "H1": {
+          "raw_sha256": "7032d137d6880f2c5ac251b07c51f17f20ad8254cd2bdb4ffbc00fff89c7bbd7",
+          "values_sha256": "ad72e8aaac5b9d4db64528d6fc5c8bef653f50f7095a59d831ec2ce80cbf4154",
+          "rows": 207,
+          "dropped_incomplete": 0,
+          "first_utc": "2026-09-30T21:00:00+00:00",
+          "last_utc": "2026-10-13T11:00:00+00:00"
+        },
+        "H4": {
+          "raw_sha256": "1640442b58d9551c59f6839b105cff12e6f19f69fdbc2b6cab7926a58a43add8",
+          "values_sha256": "06a948e8fa02e3675017f95d7518afefd128a883e7a84cb43d23365a751e0ad5",
+          "rows": 52,
+          "dropped_incomplete": 0,
+          "first_utc": "2026-09-30T21:00:00+00:00",
+          "last_utc": "2026-10-13T09:00:00+00:00"
+        }
+      }
+    }
+  },
+  "fred": {
+    "DGS10": {
+      "sha256": "5ec8d94ff0d1971760ded0dcd2965b2fd4d6d1086cee1df587010cb7a12c49f3",
+      "rows": 16899,
+      "last_date": "2026-10-09"
+    },
+    "DFII10": {
+      "sha256": "71c56454f50aedae202f22d64b5ff89655928e958d8d841c74a3201a52dca040",
+      "rows": 6202,
+      "last_date": "2026-10-09"
+    },
+    "DTWEXBGS": {
+      "sha256": "a7b6e593bf1c9dd6c4601c1bd52de979b148eb2e98679ce1cafcda789f372d59",
+      "rows": 5420,
+      "last_date": "2026-10-09"
+    }
+  },
+  "overlap_check_2026_10_01": {
+    "XAUUSD H1": {
+      "overlapping_bars": 14,
+      "max_abs_ohlc_diff": 10.079999999999927
+    },
+    "XAUUSD H4": {
+      "overlapping_bars": 4,
+      "max_abs_ohlc_diff": 8.909999999999854
+    },
+    "XAGUSD H1": {
+      "overlapping_bars": 14,
+      "max_abs_ohlc_diff": 0.0
+    },
+    "XAGUSD H4": {
+      "overlapping_bars": 4,
+      "max_abs_ohlc_diff": 0.0
+    },
+    "EURUSD H1": {
+      "overlapping_bars": 15,
+      "max_abs_ohlc_diff": 2.220446049250313e-16
+    },
+    "EURUSD H4": {
+      "overlapping_bars": 4,
+      "max_abs_ohlc_diff": 0.0
+    },
+    "USDJPY H1": {
+      "overlapping_bars": 15,
+      "max_abs_ohlc_diff": 0.0
+    },
+    "USDJPY H4": {
+      "overlapping_bars": 4,
+      "max_abs_ohlc_diff": 0.0
+    },
+    "GBPUSD H1": {
+      "overlapping_bars": 15,
+      "max_abs_ohlc_diff": 2.220446049250313e-16
+    },
+    "GBPUSD H4": {
+      "overlapping_bars": 4,
+      "max_abs_ohlc_diff": 2.220446049250313e-16
+    },
+    "AUDUSD H1": {
+      "overlapping_bars": 15,
+      "max_abs_ohlc_diff": 0.0
+    },
+    "AUDUSD H4": {
+      "overlapping_bars": 4,
+      "max_abs_ohlc_diff": 0.0
+    }
+  },
+  "batch2": {
+    "exported_utc": "2026-10-14T07:04:50+00:00",
+    "frames": {
+      "XAUUSD H1": {
+        "raw_sha256": "b57e620959f0bc8b7e6a88444150276dbf8648ad2a07648459fbec360163c1c8",
+        "values_sha256": "8c622aa4ff560f923179ce4348d1ca9554b25320cff525278f4a6a25b1adf440",
+        "rows": 207,
+        "dropped_incomplete": 1,
+        "last_utc": "2026-10-14T06:00:00+00:00"
+      },
+      "XAUUSD H4": {
+        "raw_sha256": "1775216a1cfbfb9b18bf70a6cdf345d78b3be1284196d3de3c253a0efe527e86",
+        "values_sha256": "ceea95f19604e9c05845eaa4133ec1ec5b7cb038733f97b4d8683d7d76181fe4",
+        "rows": 56,
+        "dropped_incomplete": 1,
+        "last_utc": "2026-10-14T01:00:00+00:00"
+      },
+      "XAGUSD H1": {
+        "raw_sha256": "c40a44080219946dfb28d9c1e6d9f320a2612fdfbf0dda4b9260c20fd5bb4608",
+        "values_sha256": "b2070c7d8e5d9f6ce0ec0328de3f9d50d8046b344e476de996e84a012097c26b",
+        "rows": 207,
+        "dropped_incomplete": 1,
+        "last_utc": "2026-10-14T06:00:00+00:00"
+      },
+      "XAGUSD H4": {
+        "raw_sha256": "52bf8c30fb496bb60317de3861333d4f6a59e987d0a958c7e3f5ecb5d4aaebb6",
+        "values_sha256": "ae48dc9e9e477273aec27deffde2acdda0939683ec63d6e7f9a857c04cea8267",
+        "rows": 56,
+        "dropped_incomplete": 1,
+        "last_utc": "2026-10-14T01:00:00+00:00"
+      },
+      "EURUSD H1": {
+        "raw_sha256": "7cf1066e9c1950e1fbcf38e0af5831449686d6d14ac47f7be552a7f685f988db",
+        "values_sha256": "594bf555647785ca4f82eed1f5bb8dac45089a0da5c90d64990106bd6fa1ef7b",
+        "rows": 226,
+        "dropped_incomplete": 1,
+        "last_utc": "2026-10-14T06:00:00+00:00"
+      },
+      "EURUSD H4": {
+        "raw_sha256": "5aad7eacd586c3fc7889529dbe5a0b12d0ea1e64d2a718819ad9c369223a108b",
+        "values_sha256": "d4b5a82e88cccc5785e56e66390496f2e37188c9ef2e603b4263b1ce18624acd",
+        "rows": 56,
+        "dropped_incomplete": 1,
+        "last_utc": "2026-10-14T01:00:00+00:00"
+      },
+      "USDJPY H1": {
+        "raw_sha256": "255cd9917179435313a1ee60434afde3bfa8eb22e1b94cce0c7011a21e7d73b3",
+        "values_sha256": "74bd0badeb2d89e005047307153e4435f77f606aab8d3e198b91be3c439c2fd5",
+        "rows": 226,
+        "dropped_incomplete": 1,
+        "last_utc": "2026-10-14T06:00:00+00:00"
+      },
+      "USDJPY H4": {
+        "raw_sha256": "f22ba2b96b49dae31bcb02bc58a734024f075c5b47efe783a7e33f2e099b13ca",
+        "values_sha256": "eb990b56500ad6a592f1052e9adfa302d1a3ad40a713b8c63553a28f7258a025",
+        "rows": 56,
+        "dropped_incomplete": 1,
+        "last_utc": "2026-10-14T01:00:00+00:00"
+      },
+      "GBPUSD H1": {
+        "raw_sha256": "ca24ae39623d5f4a49cfe0327f20083f18ede76909e2ee6d0416eee9f1df4335",
+        "values_sha256": "de51e74b5b7267a3fd8db1f6bfcba7a50da769927134691d911cbb987f5432a1",
+        "rows": 226,
+        "dropped_incomplete": 1,
+        "last_utc": "2026-10-14T06:00:00+00:00"
+      },
+      "GBPUSD H4": {
+        "raw_sha256": "ddae25bb43a6dfd9694dcc74f72e78f86ff540b8aa70e091fed246878662e089",
+        "values_sha256": "5673965dc40cfa4f78fb5449087647395071a8f7fa89335874243d0853730f50",
+        "rows": 56,
+        "dropped_incomplete": 1,
+        "last_utc": "2026-10-14T01:00:00+00:00"
+      },
+      "AUDUSD H1": {
+        "raw_sha256": "58053c2ec2e50546c8dbefd94605b8f062fd2040a2abff572c4b68e7a69d1a8d",
+        "values_sha256": "a959716dc8ff10f46ef49e1ef815581ed54f0e7cc0c406dde2b1a500f91abbc6",
+        "rows": 226,
+        "dropped_incomplete": 1,
+        "last_utc": "2026-10-14T06:00:00+00:00"
+      },
+      "AUDUSD H4": {
+        "raw_sha256": "fef46c9166a46d8147cb11273d0fff8d19be8ec50bcf0c61c2ef981de35c9110",
+        "values_sha256": "d230230ff199ba67319ae8c3e8e35b39951e1782208a131f25b65343e16c241b",
+        "rows": 56,
+        "dropped_incomplete": 1,
+        "last_utc": "2026-10-14T01:00:00+00:00"
+      }
+    },
+    "superset_of_batch1": {
+      "XAUUSD H1": false,
+      "XAUUSD H4": false,
+      "XAGUSD H1": false,
+      "XAGUSD H4": false,
+      "EURUSD H1": false,
+      "EURUSD H4": false,
+      "USDJPY H1": false,
+      "USDJPY H4": false,
+      "GBPUSD H1": false,
+      "GBPUSD H4": false,
+      "AUDUSD H1": false,
+      "AUDUSD H4": false
+    },
+    "superset_note": "Batch 2 contains every batch-1 bar unchanged except batch 1's LAST bar in each frame: batch 1 was taken while MT5 was still syncing, and its last cached bar was still forming (e.g. XAUUSD H1 2026-10-13 06:00 tick volume 8,268 vs 11,951). Analysis uses batch 2; batch 1 is kept unmodified."
+  },
+  "v1b_final_oos_last_bar_note": "The frozen v1 export (2026-10-01 11:31 UTC) captured the XAUUSD H1 bar of 2026-10-01 11:00 while it was forming (tick volume 9,496 vs 19,175 final; close 4172.58 vs 4182.66); all 13 earlier overlapping bars match. Analysis replaces v1b bars from 2026-09-30 21:00 UTC onward with batch 2.",
+  "use_for_analysis": "batch2"
+}

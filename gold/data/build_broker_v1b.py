@@ -149,6 +149,18 @@ def build(raw_dir: Path, out_dir: Path, point: float) -> tuple[dict[str, pd.Data
     return frames, weeks
 
 
+# Owner decision 2026-10-14: FINAL_OOS opened for exploratory research (it is no longer a clean
+# validation set; new strategies are validated only by a forward demo test from 2026-10-15).
+OOS_OPENING = {
+    "date": "2026-10-14",
+    "head_sha": "efa07c40467318ecddeed1e5c14d81bd3b28ac05",
+    "tag": "pre-oos-exploration",
+    "reason": "exploratory 2026 regime research, owner decision",
+    "consequence": "FINAL_OOS is no longer a clean validation set; every new strategy is validated "
+                   "only by a forward demo test starting 2026-10-15",
+    "previous_token": "OOS-AUTHORISATION-NOT-ISSUED",
+}
+OOS_TOKEN_OPENED = "OPENED-2026-10-14-EXPLORATION"
 TRAIN_D1_DAYS = ("2004-06-14", "2020-12-31")      # first and last trading day (17:00 NY close)
 
 
@@ -179,7 +191,8 @@ def split_manifest(h1: dict) -> dict:
         "dataset": "data/research_v1b/bars (DST-correct UTC), fingerprints in "
                    "research/broker_v1b_fingerprints.json",
         "FINAL_OOS_LOCKED": h1["FINAL_OOS_LOCKED"],
-        "oos_authorisation_token": h1["oos_authorisation_token"],
+        "oos_authorisation_token": OOS_TOKEN_OPENED,
+        "oos_opening": OOS_OPENING,
         "oos_unlock_requirements": h1["oos_unlock_requirements"],
         "oos_prohibitions": h1["oos_prohibitions"],
         "purge_embargo": h1["purge_embargo"],

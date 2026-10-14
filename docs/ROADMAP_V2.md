@@ -304,6 +304,8 @@ Only hypotheses that pass TRAIN **and** DEV continue.
 
 **Status 2026-10-13: programme ended — no strategy survived (batch 1 H08, batch 2 H10/H11, final H12 all NOT SUPPORTED); no live trading; FINAL_OOS never opened (`research/v2/CONCLUSION_GOLD.md`).**
 
+**FINAL_OOS opened 2026-10-14 (owner decision) at HEAD `efa07c4` (tag `pre-oos-exploration`) for exploratory 2026 regime research; token `OPENED-2026-10-14-EXPLORATION` in the v1b and H12 manifests. FINAL_OOS is no longer a clean validation set: every new strategy is validated only by a forward demo test starting 2026-10-15.**
+
 If batch 1 and batch 2 produce no survivor, the honest conclusion is: no
 single-instrument gold edge was found at the resolution available. Then
 choose one of these, and do not build a trading bot on unvalidated rules:

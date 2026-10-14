@@ -180,6 +180,7 @@ def split_manifest() -> dict:
         "dataset": "data/h12_v1/bars, fingerprints in research/h12_fingerprints.json",
         "FINAL_OOS_LOCKED": v1b["FINAL_OOS_LOCKED"],
         "oos_authorisation_token": v1b["oos_authorisation_token"],
+        "oos_opening": v1b["oos_opening"],
         "oos_unlock_requirements": v1b["oos_unlock_requirements"],
         "oos_prohibitions": v1b["oos_prohibitions"],
         "purge_embargo": v1b["purge_embargo"],

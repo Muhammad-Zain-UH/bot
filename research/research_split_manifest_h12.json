@@ -2,7 +2,15 @@
   "status": "H12 split: DEV and FINAL_OOS copied from research/research_split_manifest_h1_v1b.json",
   "dataset": "data/h12_v1/bars, fingerprints in research/h12_fingerprints.json",
   "FINAL_OOS_LOCKED": true,
-  "oos_authorisation_token": "OOS-AUTHORISATION-NOT-ISSUED",
+  "oos_authorisation_token": "OPENED-2026-10-14-EXPLORATION",
+  "oos_opening": {
+    "date": "2026-10-14",
+    "head_sha": "efa07c40467318ecddeed1e5c14d81bd3b28ac05",
+    "tag": "pre-oos-exploration",
+    "reason": "exploratory 2026 regime research, owner decision",
+    "consequence": "FINAL_OOS is no longer a clean validation set; every new strategy is validated only by a forward demo test starting 2026-10-15",
+    "previous_token": "OOS-AUTHORISATION-NOT-ISSUED"
+  },
   "oos_unlock_requirements": [
     "explicit written authorisation from the strategy architect",
     "record the date, the git SHA and the candidate specification SHA at the moment it is opened",

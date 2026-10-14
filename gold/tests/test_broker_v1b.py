@@ -162,7 +162,10 @@ class TestLoader(unittest.TestCase):
             self.assertEqual((v1b["arms"][arm]["from_utc"], v1b["arms"][arm]["to_utc"]),
                              (v["from_utc"], v["to_utc"]))
         self.assertEqual(v1b["purge_embargo"], h1["purge_embargo"])
-        self.assertEqual(v1b["oos_authorisation_token"], "OOS-AUTHORISATION-NOT-ISSUED")
+        # FINAL_OOS opened by owner decision 2026-10-14; still locked behind the new token
+        self.assertEqual(v1b["oos_authorisation_token"], "OPENED-2026-10-14-EXPLORATION")
+        self.assertEqual(v1b["oos_opening"]["date"], "2026-10-14")
+        self.assertEqual(v1b["oos_opening"]["previous_token"], "OOS-AUTHORISATION-NOT-ISSUED")
         self.assertTrue(v1b["FINAL_OOS_LOCKED"])
 
     def test_final_oos_is_locked_before_any_read(self):
