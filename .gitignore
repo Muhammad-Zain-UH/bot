@@ -62,3 +62,4 @@ data/forward/
 # PSX research track: raw downloads (write-once) and derived panels; PSX data may not be redistributed.
 # Integrity is guaranteed by research/psx/psx_fingerprints.json.
 data/psx/
+data/w01/

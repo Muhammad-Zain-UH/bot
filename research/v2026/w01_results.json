@@ -1,0 +1,190 @@
+{
+ "spec": "research/v2026/W01_SPEC.md @ 4d48091",
+ "k_cost": 4.625,
+ "variants": 102,
+ "months": [
+  "2011-01",
+  "2026-09",
+  189
+ ],
+ "verdict": "DOES NOT WORK",
+ "tests": {
+  "1_mean_1x_gt0_p_lt_0.05": false,
+  "2_mean_2x_ge0": false,
+  "3_above_random_p95": true,
+  "4_mean_ic_gt0_p_lt_0.05": true,
+  "5_positive_in_2_of_3_eras": false
+ },
+ "process_1x": {
+  "n": 189,
+  "mean": -0.7972691110194448,
+  "se": 0.3550125330972248,
+  "t": -2.245749196694141,
+  "p_one_sided": 0.987057897670349
+ },
+ "process_2x_mean": -1.0672266979953993,
+ "random_control": {
+  "paths": 2000,
+  "seed": 20261015,
+  "p95": -3.0174252176887415,
+  "median": -3.78822920149154,
+  "process_percentile": 100.0
+ },
+ "ic": {
+  "n": 189,
+  "mean": 0.26221712092638144,
+  "se": 0.029284884413339343,
+  "t": 8.954009079405512,
+  "p_one_sided": 1.6590809921729873e-16,
+  "months": 189,
+  "share_positive": 0.8253968253968254
+ },
+ "eras": [
+  {
+   "era": "2011\u20132015",
+   "months": 60,
+   "mean": -0.7764873675779983,
+   "sum": -46.5892420546799
+  },
+  {
+   "era": "2016\u20132020",
+   "months": 60,
+   "mean": -0.7131172353272142,
+   "sum": -42.78703411963285
+  },
+  {
+   "era": "2021 \u2192 2026-09",
+   "months": 69,
+   "mean": -0.8885157363530773,
+   "sum": -61.30758580836233
+  }
+ ],
+ "informational": {
+  "lookback_3": {
+   "n": 189,
+   "mean": -1.556336418319687,
+   "se": 0.5269977675461268,
+   "t": -2.953212545029358,
+   "p_one_sided": 0.9982268574383927
+  },
+  "lookback_12": {
+   "n": 189,
+   "mean": -0.5816921469008223,
+   "se": 0.3573067188732138,
+   "t": -1.627991068108711,
+   "p_one_sided": 0.9473992639871429
+  },
+  "top3_equal_weight": {
+   "n": 189,
+   "mean": -0.7139409887951049,
+   "se": 0.3180987240555873,
+   "t": -2.2444006681093907,
+   "p_one_sided": 0.9870138054414794
+  },
+  "hindsight_top10": [
+   {
+    "variant": "donchian_D1_N20_k1.0_L",
+    "family": "a_donchian",
+    "trades": 77.0,
+    "total_r": 82.1173262088374,
+    "mean_r_trade": 1.0664587819329532,
+    "t": 2.3350060949075995
+   },
+   {
+    "variant": "donchian_D1_N20_k1.5_L",
+    "family": "a_donchian",
+    "trades": 71.0,
+    "total_r": 50.56868914514968,
+    "mean_r_trade": 0.7122350583823899,
+    "t": 2.103761932097104
+   },
+   {
+    "variant": "donchian_D1_N55_k1.0_L",
+    "family": "a_donchian",
+    "trades": 48.0,
+    "total_r": 47.34981020362844,
+    "mean_r_trade": 0.9864543792422591,
+    "t": 1.0481254945665839
+   },
+   {
+    "variant": "donchian_D1_N55_k1.5_L",
+    "family": "a_donchian",
+    "trades": 34.0,
+    "total_r": 42.22793644743877,
+    "mean_r_trade": 1.2419981308070227,
+    "t": 1.385563471839874
+   },
+   {
+    "variant": "donchian_D1_N10_k1.0_L",
+    "family": "a_donchian",
+    "trades": 143.0,
+    "total_r": 40.435730076001015,
+    "mean_r_trade": 0.2827673431888183,
+    "t": 1.372066116483559
+   },
+   {
+    "variant": "ma_D1_10x50_k1.0_L",
+    "family": "b_ma_trend",
+    "trades": 48.0,
+    "total_r": 32.37223805284339,
+    "mean_r_trade": 0.6744216261009041,
+    "t": 1.0397290145460094
+   },
+   {
+    "variant": "donchian_D1_N10_k1.5_L",
+    "family": "a_donchian",
+    "trades": 131.0,
+    "total_r": 31.7898567027467,
+    "mean_r_trade": 0.24267066185302824,
+    "t": 1.5306580888418997
+   },
+   {
+    "variant": "ma_D1_10x50_k1.5_L",
+    "family": "b_ma_trend",
+    "trades": 48.0,
+    "total_r": 16.072582765760007,
+    "mean_r_trade": 0.33484547428666683,
+    "t": 0.7426010252666797
+   },
+   {
+    "variant": "donchian_H1_N55_k1.5_L",
+    "family": "a_donchian",
+    "trades": 813.0,
+    "total_r": 13.042958029042147,
+    "mean_r_trade": 0.016042998805709897,
+    "t": 0.14473060045509412
+   },
+   {
+    "variant": "donchian_H1_N55_k1.0_L",
+    "family": "a_donchian",
+    "trades": 948.0,
+    "total_r": 11.686897743144753,
+    "mean_r_trade": 0.012327951205848895,
+    "t": 0.0849856135184418
+   }
+  ],
+  "buy_and_hold_gold": {
+   "cagr": 0.07064639745329959,
+   "max_drawdown": 0.4185392642609722,
+   "months": 189
+  },
+  "cash": {
+   "mean_monthly_r": 0.0
+  },
+  "family_chosen_months": {
+   "c_mean_reversion": 55,
+   "a_donchian": 50,
+   "b_ma_trend": 49,
+   "g_time_of_day": 24,
+   "d_session_breakout": 7,
+   "e_sweep": 2,
+   "f_fvg": 2
+  },
+  "months_without_eligible_variant": 0,
+  "trades_per_variant": {
+   "min": 12,
+   "median": 1381.5,
+   "total": 206279
+  }
+ }
+}
