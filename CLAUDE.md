@@ -62,3 +62,9 @@
 ## Commands
 - All tests: `python -m unittest discover -s tests -t .`
 - New package tests: `python -m unittest discover -s gold/tests -t .`
+
+## PSX track (psx/ package)
+- Prices in PKR (`price_pkr`, `value_pkr`). Portfolio returns are simple returns (`ret_*`); log returns only for one series over time.
+- Price source: PSX closing files (adjusted total-return series in data/psx/derived/). psxdata histories are a cross-check only.
+- All PSX data stays in gitignored data/psx/ (PSX Data Legal Notice): commit counts and hashes only.
+- Tests: python -m unittest discover -s psx/tests -t .
