@@ -1,0 +1,70 @@
+{
+  "threshold": 0.95,
+  "dev_end": "2025-09-02",
+  "symbols": {
+    "EURUSD": {
+      "fred_series": "DEXUSEU",
+      "fred_sha256": "81324d84a8772ee71420e54e21ae12a1995a6a49c6dfa4480c0bc6450aacdc1f",
+      "weeks": 1345,
+      "first_week": "1999-01-15",
+      "last_week": "2025-08-29",
+      "weekly_return_corr": 0.9762,
+      "pass": true
+    },
+    "GBPUSD": {
+      "fred_series": "DEXUSUK",
+      "fred_sha256": "53a5910df5fd6fa2f5b010a68743c53df5aa2ded824510131b282f6e418fde9a",
+      "weeks": 1345,
+      "first_week": "1999-01-15",
+      "last_week": "2025-08-29",
+      "weekly_return_corr": 0.9768,
+      "pass": true
+    },
+    "USDJPY": {
+      "fred_series": "DEXJPUS",
+      "fred_sha256": "2bd05703ca65d19630c97f372a2ac43ed49d910e77ae1edd535305e667d4b3f9",
+      "weeks": 1345,
+      "first_week": "1999-01-15",
+      "last_week": "2025-08-29",
+      "weekly_return_corr": 0.9794,
+      "pass": true
+    },
+    "AUDUSD": {
+      "fred_series": "DEXUSAL",
+      "fred_sha256": "f3812df78273cac23cfe27a4f45f7d4180b2ea27a55929f6d54dfabd3ed8a84e",
+      "weeks": 1345,
+      "first_week": "1999-01-15",
+      "last_week": "2025-08-29",
+      "weekly_return_corr": 0.9776,
+      "pass": true
+    },
+    "USDCAD": {
+      "fred_series": "DEXCAUS",
+      "fred_sha256": "d218f8173a6fa0d510cef6f99ebf339d0599aebbbc1ceef97a959061dd474e8d",
+      "weeks": 1345,
+      "first_week": "1999-01-15",
+      "last_week": "2025-08-29",
+      "weekly_return_corr": 0.9617,
+      "pass": true
+    },
+    "USDCHF": {
+      "fred_series": "DEXSZUS",
+      "fred_sha256": "286fc1c488d5b4ee412996401206be3bc2ee5ba1010dc50a1fbb02c752c29a98",
+      "weeks": 1343,
+      "first_week": "1999-01-15",
+      "last_week": "2025-08-29",
+      "weekly_return_corr": 0.9734,
+      "pass": true
+    },
+    "NZDUSD": {
+      "fred_series": "DEXUSNZ",
+      "fred_sha256": "49a06beab71d1e327963beb4f0ee64891aaae0c9c22fa71621179a8a80a7bc3b",
+      "weeks": 1293,
+      "first_week": "2000-01-14",
+      "last_week": "2025-08-29",
+      "weekly_return_corr": 0.9781,
+      "pass": true
+    }
+  },
+  "all_pass": true
+}

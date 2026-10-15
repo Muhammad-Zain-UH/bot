@@ -1,0 +1,750 @@
+{
+  "hypothesis": "H06 real-yield-conditional gold exposure",
+  "specification": "research/hypothesis_06_real_yield_exposure.md",
+  "dataset_sha256": "540d63a0d8f36f955991f45e3918a6a17abe4a2f92fc688d94e30d153c300da7",
+  "final_oos": "NOT LOADED, NOT INSPECTED",
+  "primary": {
+    "TRAIN": {
+      "arm": "TRAIN",
+      "rebalances": 137,
+      "strategy": {
+        "bars": 3513,
+        "years": 11.33,
+        "bars_per_year": 309.9,
+        "total_return_pct": 96.04,
+        "cagr_pct": 6.119,
+        "max_drawdown_pct": -36.03,
+        "longest_underwater_years": 8.69,
+        "ann_volatility_pct": 13.44,
+        "sharpe_rf0": 0.442
+      },
+      "hold_same_series": {
+        "bars": 3513,
+        "years": 11.33,
+        "bars_per_year": 309.9,
+        "price_first": 950.6,
+        "price_last": 1893.68,
+        "price_mean": 1377.12,
+        "gross_dollars_per_unit": 943.08,
+        "cost_dollars_one_round_turn": 0.33,
+        "total_return_pct": 99.17,
+        "cagr_pct": 6.267,
+        "max_drawdown_pct": -44.91,
+        "longest_underwater_years": 8.88,
+        "ann_volatility_pct": 15.88,
+        "sharpe_rf0": 0.383,
+        "annual_dollar_gain_per_unit": 83.2
+      },
+      "exposure": {
+        "observations": 3513,
+        "share_long": 0.6325,
+        "share_flat": 0.3675,
+        "state_changes": 15,
+        "dominant_state_share": 0.6325
+      },
+      "transitions": {
+        "exposure_changes": 15,
+        "round_turns": 7.5,
+        "round_turns_per_year": 0.66,
+        "within_budget": true,
+        "cost_dollars_per_unit": 2.475
+      },
+      "versus_hold_same_series": {
+        "sharpe_delta": 0.059,
+        "drawdown_improvement_pp": 8.88
+      }
+    },
+    "DEV": {
+      "arm": "DEV",
+      "rebalances": 57,
+      "strategy": {
+        "bars": 1450,
+        "years": 4.66,
+        "bars_per_year": 311.2,
+        "total_return_pct": 8.09,
+        "cagr_pct": 1.683,
+        "max_drawdown_pct": -13.71,
+        "longest_underwater_years": 3.79,
+        "ann_volatility_pct": 8.67,
+        "sharpe_rf0": 0.193
+      },
+      "hold_same_series": {
+        "bars": 1450,
+        "years": 4.66,
+        "bars_per_year": 311.2,
+        "price_first": 1938.53,
+        "price_last": 3511.1,
+        "price_mean": 2152.68,
+        "gross_dollars_per_unit": 1572.57,
+        "cost_dollars_one_round_turn": 0.33,
+        "total_return_pct": 81.1,
+        "cagr_pct": 13.593,
+        "max_drawdown_pct": -20.2,
+        "longest_underwater_years": 1.15,
+        "ann_volatility_pct": 14.69,
+        "sharpe_rf0": 0.868,
+        "annual_dollar_gain_per_unit": 337.47
+      },
+      "exposure": {
+        "observations": 1450,
+        "share_long": 0.3579,
+        "share_flat": 0.6421,
+        "state_changes": 9,
+        "dominant_state_share": 0.6421
+      },
+      "transitions": {
+        "exposure_changes": 9,
+        "round_turns": 4.5,
+        "round_turns_per_year": 0.97,
+        "within_budget": true,
+        "cost_dollars_per_unit": 1.485
+      },
+      "versus_hold_same_series": {
+        "sharpe_delta": -0.675,
+        "drawdown_improvement_pp": 6.49
+      }
+    }
+  },
+  "diagnostics": {
+    "DFII10_3m": {
+      "TRAIN": {
+        "arm": "TRAIN",
+        "rebalances": 137,
+        "strategy": {
+          "bars": 3513,
+          "years": 11.33,
+          "bars_per_year": 309.9,
+          "total_return_pct": 101.91,
+          "cagr_pct": 6.395,
+          "max_drawdown_pct": -29.65,
+          "longest_underwater_years": 8.5,
+          "ann_volatility_pct": 12.98,
+          "sharpe_rf0": 0.478
+        },
+        "hold_same_series": {
+          "bars": 3513,
+          "years": 11.33,
+          "bars_per_year": 309.9,
+          "price_first": 950.6,
+          "price_last": 1893.68,
+          "price_mean": 1377.12,
+          "gross_dollars_per_unit": 943.08,
+          "cost_dollars_one_round_turn": 0.33,
+          "total_return_pct": 99.17,
+          "cagr_pct": 6.267,
+          "max_drawdown_pct": -44.91,
+          "longest_underwater_years": 8.88,
+          "ann_volatility_pct": 15.88,
+          "sharpe_rf0": 0.383,
+          "annual_dollar_gain_per_unit": 83.2
+        },
+        "exposure": {
+          "observations": 3513,
+          "share_long": 0.6328,
+          "share_flat": 0.3672,
+          "state_changes": 27,
+          "dominant_state_share": 0.6328
+        },
+        "transitions": {
+          "exposure_changes": 27,
+          "round_turns": 13.5,
+          "round_turns_per_year": 1.19,
+          "within_budget": true,
+          "cost_dollars_per_unit": 4.455
+        },
+        "versus_hold_same_series": {
+          "sharpe_delta": 0.095,
+          "drawdown_improvement_pp": 15.26
+        }
+      },
+      "DEV": {
+        "arm": "DEV",
+        "rebalances": 57,
+        "strategy": {
+          "bars": 1450,
+          "years": 4.66,
+          "bars_per_year": 311.2,
+          "total_return_pct": 13.52,
+          "cagr_pct": 2.759,
+          "max_drawdown_pct": -23.37,
+          "longest_underwater_years": 4.17,
+          "ann_volatility_pct": 8.95,
+          "sharpe_rf0": 0.304
+        },
+        "hold_same_series": {
+          "bars": 1450,
+          "years": 4.66,
+          "bars_per_year": 311.2,
+          "price_first": 1938.53,
+          "price_last": 3511.1,
+          "price_mean": 2152.68,
+          "gross_dollars_per_unit": 1572.57,
+          "cost_dollars_one_round_turn": 0.33,
+          "total_return_pct": 81.1,
+          "cagr_pct": 13.593,
+          "max_drawdown_pct": -20.2,
+          "longest_underwater_years": 1.15,
+          "ann_volatility_pct": 14.69,
+          "sharpe_rf0": 0.868,
+          "annual_dollar_gain_per_unit": 337.47
+        },
+        "exposure": {
+          "observations": 1450,
+          "share_long": 0.3545,
+          "share_flat": 0.6455,
+          "state_changes": 18,
+          "dominant_state_share": 0.6455
+        },
+        "transitions": {
+          "exposure_changes": 18,
+          "round_turns": 9.0,
+          "round_turns_per_year": 1.93,
+          "within_budget": true,
+          "cost_dollars_per_unit": 2.97
+        },
+        "versus_hold_same_series": {
+          "sharpe_delta": -0.564,
+          "drawdown_improvement_pp": -3.17
+        }
+      }
+    },
+    "DFII10_6m": {
+      "TRAIN": {
+        "arm": "TRAIN",
+        "rebalances": 137,
+        "strategy": {
+          "bars": 3513,
+          "years": 11.33,
+          "bars_per_year": 309.9,
+          "total_return_pct": 93.59,
+          "cagr_pct": 6.001,
+          "max_drawdown_pct": -32.54,
+          "longest_underwater_years": 8.69,
+          "ann_volatility_pct": 12.67,
+          "sharpe_rf0": 0.46
+        },
+        "hold_same_series": {
+          "bars": 3513,
+          "years": 11.33,
+          "bars_per_year": 309.9,
+          "price_first": 950.6,
+          "price_last": 1893.68,
+          "price_mean": 1377.12,
+          "gross_dollars_per_unit": 943.08,
+          "cost_dollars_one_round_turn": 0.33,
+          "total_return_pct": 99.17,
+          "cagr_pct": 6.267,
+          "max_drawdown_pct": -44.91,
+          "longest_underwater_years": 8.88,
+          "ann_volatility_pct": 15.88,
+          "sharpe_rf0": 0.383,
+          "annual_dollar_gain_per_unit": 83.2
+        },
+        "exposure": {
+          "observations": 3513,
+          "share_long": 0.5909,
+          "share_flat": 0.4091,
+          "state_changes": 24,
+          "dominant_state_share": 0.5909
+        },
+        "transitions": {
+          "exposure_changes": 24,
+          "round_turns": 12.0,
+          "round_turns_per_year": 1.06,
+          "within_budget": true,
+          "cost_dollars_per_unit": 3.96
+        },
+        "versus_hold_same_series": {
+          "sharpe_delta": 0.077,
+          "drawdown_improvement_pp": 12.37
+        }
+      },
+      "DEV": {
+        "arm": "DEV",
+        "rebalances": 57,
+        "strategy": {
+          "bars": 1450,
+          "years": 4.66,
+          "bars_per_year": 311.2,
+          "total_return_pct": 4.2,
+          "cagr_pct": 0.887,
+          "max_drawdown_pct": -16.19,
+          "longest_underwater_years": 3.78,
+          "ann_volatility_pct": 8.7,
+          "sharpe_rf0": 0.101
+        },
+        "hold_same_series": {
+          "bars": 1450,
+          "years": 4.66,
+          "bars_per_year": 311.2,
+          "price_first": 1938.53,
+          "price_last": 3511.1,
+          "price_mean": 2152.68,
+          "gross_dollars_per_unit": 1572.57,
+          "cost_dollars_one_round_turn": 0.33,
+          "total_return_pct": 81.1,
+          "cagr_pct": 13.593,
+          "max_drawdown_pct": -20.2,
+          "longest_underwater_years": 1.15,
+          "ann_volatility_pct": 14.69,
+          "sharpe_rf0": 0.868,
+          "annual_dollar_gain_per_unit": 337.47
+        },
+        "exposure": {
+          "observations": 1450,
+          "share_long": 0.3414,
+          "share_flat": 0.6586,
+          "state_changes": 12,
+          "dominant_state_share": 0.6586
+        },
+        "transitions": {
+          "exposure_changes": 12,
+          "round_turns": 6.0,
+          "round_turns_per_year": 1.29,
+          "within_budget": true,
+          "cost_dollars_per_unit": 1.98
+        },
+        "versus_hold_same_series": {
+          "sharpe_delta": -0.767,
+          "drawdown_improvement_pp": 4.01
+        }
+      }
+    },
+    "DFII10_24m": {
+      "TRAIN": {
+        "arm": "TRAIN",
+        "rebalances": 137,
+        "strategy": {
+          "bars": 3513,
+          "years": 11.33,
+          "bars_per_year": 309.9,
+          "total_return_pct": 80.63,
+          "cagr_pct": 5.355,
+          "max_drawdown_pct": -37.9,
+          "longest_underwater_years": 8.89,
+          "ann_volatility_pct": 13.48,
+          "sharpe_rf0": 0.387
+        },
+        "hold_same_series": {
+          "bars": 3513,
+          "years": 11.33,
+          "bars_per_year": 309.9,
+          "price_first": 950.6,
+          "price_last": 1893.68,
+          "price_mean": 1377.12,
+          "gross_dollars_per_unit": 943.08,
+          "cost_dollars_one_round_turn": 0.33,
+          "total_return_pct": 99.17,
+          "cagr_pct": 6.267,
+          "max_drawdown_pct": -44.91,
+          "longest_underwater_years": 8.88,
+          "ann_volatility_pct": 15.88,
+          "sharpe_rf0": 0.383,
+          "annual_dollar_gain_per_unit": 83.2
+        },
+        "exposure": {
+          "observations": 3513,
+          "share_long": 0.6043,
+          "share_flat": 0.3957,
+          "state_changes": 18,
+          "dominant_state_share": 0.6043
+        },
+        "transitions": {
+          "exposure_changes": 18,
+          "round_turns": 9.0,
+          "round_turns_per_year": 0.79,
+          "within_budget": true,
+          "cost_dollars_per_unit": 2.97
+        },
+        "versus_hold_same_series": {
+          "sharpe_delta": 0.004,
+          "drawdown_improvement_pp": 7.01
+        }
+      },
+      "DEV": {
+        "arm": "DEV",
+        "rebalances": 57,
+        "strategy": {
+          "bars": 1450,
+          "years": 4.66,
+          "bars_per_year": 311.2,
+          "total_return_pct": 1.55,
+          "cagr_pct": 0.33,
+          "max_drawdown_pct": -13.71,
+          "longest_underwater_years": 3.48,
+          "ann_volatility_pct": 7.44,
+          "sharpe_rf0": 0.044
+        },
+        "hold_same_series": {
+          "bars": 1450,
+          "years": 4.66,
+          "bars_per_year": 311.2,
+          "price_first": 1938.53,
+          "price_last": 3511.1,
+          "price_mean": 2152.68,
+          "gross_dollars_per_unit": 1572.57,
+          "cost_dollars_one_round_turn": 0.33,
+          "total_return_pct": 81.1,
+          "cagr_pct": 13.593,
+          "max_drawdown_pct": -20.2,
+          "longest_underwater_years": 1.15,
+          "ann_volatility_pct": 14.69,
+          "sharpe_rf0": 0.868,
+          "annual_dollar_gain_per_unit": 337.47
+        },
+        "exposure": {
+          "observations": 1450,
+          "share_long": 0.3028,
+          "share_flat": 0.6972,
+          "state_changes": 4,
+          "dominant_state_share": 0.6972
+        },
+        "transitions": {
+          "exposure_changes": 4,
+          "round_turns": 2.0,
+          "round_turns_per_year": 0.43,
+          "within_budget": true,
+          "cost_dollars_per_unit": 0.66
+        },
+        "versus_hold_same_series": {
+          "sharpe_delta": -0.824,
+          "drawdown_improvement_pp": 6.49
+        }
+      }
+    },
+    "DFII5_12m": {
+      "TRAIN": {
+        "arm": "TRAIN",
+        "rebalances": 137,
+        "strategy": {
+          "bars": 3513,
+          "years": 11.33,
+          "bars_per_year": 309.9,
+          "total_return_pct": 100.45,
+          "cagr_pct": 6.327,
+          "max_drawdown_pct": -35.49,
+          "longest_underwater_years": 8.83,
+          "ann_volatility_pct": 13.22,
+          "sharpe_rf0": 0.464
+        },
+        "hold_same_series": {
+          "bars": 3513,
+          "years": 11.33,
+          "bars_per_year": 309.9,
+          "price_first": 950.6,
+          "price_last": 1893.68,
+          "price_mean": 1377.12,
+          "gross_dollars_per_unit": 943.08,
+          "cost_dollars_one_round_turn": 0.33,
+          "total_return_pct": 99.17,
+          "cagr_pct": 6.267,
+          "max_drawdown_pct": -44.91,
+          "longest_underwater_years": 8.88,
+          "ann_volatility_pct": 15.88,
+          "sharpe_rf0": 0.383,
+          "annual_dollar_gain_per_unit": 83.2
+        },
+        "exposure": {
+          "observations": 3513,
+          "share_long": 0.5964,
+          "share_flat": 0.4036,
+          "state_changes": 9,
+          "dominant_state_share": 0.5964
+        },
+        "transitions": {
+          "exposure_changes": 9,
+          "round_turns": 4.5,
+          "round_turns_per_year": 0.4,
+          "within_budget": true,
+          "cost_dollars_per_unit": 1.485
+        },
+        "versus_hold_same_series": {
+          "sharpe_delta": 0.081,
+          "drawdown_improvement_pp": 9.42
+        }
+      },
+      "DEV": {
+        "arm": "DEV",
+        "rebalances": 57,
+        "strategy": {
+          "bars": 1450,
+          "years": 4.66,
+          "bars_per_year": 311.2,
+          "total_return_pct": 19.38,
+          "cagr_pct": 3.875,
+          "max_drawdown_pct": -13.71,
+          "longest_underwater_years": 3.77,
+          "ann_volatility_pct": 9.74,
+          "sharpe_rf0": 0.39
+        },
+        "hold_same_series": {
+          "bars": 1450,
+          "years": 4.66,
+          "bars_per_year": 311.2,
+          "price_first": 1938.53,
+          "price_last": 3511.1,
+          "price_mean": 2152.68,
+          "gross_dollars_per_unit": 1572.57,
+          "cost_dollars_one_round_turn": 0.33,
+          "total_return_pct": 81.1,
+          "cagr_pct": 13.593,
+          "max_drawdown_pct": -20.2,
+          "longest_underwater_years": 1.15,
+          "ann_volatility_pct": 14.69,
+          "sharpe_rf0": 0.868,
+          "annual_dollar_gain_per_unit": 337.47
+        },
+        "exposure": {
+          "observations": 1450,
+          "share_long": 0.4124,
+          "share_flat": 0.5876,
+          "state_changes": 4,
+          "dominant_state_share": 0.5876
+        },
+        "transitions": {
+          "exposure_changes": 4,
+          "round_turns": 2.0,
+          "round_turns_per_year": 0.43,
+          "within_budget": true,
+          "cost_dollars_per_unit": 0.66
+        },
+        "versus_hold_same_series": {
+          "sharpe_delta": -0.478,
+          "drawdown_improvement_pp": 6.49
+        }
+      }
+    },
+    "DTWEXBGS_12m": {
+      "TRAIN": {
+        "arm": "TRAIN",
+        "rebalances": 137,
+        "strategy": {
+          "bars": 3513,
+          "years": 11.33,
+          "bars_per_year": 309.9,
+          "total_return_pct": 20.0,
+          "cagr_pct": 1.622,
+          "max_drawdown_pct": -34.03,
+          "longest_underwater_years": 9.32,
+          "ann_volatility_pct": 8.85,
+          "sharpe_rf0": 0.182
+        },
+        "hold_same_series": {
+          "bars": 3513,
+          "years": 11.33,
+          "bars_per_year": 309.9,
+          "price_first": 950.6,
+          "price_last": 1893.68,
+          "price_mean": 1377.12,
+          "gross_dollars_per_unit": 943.08,
+          "cost_dollars_one_round_turn": 0.33,
+          "total_return_pct": 99.17,
+          "cagr_pct": 6.267,
+          "max_drawdown_pct": -44.91,
+          "longest_underwater_years": 8.88,
+          "ann_volatility_pct": 15.88,
+          "sharpe_rf0": 0.383,
+          "annual_dollar_gain_per_unit": 83.2
+        },
+        "exposure": {
+          "observations": 3513,
+          "share_long": 0.308,
+          "share_flat": 0.692,
+          "state_changes": 27,
+          "dominant_state_share": 0.692
+        },
+        "transitions": {
+          "exposure_changes": 27,
+          "round_turns": 13.5,
+          "round_turns_per_year": 1.19,
+          "within_budget": true,
+          "cost_dollars_per_unit": 4.455
+        },
+        "versus_hold_same_series": {
+          "sharpe_delta": -0.201,
+          "drawdown_improvement_pp": 10.88
+        }
+      },
+      "DEV": {
+        "arm": "DEV",
+        "rebalances": 57,
+        "strategy": {
+          "bars": 1450,
+          "years": 4.66,
+          "bars_per_year": 311.2,
+          "total_return_pct": 15.56,
+          "cagr_pct": 3.153,
+          "max_drawdown_pct": -13.71,
+          "longest_underwater_years": 2.9,
+          "ann_volatility_pct": 8.58,
+          "sharpe_rf0": 0.362
+        },
+        "hold_same_series": {
+          "bars": 1450,
+          "years": 4.66,
+          "bars_per_year": 311.2,
+          "price_first": 1938.53,
+          "price_last": 3511.1,
+          "price_mean": 2152.68,
+          "gross_dollars_per_unit": 1572.57,
+          "cost_dollars_one_round_turn": 0.33,
+          "total_return_pct": 81.1,
+          "cagr_pct": 13.593,
+          "max_drawdown_pct": -20.2,
+          "longest_underwater_years": 1.15,
+          "ann_volatility_pct": 14.69,
+          "sharpe_rf0": 0.868,
+          "annual_dollar_gain_per_unit": 337.47
+        },
+        "exposure": {
+          "observations": 1450,
+          "share_long": 0.431,
+          "share_flat": 0.569,
+          "state_changes": 10,
+          "dominant_state_share": 0.569
+        },
+        "transitions": {
+          "exposure_changes": 10,
+          "round_turns": 5.0,
+          "round_turns_per_year": 1.07,
+          "within_budget": true,
+          "cost_dollars_per_unit": 1.65
+        },
+        "versus_hold_same_series": {
+          "sharpe_delta": -0.506,
+          "drawdown_improvement_pp": 6.49
+        }
+      }
+    },
+    "VIXCLS_vs_12m_median": {
+      "TRAIN": {
+        "arm": "TRAIN",
+        "rebalances": 137,
+        "strategy": {
+          "bars": 3513,
+          "years": 11.33,
+          "bars_per_year": 309.9,
+          "total_return_pct": 37.25,
+          "cagr_pct": 2.833,
+          "max_drawdown_pct": -23.01,
+          "longest_underwater_years": 4.15,
+          "ann_volatility_pct": 11.44,
+          "sharpe_rf0": 0.244
+        },
+        "hold_same_series": {
+          "bars": 3513,
+          "years": 11.33,
+          "bars_per_year": 309.9,
+          "price_first": 950.6,
+          "price_last": 1893.68,
+          "price_mean": 1377.12,
+          "gross_dollars_per_unit": 943.08,
+          "cost_dollars_one_round_turn": 0.33,
+          "total_return_pct": 99.17,
+          "cagr_pct": 6.267,
+          "max_drawdown_pct": -44.91,
+          "longest_underwater_years": 8.88,
+          "ann_volatility_pct": 15.88,
+          "sharpe_rf0": 0.383,
+          "annual_dollar_gain_per_unit": 83.2
+        },
+        "exposure": {
+          "observations": 3513,
+          "share_long": 0.4415,
+          "share_flat": 0.5585,
+          "state_changes": 38,
+          "dominant_state_share": 0.5585
+        },
+        "transitions": {
+          "exposure_changes": 38,
+          "round_turns": 19.0,
+          "round_turns_per_year": 1.68,
+          "within_budget": true,
+          "cost_dollars_per_unit": 6.27
+        },
+        "versus_hold_same_series": {
+          "sharpe_delta": -0.139,
+          "drawdown_improvement_pp": 21.9
+        }
+      },
+      "DEV": {
+        "arm": "DEV",
+        "rebalances": 57,
+        "strategy": {
+          "bars": 1450,
+          "years": 4.66,
+          "bars_per_year": 311.2,
+          "total_return_pct": 45.78,
+          "cagr_pct": 8.425,
+          "max_drawdown_pct": -16.84,
+          "longest_underwater_years": 2.18,
+          "ann_volatility_pct": 10.92,
+          "sharpe_rf0": 0.741
+        },
+        "hold_same_series": {
+          "bars": 1450,
+          "years": 4.66,
+          "bars_per_year": 311.2,
+          "price_first": 1938.53,
+          "price_last": 3511.1,
+          "price_mean": 2152.68,
+          "gross_dollars_per_unit": 1572.57,
+          "cost_dollars_one_round_turn": 0.33,
+          "total_return_pct": 81.1,
+          "cagr_pct": 13.593,
+          "max_drawdown_pct": -20.2,
+          "longest_underwater_years": 1.15,
+          "ann_volatility_pct": 14.69,
+          "sharpe_rf0": 0.868,
+          "annual_dollar_gain_per_unit": 337.47
+        },
+        "exposure": {
+          "observations": 1450,
+          "share_long": 0.4628,
+          "share_flat": 0.5372,
+          "state_changes": 18,
+          "dominant_state_share": 0.5372
+        },
+        "transitions": {
+          "exposure_changes": 18,
+          "round_turns": 9.0,
+          "round_turns_per_year": 1.93,
+          "within_budget": true,
+          "cost_dollars_per_unit": 2.97
+        },
+        "versus_hold_same_series": {
+          "sharpe_delta": -0.127,
+          "drawdown_improvement_pp": 3.36
+        }
+      }
+    }
+  },
+  "alpha": 0.05,
+  "diagnostic_cells": 8,
+  "alpha_bonferroni": 0.00625,
+  "power": {
+    "train_state_changes": 15,
+    "min_required": 6,
+    "underpowered": false,
+    "train_dominant_state_share": 0.6325,
+    "max_allowed": 0.9,
+    "uninformative": false
+  },
+  "criteria": {
+    "TRAIN": {
+      "sharpe_beats_hold_same_series": true,
+      "sharpe_beats_report_h1_benchmark": true,
+      "drawdown_shallower_than_hold_same_series": true,
+      "drawdown_shallower_than_report_h1_benchmark": true,
+      "within_transition_budget": true
+    },
+    "DEV": {
+      "sharpe_beats_hold_same_series": false,
+      "sharpe_beats_report_h1_benchmark": false,
+      "drawdown_shallower_than_hold_same_series": true,
+      "drawdown_shallower_than_report_h1_benchmark": true,
+      "within_transition_budget": true
+    }
+  },
+  "verdict": "NOT SUPPORTED"
+}

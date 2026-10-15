@@ -1,0 +1,124 @@
+{
+  "universe": 64,
+  "kept": 29,
+  "by_category": {
+    "index": {
+      "offered": 26,
+      "full_trading": 0,
+      "kept": 0
+    },
+    "metal": {
+      "offered": 10,
+      "full_trading": 7,
+      "kept": 2
+    },
+    "fx": {
+      "offered": 28,
+      "full_trading": 28,
+      "kept": 27
+    }
+  },
+  "account_sizes": {
+    "10": {
+      "reachable": true,
+      "min_equity_usd": 4780.391677038387,
+      "symbols": [
+        "AUDNZD",
+        "AUDCAD",
+        "CADCHF",
+        "USDCAD",
+        "NZDUSD",
+        "EURGBP",
+        "EURCHF",
+        "CADJPY",
+        "AUDUSD",
+        "AUDCHF"
+      ]
+    },
+    "15": {
+      "reachable": true,
+      "min_equity_usd": 7154.517151370767,
+      "symbols": [
+        "AUDNZD",
+        "AUDCAD",
+        "CADCHF",
+        "USDCAD",
+        "NZDUSD",
+        "EURGBP",
+        "EURCHF",
+        "CADJPY",
+        "AUDUSD",
+        "AUDCHF",
+        "EURCAD",
+        "EURNZD",
+        "AUDJPY",
+        "GBPCAD",
+        "USDCHF"
+      ]
+    },
+    "20": {
+      "reachable": true,
+      "min_equity_usd": 9092.151285371256,
+      "symbols": [
+        "AUDNZD",
+        "AUDCAD",
+        "CADCHF",
+        "USDCAD",
+        "NZDUSD",
+        "EURGBP",
+        "EURCHF",
+        "CADJPY",
+        "AUDUSD",
+        "AUDCHF",
+        "EURCAD",
+        "EURNZD",
+        "AUDJPY",
+        "GBPCAD",
+        "USDCHF",
+        "EURAUD",
+        "EURUSD",
+        "CHFJPY",
+        "EURJPY",
+        "GBPAUD"
+      ]
+    },
+    "25": {
+      "reachable": true,
+      "min_equity_usd": 42506.56495818888,
+      "symbols": [
+        "AUDNZD",
+        "AUDCAD",
+        "CADCHF",
+        "USDCAD",
+        "NZDUSD",
+        "EURGBP",
+        "EURCHF",
+        "CADJPY",
+        "AUDUSD",
+        "AUDCHF",
+        "EURCAD",
+        "EURNZD",
+        "AUDJPY",
+        "GBPCAD",
+        "USDCHF",
+        "EURAUD",
+        "EURUSD",
+        "CHFJPY",
+        "EURJPY",
+        "GBPAUD",
+        "GBPUSD",
+        "GBPCHF",
+        "USDJPY",
+        "GBPJPY",
+        "NZDCAD"
+      ]
+    }
+  },
+  "swap_cost_flags": [
+    "AUDCAD",
+    "AUDCHF",
+    "AUDUSD",
+    "EURAUD",
+    "NZDCHF"
+  ]
+}

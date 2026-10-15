@@ -1,0 +1,46 @@
+{
+ "frozen_tolerances": {
+  "daily_close_abs": 0.0,
+  "sma_relative": 1e-13,
+  "signal_disagreements": 0,
+  "exposure_disagreements": 0,
+  "execution_index_disagreements": 0
+ },
+ "causal_reconstruction": {
+  "probes": 60,
+  "seed": 20261007,
+  "observed": {
+   "daily_close_abs": 0.0,
+   "sma_relative": 3.462803078980728e-16,
+   "disagreements": {
+    "signal": 0,
+    "exec_index": 0
+   }
+  },
+  "lookahead_audit": {
+   "bars_checked": 64281,
+   "violations": 0
+  },
+  "PASS": true
+ },
+ "no_feature_mining": {
+  "windows_tested": [
+   100,
+   50,
+   200
+  ],
+  "primary_fixed": 100,
+  "statement": "one signal definition, one primary window, one cadence, one exposure ladder, one execution rule. SMA50/200 are disclosure."
+ },
+ "dev_tuning": {
+  "anything_refit_on_dev": false
+ },
+ "final_oos": {
+  "loaded": false,
+  "token": "OOS-AUTHORISATION-NOT-ISSUED"
+ },
+ "cost_convention": {
+  "used": "1 x spread per round turn, USD (research convention)",
+  "conflict_recorded": "execution/fills.py FillModel applies the full spread on both entry and exit = 2x per round turn, in pips. Not used here; recorded, not repaired."
+ }
+}

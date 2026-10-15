@@ -1,0 +1,18 @@
+{
+  "by_state": {},
+  "cancelled": 0,
+  "control_conditions": {
+    "cross_session_cancellation": "DISABLED [EXPERIMENTAL CONTROL]",
+    "expiry": "DISABLED [EXPERIMENTAL CONTROL]",
+    "note": "Research condition only. NOT a live-trading policy: an order with no expiry and no invalidation must not rest indefinitely against a real broker.",
+    "zone_invalidation": "DISABLED [EXPERIMENTAL CONTROL]"
+  },
+  "expired": 0,
+  "fill_rate": null,
+  "filled": 0,
+  "invalidated": 0,
+  "orders": [],
+  "pending_created": 0,
+  "reached_but_unfilled": 0,
+  "still_waiting": 0
+}

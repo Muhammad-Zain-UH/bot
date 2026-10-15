@@ -1,0 +1,6 @@
+{
+  "timestamp": "2026-09-16T00:00:00",
+  "total_trades": 0,
+  "trades": [],
+  "_note": "Reset during Phase 0 safety cleanup. Prior contents were two test fixtures (XAUUSD_001/XAUUSD_002 @ 2450/2460) that were never real broker positions and were consuming live trade slots. Original archived at archive/2026-09-16_active_trades_phantom.json."
+}

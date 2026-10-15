@@ -1,0 +1,138 @@
+{
+  "indices": 26,
+  "history_ok": [
+    "CHINA50"
+  ],
+  "trade_modes": {
+    "0": 26
+  },
+  "universe_if_enabled": 30,
+  "account_sizes": {
+    "10": {
+      "min_equity_usd": 4780.391677038387,
+      "symbols": [
+        "AUDNZD",
+        "AUDCAD",
+        "CADCHF",
+        "USDCAD",
+        "NZDUSD",
+        "EURGBP",
+        "EURCHF",
+        "CADJPY",
+        "AUDUSD",
+        "AUDCHF"
+      ]
+    },
+    "15": {
+      "min_equity_usd": 7154.517151370767,
+      "symbols": [
+        "AUDNZD",
+        "AUDCAD",
+        "CADCHF",
+        "USDCAD",
+        "NZDUSD",
+        "EURGBP",
+        "EURCHF",
+        "CADJPY",
+        "AUDUSD",
+        "AUDCHF",
+        "EURCAD",
+        "EURNZD",
+        "AUDJPY",
+        "GBPCAD",
+        "USDCHF"
+      ]
+    },
+    "20": {
+      "min_equity_usd": 9092.151285371256,
+      "symbols": [
+        "AUDNZD",
+        "AUDCAD",
+        "CADCHF",
+        "USDCAD",
+        "NZDUSD",
+        "EURGBP",
+        "EURCHF",
+        "CADJPY",
+        "AUDUSD",
+        "AUDCHF",
+        "EURCAD",
+        "EURNZD",
+        "AUDJPY",
+        "GBPCAD",
+        "USDCHF",
+        "EURAUD",
+        "EURUSD",
+        "CHFJPY",
+        "EURJPY",
+        "GBPAUD"
+      ]
+    },
+    "25": {
+      "min_equity_usd": 37228.426119830765,
+      "symbols": [
+        "AUDNZD",
+        "AUDCAD",
+        "CADCHF",
+        "USDCAD",
+        "NZDUSD",
+        "EURGBP",
+        "EURCHF",
+        "CADJPY",
+        "AUDUSD",
+        "AUDCHF",
+        "EURCAD",
+        "EURNZD",
+        "AUDJPY",
+        "GBPCAD",
+        "USDCHF",
+        "EURAUD",
+        "EURUSD",
+        "CHFJPY",
+        "EURJPY",
+        "GBPAUD",
+        "GBPUSD",
+        "GBPCHF",
+        "USDJPY",
+        "GBPJPY",
+        "CHINA50"
+      ]
+    },
+    "30": {
+      "min_equity_usd": 88127.33536199841,
+      "symbols": [
+        "AUDNZD",
+        "AUDCAD",
+        "CADCHF",
+        "USDCAD",
+        "NZDUSD",
+        "EURGBP",
+        "EURCHF",
+        "CADJPY",
+        "AUDUSD",
+        "AUDCHF",
+        "EURCAD",
+        "EURNZD",
+        "AUDJPY",
+        "GBPCAD",
+        "USDCHF",
+        "EURAUD",
+        "EURUSD",
+        "CHFJPY",
+        "EURJPY",
+        "GBPAUD",
+        "GBPUSD",
+        "GBPCHF",
+        "USDJPY",
+        "GBPJPY",
+        "CHINA50",
+        "NZDCAD",
+        "NZDCHF",
+        "NZDJPY",
+        "XAUUSD",
+        "XAGUSD"
+      ]
+    }
+  },
+  "fetched_utc": "2026-10-13T10:55:31+00:00"
+}

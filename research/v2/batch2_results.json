@@ -1,0 +1,306 @@
+{
+  "specs": [
+    "research/v2/H10_SPEC.md",
+    "research/v2/H11_SPEC.md"
+  ],
+  "spec_commit": "3fffc24",
+  "verdicts": {
+    "H10": "NOT SUPPORTED",
+    "H11": "NOT SUPPORTED"
+  },
+  "conditions": {
+    "H10": {
+      "train_sharpe_gt_0": true,
+      "dev_sharpe_gt_0": true,
+      "train_era_rule": false
+    },
+    "H11": {
+      "train_sharpe_above_benchmark": true,
+      "train_drawdown_below_benchmark": false,
+      "dev_sharpe_above_benchmark": false,
+      "dev_drawdown_below_benchmark": false,
+      "train_excess_era_rule": false
+    }
+  },
+  "era_rules": {
+    "H10": {
+      "total": 0.35486439781307205,
+      "shares": {
+        "2004-06 -> 2008": 0.47480483324521816,
+        "2009-01 -> 2012": 0.6263601685558836,
+        "2013-01 -> 2016": -0.38682787616972797,
+        "2017-01 -> 2020": 0.28566287436862625
+      },
+      "pass": false
+    },
+    "H11_excess": {
+      "total": -0.09593287897165197,
+      "shares": {
+        "2004-06 -> 2008": 0.8549086771460104,
+        "2009-01 -> 2012": -0.7491009755090967,
+        "2013-01 -> 2016": 1.760892346219266,
+        "2017-01 -> 2020": -0.8667000478561797
+      },
+      "pass": false
+    }
+  },
+  "TRAIN_D1": {
+    "1x": {
+      "H10": {
+        "metrics": {
+          "sessions": 3991,
+          "years": 15.55,
+          "sharpe": 0.2659661004412451,
+          "sharpe_se": 0.2580342441432129,
+          "cagr": 0.023082708498159965,
+          "max_drawdown": 0.3210596252000879,
+          "longest_underwater_days": 2744,
+          "turnover_per_year": 9.173475527518438,
+          "corr_buy_and_hold": 0.33932951436652625,
+          "total_net_log": 0.3548643978130719
+        },
+        "first_session": "2005-06-20",
+        "last_session": "2020-12-31",
+        "eras": {
+          "2004-06 -> 2008": 0.16849133122830043,
+          "2009-01 -> 2012": 0.22227292402867793,
+          "2013-01 -> 2016": -0.13727144133428013,
+          "2017-01 -> 2020": 0.10137158389037382
+        }
+      },
+      "H11": {
+        "metrics": {
+          "sessions": 3991,
+          "years": 15.55,
+          "sharpe": 0.32029446824833874,
+          "sharpe_se": 0.26001111863335563,
+          "cagr": 0.05097962730835559,
+          "max_drawdown": 0.5627640128889957,
+          "longest_underwater_days": 3419,
+          "turnover_per_year": 4.607526980283318,
+          "corr_buy_and_hold": 0.9213266159582759,
+          "total_net_log": 0.7732060239611751
+        },
+        "first_session": "2005-06-20",
+        "last_session": "2020-12-31",
+        "eras": {
+          "2004-06 -> 2008": 0.37144950461910453,
+          "2009-01 -> 2012": 0.6264897664011825,
+          "2013-01 -> 2016": -0.6512111007833709,
+          "2017-01 -> 2020": 0.4264778537242591
+        }
+      },
+      "H11_benchmark": {
+        "metrics": {
+          "sessions": 3991,
+          "years": 15.55,
+          "sharpe": 0.3081184772523081,
+          "sharpe_se": 0.2595375829371478,
+          "cagr": 0.05748334414103007,
+          "max_drawdown": 0.5050463429827841,
+          "longest_underwater_days": 3405,
+          "turnover_per_year": 0.06430719118015533,
+          "corr_buy_and_hold": 0.9999383841542117,
+          "total_net_log": 0.8691389029328269
+        },
+        "first_session": "2005-06-20",
+        "last_session": "2020-12-31",
+        "eras": {
+          "2004-06 -> 2008": 0.45346335527556786,
+          "2009-01 -> 2012": 0.5546263531801218,
+          "2013-01 -> 2016": -0.4822836284514096,
+          "2017-01 -> 2020": 0.3433328229285472
+        }
+      },
+      "H11_excess_eras": {
+        "2004-06 -> 2008": -0.0820138506564633,
+        "2009-01 -> 2012": 0.0718634132210606,
+        "2013-01 -> 2016": -0.16892747233196112,
+        "2017-01 -> 2020": 0.08314503079571185
+      }
+    },
+    "2x": {
+      "H10": {
+        "metrics": {
+          "sessions": 3991,
+          "years": 15.55,
+          "sharpe": 0.25528779550529807,
+          "sharpe_se": 0.2576872149783723,
+          "cagr": 0.02214461642327681,
+          "max_drawdown": 0.32497404879957514,
+          "longest_underwater_days": 2744,
+          "turnover_per_year": 9.173475527518438,
+          "corr_buy_and_hold": 0.3394365953591856,
+          "total_net_log": 0.3405993127437845
+        },
+        "first_session": "2005-06-20",
+        "last_session": "2020-12-31",
+        "eras": {
+          "2004-06 -> 2008": 0.16611015294964437,
+          "2009-01 -> 2012": 0.21920544160949598,
+          "2013-01 -> 2016": -0.1410978756280124,
+          "2017-01 -> 2020": 0.09638159381265676
+        }
+      },
+      "H11": {
+        "metrics": {
+          "sessions": 3991,
+          "years": 15.55,
+          "sharpe": 0.3173208356849394,
+          "sharpe_se": 0.25989385816979654,
+          "cagr": 0.05049549715020363,
+          "max_drawdown": 0.5642607496586922,
+          "longest_underwater_days": 3419,
+          "turnover_per_year": 4.607526980283318,
+          "corr_buy_and_hold": 0.9213274047946077,
+          "total_net_log": 0.7660411534455661
+        },
+        "first_session": "2005-06-20",
+        "last_session": "2020-12-31",
+        "eras": {
+          "2004-06 -> 2008": 0.3699689064087458,
+          "2009-01 -> 2012": 0.6245177896698102,
+          "2013-01 -> 2016": -0.6532786774331569,
+          "2017-01 -> 2020": 0.4248331348001671
+        }
+      },
+      "H11_benchmark": {
+        "metrics": {
+          "sessions": 3991,
+          "years": 15.55,
+          "sharpe": 0.3080828987470234,
+          "sharpe_se": 0.2595362249026812,
+          "cagr": 0.05747654378453748,
+          "max_drawdown": 0.5050463429827841,
+          "longest_underwater_days": 3405,
+          "turnover_per_year": 0.06430719118015533,
+          "corr_buy_and_hold": 0.9999378187170801,
+          "total_net_log": 0.8690389029328269
+        },
+        "first_session": "2005-06-20",
+        "last_session": "2020-12-31",
+        "eras": {
+          "2004-06 -> 2008": 0.45336335527556787,
+          "2009-01 -> 2012": 0.5546263531801218,
+          "2013-01 -> 2016": -0.4822836284514096,
+          "2017-01 -> 2020": 0.3433328229285472
+        }
+      },
+      "H11_excess_eras": {
+        "2004-06 -> 2008": -0.08339444886682196,
+        "2009-01 -> 2012": 0.06989143648968824,
+        "2013-01 -> 2016": -0.1709950489817472,
+        "2017-01 -> 2020": 0.0815003118716199
+      }
+    }
+  },
+  "DEV": {
+    "1x": {
+      "H10": {
+        "metrics": {
+          "sessions": 1199,
+          "years": 4.67,
+          "sharpe": 0.03035646715661998,
+          "sharpe_se": 0.4627656043015595,
+          "cagr": 0.0026098834158634343,
+          "max_drawdown": 0.25637410655172166,
+          "longest_underwater_days": 1552,
+          "turnover_per_year": 8.412090534875066,
+          "corr_buy_and_hold": 0.5126253301239531,
+          "total_net_log": 0.012176792587472007
+        },
+        "first_session": "2021-01-11",
+        "last_session": "2025-09-01"
+      },
+      "H11": {
+        "metrics": {
+          "sessions": 1199,
+          "years": 4.67,
+          "sharpe": 0.5350297713606044,
+          "sharpe_se": 0.4946620071478043,
+          "cagr": 0.0847397299782271,
+          "max_drawdown": 0.25382780037632613,
+          "longest_underwater_days": 769,
+          "turnover_per_year": 5.401244847357151,
+          "corr_buy_and_hold": 0.9659397259313989,
+          "total_net_log": 0.37999903969057747
+        },
+        "first_session": "2021-01-11",
+        "last_session": "2025-09-01"
+      },
+      "H11_benchmark": {
+        "metrics": {
+          "sessions": 1199,
+          "years": 4.67,
+          "sharpe": 0.5493566816039994,
+          "sharpe_se": 0.4963398614272598,
+          "cagr": 0.08420181435669272,
+          "max_drawdown": 0.2262481984226159,
+          "longest_underwater_days": 763,
+          "turnover_per_year": 0.21405337781484568,
+          "corr_buy_and_hold": 0.9992408013174742,
+          "total_net_log": 0.37768178255361
+        },
+        "first_session": "2021-01-11",
+        "last_session": "2025-09-01"
+      }
+    },
+    "2x": {
+      "H10": {
+        "metrics": {
+          "sessions": 1199,
+          "years": 4.67,
+          "sharpe": 0.020557412100884243,
+          "sharpe_se": 0.4627079079325795,
+          "cagr": 0.0017668335451239692,
+          "max_drawdown": 0.2583968754736945,
+          "longest_underwater_days": 1552,
+          "turnover_per_year": 8.412090534875066,
+          "corr_buy_and_hold": 0.512767483401969,
+          "total_net_log": 0.008246889391946954
+        },
+        "first_session": "2021-01-11",
+        "last_session": "2025-09-01"
+      },
+      "H11": {
+        "metrics": {
+          "sessions": 1199,
+          "years": 4.67,
+          "sharpe": 0.531459886805371,
+          "sharpe_se": 0.4942499615515138,
+          "cagr": 0.08415399368999554,
+          "max_drawdown": 0.2544359528498341,
+          "longest_underwater_days": 773,
+          "turnover_per_year": 5.401244847357151,
+          "corr_buy_and_hold": 0.9659458249321329,
+          "total_net_log": 0.37747572288871456
+        },
+        "first_session": "2021-01-11",
+        "last_session": "2025-09-01"
+      },
+      "H11_benchmark": {
+        "metrics": {
+          "sessions": 1199,
+          "years": 4.67,
+          "sharpe": 0.5492155650767444,
+          "sharpe_se": 0.4963231467977253,
+          "cagr": 0.0841786068990158,
+          "max_drawdown": 0.2262481984226159,
+          "longest_underwater_days": 763,
+          "turnover_per_year": 0.21405337781484568,
+          "corr_buy_and_hold": 0.9992516729787092,
+          "total_net_log": 0.37758178255361
+        },
+        "first_session": "2021-01-11",
+        "last_session": "2025-09-01"
+      }
+    }
+  },
+  "broker_swap_reference": {
+    "available": true,
+    "swap_long": -12.6,
+    "swap_short": -4.6,
+    "swap_mode": 1,
+    "note": "reference only, not used in P&L"
+  }
+}

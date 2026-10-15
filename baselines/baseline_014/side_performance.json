@@ -1,0 +1,30 @@
+{
+  "BUY": {
+    "average_r": 0.813973,
+    "gross_loss": 12.46,
+    "gross_profit": 34.92,
+    "losses": 1,
+    "max_r": 1.982624,
+    "median_r": 1.47561,
+    "min_r": -1.016313,
+    "net_pnl": 22.46,
+    "profit_factor": 2.802568,
+    "trades": 3,
+    "win_rate": 0.666667,
+    "wins": 2
+  },
+  "SELL": {
+    "average_r": 0.806989,
+    "gross_loss": 8.4,
+    "gross_profit": 25.3025,
+    "losses": 1,
+    "max_r": 1.968254,
+    "median_r": 1.477104,
+    "min_r": -1.02439,
+    "net_pnl": 16.9025,
+    "profit_factor": 3.012202,
+    "trades": 3,
+    "win_rate": 0.666667,
+    "wins": 2
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "rows": 75015,
+  "horizons_m15_bars": {
+    "4": "1h",
+    "8": "2h",
+    "16": "4h"
+  },
+  "origins": [
+    "close[i]",
+    "mid[i]",
+    "close[i+1]",
+    "close[i+2]"
+  ],
+  "source_panel": "features.pkl",
+  "source_panel_last_utc": "2025-09-02T14:15:00+00:00",
+  "labels_with_window": {
+    "1h": 75011,
+    "2h": 75007,
+    "4h": 74999
+  },
+  "oos_isolation": "source panel truncated at DEV end, so a label needing bars past it is NaN; the last 16 M15 bars carry no 4h label",
+  "imports_from_feature_module": "none; reads only the `atr` column from the pickle",
+  "fingerprint_sha256": "020c8e50ed9ec6d9e14bc36688ecd95e7a8dbed870cfe451aa4f982ea0803c19"
+}

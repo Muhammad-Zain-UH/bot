@@ -1,0 +1,112 @@
+{
+  "E9_E10_Q3_regime_rr_deadlock": {
+    "by_regime": {
+      "DEAD_CALM": {
+        "decisions": 119,
+        "reached_l8": 0,
+        "signals": 0,
+        "tp_ratio": 1.5,
+        "valid_rr_reachable": false
+      },
+      "INTRADAY_SWING": {
+        "decisions": 1810,
+        "reached_l8": 64,
+        "signals": 0,
+        "tp_ratio": 3.0,
+        "valid_rr_reachable": true
+      },
+      "MICRO_SCALP": {
+        "decisions": 7314,
+        "reached_l8": 1322,
+        "signals": 4,
+        "tp_ratio": 1.5,
+        "valid_rr_reachable": false
+      },
+      "REGIME_SCALP": {
+        "decisions": 6492,
+        "reached_l8": 201,
+        "signals": 0,
+        "tp_ratio": 2.0,
+        "valid_rr_reachable": true
+      }
+    },
+    "causal_note": "Not an attribution. While the gate existed, entry_triggered was raw_triggered AND valid_rr, and these counts do not establish which term blocked a decision. Phase 6A measured raw_triggered directly: 4 of 1,265 were blocked by the RR gate alone.",
+    "defect": "entry_engine.calculate_entry_levels sets take_profit = entry +/- risk_distance * tp_ratio, so reward_to_risk_ratio == tp_ratio identically; valid_rr = rr >= 2.0 therefore tested the regime constant and was unsatisfiable wherever tp_ratio < 2.0 (MICRO_SCALP, DEAD_CALM).",
+    "effect_on_baseline": "Decisions in a tp_ratio<2.0 regime cannot reach an entry regardless of setup quality. Decisions that reached L8 there had already cleared every other gate, so the tautology alone accounts for them.",
+    "occurrences": 7433,
+    "reached_l8_in_unreachable_regime": 1322,
+    "reached_l8_total": 1587,
+    "regimes_not_in_mirror": [],
+    "share_of_l8_reached_in_unreachable_regime": 0.833018,
+    "status": "RETIRED in Phase 6I. The runtime gate no longer exists: entry_triggered is now raw_triggered alone. The counts below describe the decision stream as it was WHILE the gate existed and are retained as the historical record. They do not describe current behaviour."
+  },
+  "G2_U10_absolute_regime_bands": {
+    "defect": "detect_regime classifies on absolute-USD M5 ATR bands (2.5/4.5/7.0)",
+    "effect_on_baseline": "Regime selection on this dataset is a function of gold's price level during the period, not of relative volatility.",
+    "regime_distribution": {
+      "DEAD_CALM": 119,
+      "INTRADAY_SWING": 1810,
+      "MICRO_SCALP": 7314,
+      "REGIME_SCALP": 6492
+    }
+  },
+  "Q1_Q2_rr_vs_realised_r": {
+    "defect": "The strategy derives its target as risk x tp_ratio, so rr_ratio always equals the regime constant; and it prices risk against an entry it is never filled at.",
+    "distinct_reported_rr": [
+      1.5
+    ],
+    "effect_on_baseline": "Realised R differs from the reported RR on every trade. The reported value cannot be used as an outcome measure.",
+    "examples": [
+      {
+        "actual_fill_price": 3983.5250000000005,
+        "decision_time": "2026-07-17T12:40:00+00:00",
+        "difference": -2.577973,
+        "realised_r": -1.077973,
+        "strategy_entry_price": 3983.7250000000004,
+        "strategy_rr_ratio": 1.5,
+        "trade_id": "XAUUSD-20260717T133500-SELL-0001"
+      },
+      {
+        "actual_fill_price": 4257.974999999999,
+        "decision_time": "2026-08-06T08:00:00+00:00",
+        "difference": -2.112565,
+        "realised_r": -0.612565,
+        "strategy_entry_price": 4257.775,
+        "strategy_rr_ratio": 1.5,
+        "trade_id": "XAUUSD-20260806T114500-BUY-0002"
+      },
+      {
+        "actual_fill_price": 4413.435,
+        "decision_time": "2026-08-12T09:25:00+00:00",
+        "difference": 1.801508,
+        "realised_r": 3.301508,
+        "strategy_entry_price": 4413.235000000001,
+        "strategy_rr_ratio": 1.5,
+        "trade_id": "XAUUSD-20260812T092500-BUY-0003"
+      },
+      {
+        "actual_fill_price": 4607.595,
+        "decision_time": "2026-08-28T08:45:00+00:00",
+        "difference": -0.022896,
+        "realised_r": 1.477104,
+        "strategy_entry_price": 4607.795,
+        "strategy_rr_ratio": 1.5,
+        "trade_id": "XAUUSD-20260828T101000-SELL-0004"
+      }
+    ],
+    "occurrences": 4
+  },
+  "Q6_stop_buffer_units": {
+    "defect": "_select_stop_anchor subtracts buffer_pips=3.0 directly from a price, giving a $3.00 buffer",
+    "note": "Not separately measurable from the ledger without the sweep wick level, which the decision snapshot does not carry. Confirmed by inspection in Phase 2A.1 (sweep wick 2511.73 -> stop 2508.73).",
+    "occurrences": 4
+  },
+  "U9_h1_atr_gate_units": {
+    "defect": "main_production gates on h1_atr < 8.0 and reports it as 'pips'; the value is quote-currency dollars",
+    "effect_on_baseline": "Blocks every decision whose H1 mean range is below $8.00. Because the threshold is absolute USD, its selectivity depends on the price level.",
+    "observed_atr_max": null,
+    "observed_atr_min": null,
+    "occurrences": 0,
+    "threshold": 8.0
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "decisions_by_regime": {
+    "DEAD_CALM": 2312,
+    "INTRADAY_SWING": 1810,
+    "MICRO_SCALP": 5121,
+    "REGIME_SCALP": 6492
+  },
+  "decisions_by_regime_percent": {
+    "DEAD_CALM": 14.6934,
+    "INTRADAY_SWING": 11.503,
+    "MICRO_SCALP": 32.5453,
+    "REGIME_SCALP": 41.2583
+  },
+  "signals_by_regime": {}
+}

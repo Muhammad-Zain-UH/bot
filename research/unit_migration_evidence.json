@@ -1,0 +1,380 @@
+{
+  "pip_size": 0.1,
+  "dataset": "data/research_v1/bars (frozen export)",
+  "what_this_is_not": "No threshold is selected here. Pass rates describe what a value would admit; they are not evidence that it should be chosen.",
+  "sites": [
+    {
+      "id": "U8",
+      "site": "sweep_detector.py:196",
+      "code": "sweep_min = max(2.5, m15_atr * 0.12)",
+      "observations": 100020,
+      "as_is_usd": 2.5,
+      "as_intended_pips": 2.5,
+      "as_intended_usd": 0.25,
+      "factor": 10.0,
+      "pct_clearing_as_is": 20.11,
+      "pct_clearing_as_intended": 92.75,
+      "median_value_usd": 1.04,
+      "drift_by_year": [
+        {
+          "year": 2022,
+          "bars": 11973,
+          "mean_price": 1729.0,
+          "mean_value": 0.806,
+          "pct_clearing_as_is": 2.61
+        },
+        {
+          "year": 2023,
+          "bars": 23559,
+          "mean_price": 1943.0,
+          "mean_value": 0.783,
+          "pct_clearing_as_is": 2.9
+        },
+        {
+          "year": 2024,
+          "bars": 23738,
+          "mean_price": 2389.0,
+          "mean_value": 1.12,
+          "pct_clearing_as_is": 7.17
+        },
+        {
+          "year": 2025,
+          "bars": 23547,
+          "mean_price": 3443.0,
+          "mean_value": 2.09,
+          "pct_clearing_as_is": 27.57
+        },
+        {
+          "year": 2026,
+          "bars": 17203,
+          "mean_price": 4550.0,
+          "mean_value": 4.386,
+          "pct_clearing_as_is": 63.49
+        }
+      ],
+      "drift_range_pp": 60.88,
+      "note": "The max() makes this look scale-aware, but the ATR term only exceeds the constant when M15 ATR > $20.83, which happens on 1.184% of bars (the 99th percentile). On 98.816% of bars the ABSOLUTE constant binds, so the scale-invariant branch is effectively dead code. Correcting the unit alone would leave the gate nearly non-binding; the ATR coefficient 0.12 then becomes the real parameter and has never been validated."
+    },
+    {
+      "id": "U7",
+      "site": "poi_engine.py:191,229",
+      "code": "if body >= 5",
+      "observations": 100020,
+      "as_is_usd": 5.0,
+      "as_intended_pips": 5.0,
+      "as_intended_usd": 0.5,
+      "factor": 10.0,
+      "pct_clearing_as_is": 11.51,
+      "pct_clearing_as_intended": 74.85,
+      "median_value_usd": 1.18,
+      "drift_by_year": [
+        {
+          "year": 2022,
+          "bars": 11973,
+          "mean_price": 1729.0,
+          "mean_value": 1.092,
+          "pct_clearing_as_is": 1.41
+        },
+        {
+          "year": 2023,
+          "bars": 23559,
+          "mean_price": 1943.0,
+          "mean_value": 1.035,
+          "pct_clearing_as_is": 1.43
+        },
+        {
+          "year": 2024,
+          "bars": 23738,
+          "mean_price": 2389.0,
+          "mean_value": 1.453,
+          "pct_clearing_as_is": 3.61
+        },
+        {
+          "year": 2025,
+          "bars": 23547,
+          "mean_price": 3443.0,
+          "mean_value": 2.77,
+          "pct_clearing_as_is": 14.84
+        },
+        {
+          "year": 2026,
+          "bars": 17203,
+          "mean_price": 4550.0,
+          "mean_value": 5.731,
+          "pct_clearing_as_is": 38.7
+        }
+      ],
+      "drift_range_pp": 37.29,
+      "note": "Order blocks are detected on M15; a $5 body is rare at low price levels and common at high ones."
+    },
+    {
+      "id": "U5",
+      "site": "poi_engine.py:441",
+      "code": "if 5 <= zone_size <= 15: score += 15",
+      "kind": "band, not a floor",
+      "as_is_usd_band": [
+        5.0,
+        15.0
+      ],
+      "as_intended_usd_band": [
+        0.5,
+        1.5
+      ],
+      "drift_by_year": [
+        {
+          "year": 2022,
+          "mean_price": 1729.0,
+          "pct_in_as_is_band_5_to_15_usd": 4.49,
+          "pct_in_as_intended_band_0p5_to_1p5_usd": 36.86
+        },
+        {
+          "year": 2023,
+          "mean_price": 1943.0,
+          "pct_in_as_is_band_5_to_15_usd": 4.7,
+          "pct_in_as_intended_band_0p5_to_1p5_usd": 41.11
+        },
+        {
+          "year": 2024,
+          "mean_price": 2389.0,
+          "pct_in_as_is_band_5_to_15_usd": 11.34,
+          "pct_in_as_intended_band_0p5_to_1p5_usd": 20.69
+        },
+        {
+          "year": 2025,
+          "mean_price": 3443.0,
+          "pct_in_as_is_band_5_to_15_usd": 38.13,
+          "pct_in_as_intended_band_0p5_to_1p5_usd": 4.42
+        },
+        {
+          "year": 2026,
+          "mean_price": 4550.0,
+          "pct_in_as_is_band_5_to_15_usd": 65.79,
+          "pct_in_as_intended_band_0p5_to_1p5_usd": 0.03
+        }
+      ],
+      "note": "A band moves differently from a floor: as the price level rises, zones pass THROUGH the as-is band and out the top, so the bonus can become common and then rare again. Neither edge tracks volatility."
+    },
+    {
+      "id": "U6",
+      "site": "poi_engine.py:427",
+      "code": "if displacement >= 20 / >= 10",
+      "observations": 100020,
+      "as_is_usd": 20.0,
+      "as_intended_pips": 20.0,
+      "as_intended_usd": 2.0,
+      "factor": 10.0,
+      "pct_clearing_as_is": 0.75,
+      "pct_clearing_as_intended": 33.12,
+      "median_value_usd": 1.18,
+      "drift_by_year": [
+        {
+          "year": 2022,
+          "bars": 11973,
+          "mean_price": 1729.0,
+          "mean_value": 1.092,
+          "pct_clearing_as_is": 0.03
+        },
+        {
+          "year": 2023,
+          "bars": 23559,
+          "mean_price": 1943.0,
+          "mean_value": 1.035,
+          "pct_clearing_as_is": 0.03
+        },
+        {
+          "year": 2024,
+          "bars": 23738,
+          "mean_price": 2389.0,
+          "mean_value": 1.453,
+          "pct_clearing_as_is": 0.03
+        },
+        {
+          "year": 2025,
+          "bars": 23547,
+          "mean_price": 3443.0,
+          "mean_value": 2.77,
+          "pct_clearing_as_is": 0.45
+        },
+        {
+          "year": 2026,
+          "bars": 17203,
+          "mean_price": 4550.0,
+          "mean_value": 5.731,
+          "pct_clearing_as_is": 3.67
+        }
+      ],
+      "drift_range_pp": 3.64,
+      "note": "The >= 10 tier has the same character; only the stricter tier is reported here."
+    },
+    {
+      "id": "U9",
+      "site": "main_production.py L2 gate",
+      "code": "h1_atr < L2_MIN_H1_RANGE_USD (8.0)",
+      "observations": 99988,
+      "as_is_usd": 8.0,
+      "as_intended_pips": 8.0,
+      "as_intended_usd": 0.8,
+      "factor": 10.0,
+      "pct_clearing_as_is": 12.4,
+      "pct_clearing_as_intended": 100.0,
+      "median_value_usd": 3.75,
+      "drift_by_year": [
+        {
+          "year": 2009,
+          "bars": 1940,
+          "mean_price": 1075.0,
+          "mean_value": 3.533,
+          "pct_clearing_as_is": 1.19
+        },
+        {
+          "year": 2010,
+          "bars": 5634,
+          "mean_price": 1225.0,
+          "mean_value": 3.456,
+          "pct_clearing_as_is": 0.18
+        },
+        {
+          "year": 2011,
+          "bars": 5726,
+          "mean_price": 1576.0,
+          "mean_value": 5.626,
+          "pct_clearing_as_is": 18.65
+        },
+        {
+          "year": 2012,
+          "bars": 5847,
+          "mean_price": 1669.0,
+          "mean_value": 4.121,
+          "pct_clearing_as_is": 1.39
+        },
+        {
+          "year": 2013,
+          "bars": 5874,
+          "mean_price": 1412.0,
+          "mean_value": 4.481,
+          "pct_clearing_as_is": 5.16
+        },
+        {
+          "year": 2014,
+          "bars": 5872,
+          "mean_price": 1267.0,
+          "mean_value": 3.021,
+          "pct_clearing_as_is": 0.26
+        },
+        {
+          "year": 2015,
+          "bars": 5843,
+          "mean_price": 1160.0,
+          "mean_value": 2.9,
+          "pct_clearing_as_is": 0.1
+        },
+        {
+          "year": 2016,
+          "bars": 5889,
+          "mean_price": 1250.0,
+          "mean_value": 3.431,
+          "pct_clearing_as_is": 1.21
+        },
+        {
+          "year": 2017,
+          "bars": 5861,
+          "mean_price": 1258.0,
+          "mean_value": 2.338,
+          "pct_clearing_as_is": 0.0
+        },
+        {
+          "year": 2018,
+          "bars": 5873,
+          "mean_price": 1269.0,
+          "mean_value": 2.312,
+          "pct_clearing_as_is": 0.0
+        },
+        {
+          "year": 2019,
+          "bars": 5871,
+          "mean_price": 1393.0,
+          "mean_value": 2.825,
+          "pct_clearing_as_is": 0.27
+        },
+        {
+          "year": 2020,
+          "bars": 5904,
+          "mean_price": 1773.0,
+          "mean_value": 6.025,
+          "pct_clearing_as_is": 17.17
+        },
+        {
+          "year": 2021,
+          "bars": 5900,
+          "mean_price": 1799.0,
+          "mean_value": 4.397,
+          "pct_clearing_as_is": 2.69
+        },
+        {
+          "year": 2022,
+          "bars": 5917,
+          "mean_price": 1801.0,
+          "mean_value": 4.791,
+          "pct_clearing_as_is": 3.77
+        },
+        {
+          "year": 2023,
+          "bars": 5894,
+          "mean_price": 1943.0,
+          "mean_value": 4.287,
+          "pct_clearing_as_is": 2.7
+        },
+        {
+          "year": 2024,
+          "bars": 5938,
+          "mean_price": 2389.0,
+          "mean_value": 6.044,
+          "pct_clearing_as_is": 15.06
+        },
+        {
+          "year": 2025,
+          "bars": 5899,
+          "mean_price": 3443.0,
+          "mean_value": 11.481,
+          "pct_clearing_as_is": 68.64
+        },
+        {
+          "year": 2026,
+          "bars": 4306,
+          "mean_price": 4550.0,
+          "mean_value": 24.012,
+          "pct_clearing_as_is": 100.0
+        }
+      ],
+      "drift_range_pp": 100.0,
+      "note": "The mislabelling is already fixed (the threshold is now named and printed in dollars); the VALUE is unchanged and is what drifts. Clearing the floor here means the gate does NOT block."
+    },
+    {
+      "id": "U10",
+      "site": "entry_engine.py:92-124",
+      "code": "M5 ATR bands 2.5 / 4.5 / 7.0, labelled 'pip', applied in dollars",
+      "kind": "classifier, not a floor",
+      "drift_by_year": [
+        {
+          "year": 2025,
+          "bars": 48465,
+          "mean_price": 3673.0,
+          "DEAD_CALM_pct": 35.06,
+          "MICRO_SCALP_pct": 43.03,
+          "REGIME_SCALP_pct": 17.35,
+          "INTRADAY_SWING_pct": 4.56
+        },
+        {
+          "year": 2026,
+          "bars": 51593,
+          "mean_price": 4550.0,
+          "DEAD_CALM_pct": 0.47,
+          "MICRO_SCALP_pct": 31.94,
+          "REGIME_SCALP_pct": 40.0,
+          "INTRADAY_SWING_pct": 27.59
+        }
+      ],
+      "note": "Unlike the others, these bands are NOT wrong by a factor of ten: read as dollars they produce a sensible spread of regimes. The defect is that they are ABSOLUTE. The regime selects risk-per-trade (0.75 / 1.0 / 1.5%), so the account's risk per trade is a function of gold's price level. M5 history begins 2025-04-25, so only two years are observable."
+    }
+  ]
+}

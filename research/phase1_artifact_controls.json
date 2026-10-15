@@ -1,0 +1,267 @@
+{
+  "candidate": {
+    "name": "lagged displacement mean reversion",
+    "feature": "disp_w_lag1 = (close[i-1] - close[i-1-w]) / atr[i-1], w in {4,8} M15 bars",
+    "label": "(close[i+h] - close[i]) / atr[i], h in {4,8,16} M15 bars",
+    "shares_no_price_point_with_label": true,
+    "direction": "NEGATIVE spread: high recent displacement -> lower subsequent return",
+    "classification": "A -- ROBUST CANDIDATE STRUCTURE"
+  },
+  "control_results": {
+    "1_no_shared_price_point": {
+      "method": "feature ends at close[i-1] (lag1) or close[i-2] (lag2); label starts at close[i]",
+      "disp_4": {
+        "1h": {
+          "lag0": -12.24,
+          "lag1": -4.53,
+          "lag2": -1.35
+        },
+        "2h": {
+          "lag0": -14.3,
+          "lag1": -8.4,
+          "lag2": -5.05
+        },
+        "4h": {
+          "lag0": -13.93,
+          "lag1": -10.83,
+          "lag2": -8.94
+        }
+      },
+      "disp_8": {
+        "1h": {
+          "lag0": -10.75,
+          "lag1": -4.49,
+          "lag2": -2.92
+        },
+        "2h": {
+          "lag0": -12.75,
+          "lag1": -7.65,
+          "lag2": -5.02
+        },
+        "4h": {
+          "lag0": -12.78,
+          "lag1": -9.1,
+          "lag2": -6.82
+        }
+      },
+      "disp_16": {
+        "1h": {
+          "lag0": -7.75,
+          "lag1": -2.11,
+          "lag2": 0.15
+        },
+        "2h": {
+          "lag0": -8.75,
+          "lag1": -3.99,
+          "lag2": -1.37
+        },
+        "4h": {
+          "lag0": -8.81,
+          "lag1": -6.29,
+          "lag2": -4.59
+        }
+      },
+      "retention_lag1_over_lag0": {
+        "disp_4": {
+          "1h": 0.37,
+          "2h": 0.59,
+          "4h": 0.78
+        },
+        "disp_8": {
+          "1h": 0.42,
+          "2h": 0.6,
+          "4h": 0.71
+        },
+        "disp_16": {
+          "1h": 0.27,
+          "2h": 0.46,
+          "4h": 0.71
+        }
+      },
+      "verdict": "A LARGE PART of the raw effect was endpoint coupling -- retention is only 0.27-0.42 at 1h. A substantial component SURVIVES at 2h and especially 4h with no shared price point and a two-bar gap."
+    },
+    "2_atr_denominator": {
+      "method": "label in RAW DOLLARS, removing the 1/atr[i] shared with the feature",
+      "disp_4": {
+        "1h": {
+          "atr": -4.53,
+          "usd": -3.67
+        },
+        "2h": {
+          "atr": -8.4,
+          "usd": -7.5
+        },
+        "4h": {
+          "atr": -10.83,
+          "usd": -10.61
+        }
+      },
+      "disp_8": {
+        "1h": {
+          "atr": -4.49,
+          "usd": -3.64
+        },
+        "2h": {
+          "atr": -7.65,
+          "usd": -6.98
+        },
+        "4h": {
+          "atr": -9.1,
+          "usd": -9.13
+        }
+      },
+      "verdict": "NOT an ATR-denominator artifact; at 4h the dollar result is indistinguishable."
+    },
+    "3_displacement_conditioned": {
+      "method": "not applicable to this candidate -- the feature IS displacement, so conditioning on displacement is degenerate",
+      "note": "This control is what ELIMINATED the other 48 survivors: pos_20, pos_50, ma20_dist_atr, dist_high20_atr, dist_low20_atr and close_loc all collapse to |t| < 2.5 within disp_8 strips. They are the same phenomenon measured differently, not independent structures.",
+      "examples_collapsing": {
+        "disp_4@2h": {
+          "raw": -14.3,
+          "cond_disp": -0.58
+        },
+        "pos_20@2h": {
+          "raw": -13.91,
+          "cond_disp": 0.64
+        },
+        "ma20_dist_atr@2h": {
+          "raw": -12.47,
+          "cond_disp": -0.42
+        },
+        "pos_50@4h": {
+          "raw": -9.74,
+          "cond_disp": -0.57
+        },
+        "dist_high20_atr@4h": {
+          "raw": 11.23,
+          "cond_disp": 1.05
+        }
+      }
+    },
+    "4_volatility_conditioned": {
+      "disp_4@4h": {
+        "H1_HIVOL": -6.7,
+        "H1_LOVOL": -5.4
+      },
+      "disp_8@4h": {
+        "H1_HIVOL": -6.2,
+        "H1_LOVOL": -4.3
+      },
+      "verdict": "SURVIVES in both volatility halves; not a volatility artifact."
+    },
+    "5_temporal_stability_TRAIN": {
+      "disp_4@4h": {
+        "H1": -7.6,
+        "H2": -7.7,
+        "Q1": -5.5,
+        "Q2": -5.3,
+        "Q3": -5.2,
+        "Q4": -5.8
+      },
+      "disp_8@4h": {
+        "H1": -6.6,
+        "H2": -6.3,
+        "Q1": -4.5,
+        "Q2": -4.9,
+        "Q3": -3.9,
+        "Q4": -5.1
+      },
+      "disp_4@1h": {
+        "H1": -3.3,
+        "H2": -3.2,
+        "Q1": -3.4,
+        "Q2": -1.1,
+        "Q3": -1.6,
+        "Q4": -3.0
+      },
+      "verdict": "4h is STABLE -- same sign and near-identical magnitude in all six segments. 1h is weaker and unstable (Q2 -1.1, Q3 -1.6)."
+    },
+    "6_train_to_dev_replication": {
+      "disp_4": {
+        "1h": {
+          "train": -4.53,
+          "dev": -3.42
+        },
+        "2h": {
+          "train": -8.4,
+          "dev": -5.6
+        },
+        "4h": {
+          "train": -10.83,
+          "dev": -7.78
+        }
+      },
+      "disp_8": {
+        "1h": {
+          "train": -4.49,
+          "dev": -2.99
+        },
+        "2h": {
+          "train": -7.65,
+          "dev": -4.72
+        },
+        "4h": {
+          "train": -9.1,
+          "dev": -6.53
+        }
+      },
+      "disp_16": {
+        "1h": {
+          "train": -2.11,
+          "dev": -1.95
+        },
+        "2h": {
+          "train": -3.99,
+          "dev": -2.57
+        },
+        "4h": {
+          "train": -6.29,
+          "dev": -4.35
+        }
+      },
+      "verdict": "REPLICATES: same sign at every cell, magnitude attenuated ~25-35%."
+    },
+    "7_block_shift_null": {
+      "method": "feature circularly shifted 50x with a fixed seed, breaking the feature/label link while preserving each series' own autocorrelation",
+      "null_max_abs_t_range": [
+        1.05,
+        4.6
+      ],
+      "p_exceed_all_survivors": 0.0,
+      "caveat": "This null breaks TIME ALIGNMENT. It cannot detect arithmetic coupling, which exists at every time point. Controls 1 and 2 are what addressed coupling."
+    },
+    "8_h1_regime_dependence": {
+      "disp_4@4h": {
+        "H1_BULL": -6.5,
+        "H1_NEUT": -0.0,
+        "H1_BEAR": -5.3
+      },
+      "disp_8@4h": {
+        "H1_BULL": -5.6,
+        "H1_NEUT": 0.5,
+        "H1_BEAR": -4.1
+      },
+      "population_train": {
+        "H1_BULL": "23,178 (46.4%)",
+        "H1_NEUT": "6,767 (13.5%)",
+        "H1_BEAR": "20,016 (40.1%)"
+      },
+      "verdict": "Present in BOTH H1 bull and H1 bear, ABSENT in H1 neutral. The effect is not direction-dependent, which matters because all three dataset arms are net-positive -- it is not a long-bias artifact. H1_NEUT is 13.5% of rows so power is lower there, but t = -0.0 / +0.5 is a clean zero, not a weak signal."
+    }
+  },
+  "rejected_as_artifact": {
+    "count": 48,
+    "features": [
+      "pos_20",
+      "pos_50",
+      "ma20_dist_atr",
+      "ma50_dist_atr",
+      "dist_high20_atr",
+      "dist_low20_atr",
+      "close_loc",
+      "disp_1"
+    ],
+    "reason_D_explained_by_another_family": "pos_*, ma*_dist, dist_* all collapse within disp_8 strips -- they re-encode recent displacement rather than adding information.",
+    "reason_C_coupling": "disp_1 and close_loc additionally FLIP SIGN under the mid[i] reference (disp_1@1h: -13.07 -> +18.91; close_loc@2h: -10.85 -> +11.23). A feature whose sign depends on where the label's origin is placed is measuring the origin."
+  }
+}

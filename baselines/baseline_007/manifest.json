@@ -1,0 +1,60 @@
+{
+  "bar_counts": {
+    "D1": 10,
+    "H1": 60,
+    "H4": 100,
+    "M1": 200,
+    "M15": 50,
+    "M5": 100
+  },
+  "baseline_id": "baseline_007",
+  "broker": "MetaQuotes Ltd.",
+  "created_utc": "2026-09-29T10:50:10.901274+00:00",
+  "dataset_end": "2026-09-16 12:32:00+00:00",
+  "dataset_hash": "433b7e2713babdef2ea69909a8bc6a515292dc70b0db434c0b63c256a970b07c",
+  "dataset_start": "2026-06-02 00:00:00+00:00",
+  "driving_timeframe": "M5",
+  "execution_assumptions": {
+    "apply_spread_on_exit": true,
+    "commission_per_lot": 0.0,
+    "entry_timing": "next_bar_open",
+    "intrabar_policy": "conservative",
+    "max_open_positions": 3,
+    "note": "Spread is an ASSUMPTION - no historical spread series exists for this account. Slippage and commission are zero in the baseline so their effects remain attributable later.",
+    "position_size_lots": 0.01,
+    "position_sizing_note": "FIXED size. risk_manager is NOT used: its ~10x contract-size defect (PHASE_2_ISSUES R1) would contaminate every currency figure. R-multiple is the size-independent measure.",
+    "slippage_pips": 0.0,
+    "spread_pips": 2.0,
+    "spread_source": "ASSUMED"
+  },
+  "git_commit": "9c295917d3f61fef74445df47b3db6280f4a4a7b",
+  "live_trading_enabled": false,
+  "performance": {
+    "decisions": 15735,
+    "decisions_per_second": 8.05,
+    "elapsed_seconds": 1954.04,
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.13.7"
+  },
+  "server": "MetaQuotes-Demo",
+  "strategy_entry_point": "main_production.analyze_entry",
+  "strategy_version": "9c295917d3f61fef74445df47b3db6280f4a4a7b",
+  "symbol": "XAUUSD",
+  "symbol_specification_used": {
+    "contract_size": 100.0,
+    "digits": 2,
+    "money_per_price_unit_per_lot": 100.0,
+    "pip_size": 0.1,
+    "point": 0.01,
+    "tick_size": 0.01,
+    "tick_value": 0.1
+  },
+  "timeframes": [
+    "D1",
+    "H4",
+    "H1",
+    "M15",
+    "M5",
+    "M1"
+  ]
+}

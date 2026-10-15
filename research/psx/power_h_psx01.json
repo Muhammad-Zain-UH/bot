@@ -1,0 +1,152 @@
+{
+ "note": "BLINDED power check: counts, standard deviations, autocorrelations, turnover and costs only",
+ "data_all_files_sha256": "364d79d781d482cab8b7b189656dec4b07e46df10ea7f4dc98eed807a0bc0625",
+ "panel": {
+  "companies": 613,
+  "symbol_changes_chained": 51,
+  "excluded_sectors": [
+   "MODARABAS",
+   "REAL ESTATE INVESTMENT TRUST"
+  ]
+ },
+ "holding_months": [
+  "2015-01",
+  "2026-09"
+ ],
+ "by_year": {
+  "2015": {
+   "universe_median": 100,
+   "universe_min": 100,
+   "universe_max": 100,
+   "winners_median": 33
+  },
+  "2016": {
+   "universe_median": 100,
+   "universe_min": 100,
+   "universe_max": 100,
+   "winners_median": 33
+  },
+  "2017": {
+   "universe_median": 100,
+   "universe_min": 100,
+   "universe_max": 100,
+   "winners_median": 33
+  },
+  "2018": {
+   "universe_median": 100,
+   "universe_min": 100,
+   "universe_max": 100,
+   "winners_median": 33
+  },
+  "2019": {
+   "universe_median": 100,
+   "universe_min": 100,
+   "universe_max": 100,
+   "winners_median": 33
+  },
+  "2020": {
+   "universe_median": 100,
+   "universe_min": 100,
+   "universe_max": 100,
+   "winners_median": 33
+  },
+  "2021": {
+   "universe_median": 100,
+   "universe_min": 100,
+   "universe_max": 100,
+   "winners_median": 33
+  },
+  "2022": {
+   "universe_median": 100,
+   "universe_min": 100,
+   "universe_max": 100,
+   "winners_median": 33
+  },
+  "2023": {
+   "universe_median": 100,
+   "universe_min": 100,
+   "universe_max": 100,
+   "winners_median": 33
+  },
+  "2024": {
+   "universe_median": 100,
+   "universe_min": 100,
+   "universe_max": 100,
+   "winners_median": 33
+  },
+  "2025": {
+   "universe_median": 100,
+   "universe_min": 100,
+   "universe_max": 100,
+   "winners_median": 33
+  },
+  "2026": {
+   "universe_median": 100,
+   "universe_min": 100,
+   "universe_max": 100,
+   "winners_median": 33
+  }
+ },
+ "universe_size_range": [
+  100,
+  100
+ ],
+ "turnover_one_way": {
+  "winners": {
+   "median": 0.22222435287444578,
+   "p90": 0.28453309504253965
+  },
+  "benchmark": {
+   "median": 0.07348331539766527,
+   "p90": 0.10357937920998851
+  }
+ },
+ "spread_full_universe": {
+  "median": 0.007707970699676989,
+  "p90": 0.011675663327691202,
+  "n": 14100
+ },
+ "cost_per_month_1x_median": {
+  "winners": 0.002717012321367196,
+  "benchmark": 0.0009882371679556913,
+  "excess": 0.0017745322070802398
+ },
+ "counts": {
+  "months": 141,
+  "months_universe_below_60": 0,
+  "winners_unfilled_locked_buys": 2,
+  "winners_unfilled_locked_new": 2,
+  "winners_unfilled_no_close": 17,
+  "winners_locked_sells": 5,
+  "winners_sells_no_close": 12,
+  "winners_delistings": 4,
+  "winners_zero_volume_fills": 0,
+  "benchmark_unfilled_locked_buys": 7,
+  "benchmark_unfilled_locked_new": 2,
+  "benchmark_unfilled_no_close": 29,
+  "benchmark_locked_sells": 6,
+  "benchmark_sells_no_close": 26,
+  "benchmark_delistings": 6,
+  "benchmark_zero_volume_fills": 1
+ },
+ "dispersion_1x": {
+  "sd_excess": 0.0252128079413736,
+  "ac1_excess": 0.07468344298463162,
+  "sd_winners": 0.07200926945371892,
+  "sd_benchmark": 0.07942623235934974,
+  "sd_kse100": 0.06324659317641072,
+  "kse100_months": 119
+ },
+ "power": {
+  "n": 141,
+  "nw_lags": 3,
+  "z_alpha": 2.128,
+  "z_power": 0.842,
+  "se": 0.002235394728918591,
+  "mde": 0.006639122344888216,
+  "e_ref": 0.006,
+  "mde_over_e_ref": 1.1065203908147025,
+  "power_at_e_ref": 0.7109252370096526,
+  "verdict": "UNDERPOWERED"
+ }
+}

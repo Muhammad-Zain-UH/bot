@@ -1,0 +1,48 @@
+{
+  "status": "H12 split: DEV and FINAL_OOS copied from research/research_split_manifest_h1_v1b.json",
+  "dataset": "data/h12_v1/bars, fingerprints in research/h12_fingerprints.json",
+  "FINAL_OOS_LOCKED": true,
+  "oos_authorisation_token": "OPENED-2026-10-14-EXPLORATION",
+  "oos_opening": {
+    "date": "2026-10-14",
+    "head_sha": "efa07c40467318ecddeed1e5c14d81bd3b28ac05",
+    "tag": "pre-oos-exploration",
+    "reason": "exploratory 2026 regime research, owner decision",
+    "consequence": "FINAL_OOS is no longer a clean validation set; every new strategy is validated only by a forward demo test starting 2026-10-15",
+    "previous_token": "OOS-AUTHORISATION-NOT-ISSUED"
+  },
+  "oos_unlock_requirements": [
+    "explicit written authorisation from the strategy architect",
+    "record the date, the git SHA and the candidate specification SHA at the moment it is opened",
+    "one look only; a revised candidate on a used OOS is a new candidate on a spent arm"
+  ],
+  "oos_prohibitions": [
+    "supplies no quantile cutoff",
+    "supplies no feature selection",
+    "supplies no threshold selection",
+    "supplies no candidate selection",
+    "supplies no parameter tuning"
+  ],
+  "purge_embargo": {
+    "h1_bars": 4,
+    "equivalent_hours": 4,
+    "rationale": "the longest GO horizon on H1 is 4h = 4 bars (VIABILITY_REPORT s.2); dropped AFTER each boundary so no forward window spans two arms. The existing TRAIN/DEV gap is 81.0 h, already far larger."
+  },
+  "membership_rule": "D1 sessions wholly inside [from_utc, to_utc]; H1/H4 bars with from_utc <= open <= to_utc",
+  "arms": {
+    "TRAIN_D1": {
+      "from_utc": "1970-01-01 00:00:00+00:00",
+      "to_utc": "2020-12-31 22:00:00+00:00",
+      "note": "each symbol's own start -> the 2020-12-31 17:00 New York close"
+    },
+    "DEV": {
+      "from_utc": "2021-01-04 02:00:00+00:00",
+      "to_utc": "2025-09-02 14:15:00+00:00"
+    },
+    "FINAL_OOS": {
+      "from_utc": "2025-09-02T18:30:00+00:00",
+      "to_utc": "2026-10-01T11:30:00+00:00"
+    }
+  },
+  "enforcement": "gold/data/store.load_h12 raises research.dataset_access.OOSLockedError on any FINAL_OOS read without the manifest token"
+}

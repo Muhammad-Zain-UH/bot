@@ -1,0 +1,13 @@
+{
+  "decisions_by_regime": {
+    "DEAD_CALM": 13819,
+    "MICRO_SCALP": 1863,
+    "REGIME_SCALP": 53
+  },
+  "decisions_by_regime_percent": {
+    "DEAD_CALM": 87.8233,
+    "MICRO_SCALP": 11.8398,
+    "REGIME_SCALP": 0.3368
+  },
+  "signals_by_regime": {}
+}

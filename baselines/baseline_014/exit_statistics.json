@@ -1,0 +1,40 @@
+{
+  "ambiguous_exits": 0,
+  "by_direction": {
+    "BUY": 3,
+    "SELL": 3
+  },
+  "by_outcome": {
+    "STOPPED": 2,
+    "TARGET_HIT": 4
+  },
+  "by_outcome_and_direction": {
+    "BUY": {
+      "STOPPED": 1,
+      "TARGET_HIT": 2
+    },
+    "SELL": {
+      "STOPPED": 1,
+      "TARGET_HIT": 2
+    }
+  },
+  "by_outcome_and_regime": {
+    "MICRO_SCALP": {
+      "STOPPED": 1,
+      "TARGET_HIT": 2
+    },
+    "REGIME_SCALP": {
+      "STOPPED": 1,
+      "TARGET_HIT": 2
+    }
+  },
+  "by_outcome_and_session": {
+    "London": {
+      "STOPPED": 2,
+      "TARGET_HIT": 3
+    },
+    "NewYork": {
+      "TARGET_HIT": 1
+    }
+  }
+}

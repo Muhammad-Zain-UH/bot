@@ -1,0 +1,137 @@
+{
+  "guardrails_implemented": {
+    "G1_raw_conditional_statistics": "PASS -- n/mean/median/sd/se attached to every cell before aggregation",
+    "G2_non_overlapping_headline": "PASS -- headline is always the non-overlapping estimate; unweighted block means are never a headline",
+    "G3_block_secondary_and_sign_check": "PASS -- block stats carried as secondary with weighting; ESTIMATOR_SIGN_DISAGREEMENT raised on sign conflict",
+    "G4_weighting_disclosure": "PASS -- Weighting class; block_stats cannot return a value without a label",
+    "G5_overlap_ratio": "PASS -- raw n, non-overlapping n and ratio on every forward-looking cell",
+    "G6_forward_window_audit": "PASS -- headline samples audited for disjointness (min gap >= horizon)",
+    "G7_causal_reconstruction": "PASS -- feature panel verified by prefix rebuild, 0.0 deviation on 37 features",
+    "G8_train_dev_truncation": "PASS -- panel truncated at the DEV boundary before computation; asserted at load",
+    "G9_final_oos_lock": "PASS -- dataset_access raises OOSLockedError; token unchanged",
+    "G10_multiple_testing": "PASS -- hypothesis count, nominal alpha, expected null exceedances, Bonferroni and BH reported"
+  },
+  "required_fixtures": {
+    "estimator_sign_disagreement_fixture": {
+      "result": "CAUGHT",
+      "construction": "12 observations at +0.5 in dense blocks, 1 at -4.0 in sparse blocks",
+      "raw_mean": 0.1515,
+      "block_mean": -1.7511,
+      "flags_raised": [
+        "ESTIMATOR_SIGN_DISAGREEMENT",
+        "HIGH_OVERLAP_6.5x"
+      ],
+      "needs_review": true
+    },
+    "overlapping_label_fixture": {
+      "result": "COUNTS DIFFER AS EXPECTED",
+      "construction": "800 contiguous observations, horizon 16",
+      "raw_n": 800,
+      "non_overlapping_n": 50,
+      "ratio": 16.0,
+      "flag_raised": "HIGH_OVERLAP_16.0x"
+    }
+  },
+  "clean_scan_flag_census": {
+    "total_headline_cells": 84,
+    "cells_needing_review": 81,
+    "ESTIMATOR_SIGN_DISAGREEMENT": 43,
+    "interpretation": "43 of 84 cells show the block estimator disagreeing in SIGN with the raw difference. That is how pervasive the retracted Phase 1 failure mode was, and it is now impossible to report such a cell without the flag."
+  },
+  "worst_sign_disagreements": [
+    {
+      "cell": "disp_4@4h",
+      "raw_diff": 0.0191,
+      "block_diff": -1.1564,
+      "block_t": -13.93,
+      "correct_headline_t": -0.14
+    },
+    {
+      "cell": "disp_1@2h",
+      "raw_diff": -0.0266,
+      "block_diff": -0.6094,
+      "block_t": -14.62,
+      "correct_headline_t": -0.33
+    },
+    {
+      "cell": "disp_4@2h",
+      "raw_diff": -0.0412,
+      "block_diff": -0.6923,
+      "block_t": -14.3,
+      "correct_headline_t": -0.19
+    },
+    {
+      "cell": "ma20_dist_atr@4h",
+      "raw_diff": 0.0389,
+      "block_diff": -1.2817,
+      "block_t": -12.19,
+      "correct_headline_t": -0.12
+    }
+  ],
+  "part_c_excluded_by_construction": {
+    "features": [
+      "close_loc",
+      "dist_high20_atr",
+      "dist_low20_atr",
+      "pos_20",
+      "pos_50",
+      "pos_h1_20"
+    ],
+    "reason": "constructed from close[i] while the label is measured from close[i]; they share a price term with opposite signs and correlate arithmetically"
+  },
+  "retracted_phase1_candidates_under_clean_estimator": {
+    "disp_4@4h": {
+      "phase1_claimed_t": -13.93,
+      "clean_t": -0.14,
+      "clean_ci95": [
+        -0.2223,
+        0.1924
+      ]
+    },
+    "disp_8@4h": {
+      "phase1_claimed_t": -12.78,
+      "clean_t": -0.3,
+      "clean_ci95": [
+        -0.2681,
+        0.196
+      ]
+    },
+    "disp_4@2h": {
+      "phase1_claimed_t": -14.3,
+      "clean_t": -0.19,
+      "clean_ci95": [
+        -0.1309,
+        0.1075
+      ]
+    },
+    "verdict": "none survives; every CI straddles zero"
+  },
+  "power_disclosure": {
+    "1h": {
+      "median_n_per_tail": 2998,
+      "median_se": 0.0384,
+      "mde_2se": 0.0769,
+      "mde_bonferroni": 0.132
+    },
+    "2h": {
+      "median_n_per_tail": 1778,
+      "median_se": 0.0722,
+      "mde_2se": 0.1445,
+      "mde_bonferroni": 0.2481
+    },
+    "4h": {
+      "median_n_per_tail": 1159,
+      "median_se": 0.1318,
+      "mde_2se": 0.2636,
+      "mde_bonferroni": 0.4526
+    },
+    "note": "a null at 4h means no effect larger than ~0.45 ATR, not no effect"
+  },
+  "overlap_ratios_measured": {
+    "1h": 3.3,
+    "2h": 5.6,
+    "4h": 8.6
+  },
+  "cost_screen": "NOT REACHED -- no candidate cleared the corrected statistical threshold",
+  "verdict": "NO ROBUST CONDITIONAL STRUCTURE DETECTED"
+}

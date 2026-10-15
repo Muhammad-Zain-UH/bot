@@ -1,368 +1,1041 @@
-"""Main orchestrator — continuous monitoring loop with 3 staged gates.
+"""
+MAIN ORCHESTRATION ENGINE - 10 LAYER TRADING BOT
+Purpose: Integrate all 10 entry + exit layers into production trading flow
 
-New architecture:
-  WHILE TRUE:
-    STAGE 1 (cheap) → If gate 1 fails, sleep and continue
-    STAGE 2 (intermarket) → If gate 2 fails (hard blocks), sleep and continue
-    STAGE 3 (expensive) → If gate 3 fails, sleep and continue
-    EXECUTION → Place trade if all gates pass
-
-All expensive API calls (news, AI) only fire after cheap gates pass.
-Bot runs forever until stopped with Ctrl+C.
+System Architecture:
+  Layer 0: Pre-trade gates (daily loss, spread, news)
+  Layer 1-8: Sequential entry filters (all must pass)
+  Layer 9: Trade management (partial exits 1:1/1:2/1:3 RR)
+  Layer 10: Feedback loop (performance tracking & auto-adjustment)
 """
 
 from __future__ import annotations
-
-import os
-import signal
+import signal as signal_module
 import sys
 import time
-from datetime import datetime, timezone
-from typing import Any
+from datetime import datetime, timezone, timedelta
+import csv
+import os
+import logging
+from typing import Dict, List, Optional, Tuple
 
-import config
-import stage1
-import stage2
-import stage3
-from key_levels import build_pivot_context
-from mt5_handler import connect_mt5, get_market_data, shutdown_mt5
-from risk_manager import (
-    get_current_session,
-    get_daily_pnl_pct,
-    get_session_score_threshold,
-    is_daily_loss_limit_hit,
-    is_good_trading_session,
-    is_market_open,
-)
-from signal_logger import log_signal
-from utils import log_debug
-from utils.display import (
-    format_cooldown,
-    format_error,
-    format_execute_header,
-    format_hard_block,
-    format_monitor_status_line,
-)
-from utils.result_writer import write_result_txt, write_signal_expired
-from utils.sleep import calculate_sleep_time
-import MetaTrader5 as mt5
+# Core foundations (Phase 1). Imported unguarded on purpose -- schema
+# enforcement must not be silently absent.
+from core.signal_log import SIGNAL_LOG_COLUMNS as CORE_SIGNAL_LOG_COLUMNS
+from core.signal_log import append_signal_row
+from core.safety import LIVE_TRADING_ENABLED, assert_live_trading_disabled
 
+# Try to import MT5 handler (optional for live trading)
+try:
+    import config
+    from mt5_handler import connect_mt5, get_market_data, shutdown_mt5, get_current_spread, get_current_price
+    import MetaTrader5 as mt5
+    MT5_AVAILABLE = True
+except ImportError:
+    MT5_AVAILABLE = False
+    print("[INFO] MT5 not available - running in analysis mode")
 
+# Import all layer modules
+try:
+    from bias_engine import get_h4_bias
+    from structure_engine import get_h1_structure
+    from pullback_detector import get_m15_pullback
+    from liquidity_engine import identify_liquidity_pools, assess_liquidity_gate
+    from sweep_detector import get_sweep_and_structure
+    from poi_engine import identify_poi, format_poi_layer_detail, build_poi_layer_data
+    from confidence_engine import get_confidence_engine, evaluate_poi_fib_confluence
+    from entry_engine import get_entry_trigger
+    from trade_manager import manage_open_trade, close_position
+    from feedback_loop import log_closed_trade, calculate_weekly_performance
+    from indicators import calculate_indicators  # ADD THIS
+    LAYERS_AVAILABLE = True
+except ImportError as e:
+    LAYERS_AVAILABLE = False
+    print(f"[WARNING] Could not import all layers: {e}")
 
-# Global control flag for graceful shutdown
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
 _SHOULD_CONTINUE = True
 
-# Track result.txt state to avoid duplicate writes
-_LAST_WRITTEN_CONF = 0
-_LAST_WRITTEN_DIRECTION = None
-_RESULT_TXT_ACTIVE = False
-_RESULT_TXT_WRITE_TIME = 0  # Unix timestamp when result.txt was last written
+# ----------------------------------------------------------------- SAFETY
+# `close_all_positions()` used to fire mt5.order_send against EVERY open
+# position on the symbol on Ctrl-C AND on normal loop exit, with no safety
+# guard of any kind -- this module did not even import core.safety.
+#
+# This module has no opening path: `open_trades` below is a local list of
+# dicts and there is no order executor and no opening order_send. So every
+# position the old closer could have found belonged to something else, and
+# closing it was never correct.
+#
+# Closing is now OFF by default, must be enabled deliberately, and even then
+# touches only tickets this process recorded as its own.
+CLOSE_POSITIONS_ON_SHUTDOWN = False
+
+# Tickets opened by THIS process. Nothing populates this today, by design,
+# because main.py cannot open a position -- so the closer has nothing to act
+# on even if the flag above is switched on.
+_OWNED_TICKETS: set[int] = set()
+
+CONFIG = {
+    "symbol": "XAUUSD",
+    "max_concurrent_trades": 3,
+    "max_daily_loss_percent": 5.0,
+    "risk_per_trade_a_plus": 1.5,
+    "risk_per_trade_a": 1.0,
+    "h4_candles_required": 100,
+    "h1_candles_required": 60,
+    "m15_candles_required": 50,
+    "m5_candles_required": 100,
+    "m1_candles_required": 200,
+}
+
+# PHASE 0.2: schema now defined once, in core/signal_log.py.
+SIGNAL_LOG_COLUMNS = list(CORE_SIGNAL_LOG_COLUMNS)
+
+# ============================================================
+# LOGGING
+# ============================================================
+
+# PHASE 0.4: environment-overridable so tests never append to production logs.
+# Defaults are unchanged.
+_MAIN_LOG_FILE = os.getenv("TRADING_BOT_MAIN_LOG_FILE", "trading_bot_main.log")
+
+# PHASE 0.2: the legacy "signal_log.csv" is archived, not reused -- its 77-column
+# header never matched the rows written into it. See core/signal_log.py and
+# archive/README.md. NOTE: main.py and main_production.py both wrote to that one
+# file with DIFFERENT column sets, which compounded the corruption; they now
+# write to separate, schema-versioned files.
+_SIGNAL_LOG_FILE = os.getenv("MAIN_SIGNAL_LOG_FILE", "signal_log_main_v2.csv")
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(_MAIN_LOG_FILE),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger('TradingBot')
+
+# ============================================================
+# SIGNAL LOGGING
+# ============================================================
+
+def _append_signal_log(log_file: str, row: dict) -> None:
+    """Append signal to the schema-versioned CSV log.
+
+    PHASE 0.2: delegates to core.signal_log, which verifies the header before
+    every append instead of only when creating the file. Row content is
+    unchanged; a leading schema_version column is added.
+    """
+    append_signal_row(log_file, row)
 
 
-def _signal_handler(signum: int, frame: Any) -> None:
-    """Handle Ctrl+C gracefully."""
+def _count_today_entry_signals(log_file: str = _SIGNAL_LOG_FILE) -> int:
+    """Count ENTRY_SIGNAL rows logged today."""
+    if not os.path.isfile(log_file):
+        return 0
+
+    today = datetime.now().date().isoformat()
+    count = 0
+    try:
+        with open(log_file, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if str(row.get("signal_type", "")).upper() != "ENTRY_SIGNAL":
+                    continue
+                timestamp = str(row.get("timestamp", ""))
+                if timestamp[:10] == today:
+                    count += 1
+    except Exception:
+        return 0
+    return count
+
+def get_session_name() -> str:
+    """Get current session name (GMT/UTC)."""
+    utc_now = datetime.now(timezone.utc)
+    hour = utc_now.hour
+    
+    # Session times in UTC (GMT) - checked in order from earliest to latest
+    if 0 <= hour < 3:              # 0 AM - 3 AM = Dead time
+        return "DEAD"
+    elif 3 <= hour < 8:            # 3 AM - 8 AM = Asian session opening
+        return "ASIAN"
+    elif 8 <= hour < 13:           # 8 AM - 1 PM = London opening
+        return "LONDON_OPEN"
+    elif 13 <= hour < 17:          # 1 PM - 5 PM = London peak
+        return "LONDON"
+    elif 17 <= hour < 21:          # 5 PM - 9 PM = New York
+        return "NY"
+    else:                          # 9 PM - midnight = US close / Dead
+        return "DEAD"
+
+def get_session_bonus() -> float:
+    """Get confidence bonus for current session."""
+    session = get_session_name()
+    if session in ["LONDON", "LONDON_OPEN", "NY"]:
+        return 8.0
+    if session == "ASIAN":
+        return -5.0
+    if session == "DEAD":
+        return -15.0
+    return 0.0
+
+
+def _extract_intraday_rsi(m15_data=None, m5_data=None) -> float | None:
+    """Prefer M15 RSI, fallback to M5 RSI for intraday confirmation."""
+    for frame in (m15_data, m5_data):
+        if frame is None or len(frame) == 0:
+            continue
+        try:
+            indicators = calculate_indicators(frame) if callable(calculate_indicators) else {}
+            rsi_value = indicators.get("rsi_14") if isinstance(indicators, dict) else None
+            if rsi_value is not None:
+                return float(rsi_value)
+        except Exception:
+            continue
+    return None
+
+# ============================================================
+# DETAILED OUTPUT FORMATTER
+# ============================================================
+
+def print_market_header(price: float = 0, session: str = ""):
+    """Print market analysis header."""
+    print(f"\n{'='*90}")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] [ANALYSIS] MARKET ANALYSIS | XAUUSD @ {price:.2f} | Session: {session}")
+    print(f"{'='*90}")
+
+def print_layer_result(layer_num: int, layer_name: str, status: str, reason: str = "", details: str = ""):
+    """Print layer analysis result."""
+    if status == "PASS":
+        symbol = "✓"
+        status_display = "PASS"
+    elif status == "BLOCK":
+        symbol = "✗"
+        status_display = "BLOCK"
+    else:
+        symbol = "⏳"
+        status_display = "WAIT"
+    
+    msg = f"  L{layer_num} [{status_display:6s}] {layer_name:20s} | {reason}"
+    if details:
+        msg += f" | {details}"
+    print(msg)
+
+def print_entry_signal(signal: Dict):
+    """Print entry signal with full details."""
+    print(f"\n{'='*90}")
+    print(f"[SIGNAL] ENTRY SIGNAL GENERATED - {signal.get('grade', 'N/A').upper()} GRADE")
+    print(f"{'='*90}")
+    print(f"  Position Type:    {signal.get('position_type', 'N/A')}")
+    print(f"  Setup Type:       {signal.get('setup_type', 'N/A')}")
+    if signal.get("entry_method"):
+        print(f"  Entry Method:     {signal.get('entry_method')}")
+    if signal.get("entry_mode"):
+        print(f"  Entry Mode:       {signal.get('entry_mode')}")
+    if signal.get("trigger_type"):
+        print(f"  Trigger Type:     {signal.get('trigger_type')}")
+    print(f"  RR Valid:         {signal.get('rr_valid', 'N/A')}")
+    print(f"  Entry Price:      {signal.get('entry_price', 0):.2f}")
+    print(f"  Stop Loss:        {signal.get('stop_loss', 0):.2f}")
+    print(f"  Take Profit:      {signal.get('take_profit', 0):.2f}")
+    print(f"  Risk/Reward:      1:{signal.get('rr_ratio', 0):.1f}")
+    print(f"  Timestamp:        {datetime.now().strftime('%H:%M:%S')}")
+    print(f"{'='*90}\n")
+
+
+def print_run_summary(analysis: Dict) -> None:
+    """Print a compact run summary for easy scanning."""
+    layers = ", ".join(analysis.get("layers_passed", [])) or "none"
+    failed = analysis.get("layer_failed") or "none"
+    reason = analysis.get("fail_reason") or ""
+    layer_8 = analysis.get("layer_8") or {}
+    entry = analysis.get("entry_signal") or {}
+
+    print("\n" + "=" * 90)
+    print(f"[RUN] {analysis.get('signal_type', 'UNKNOWN')} | passed: {layers}")
+    print(f"[RUN] failed: {failed}" + (f" | reason: {reason}" if reason else ""))
+    if layer_8:
+        print(
+            f"[RUN] setup: {layer_8.get('setup_type', 'N/A')} | "
+            f"entry_method: {layer_8.get('entry_style', 'N/A')} | "
+            f"mode: {layer_8.get('entry_mode', 'N/A')} | "
+            f"trigger: {layer_8.get('trigger_type', 'N/A')} | "
+            f"rr_valid: {layer_8.get('rr_valid', 'N/A')}"
+        )
+    if entry:
+        print(
+            f"[RUN] signal: {entry.get('position_type', 'N/A')} | "
+            f"setup: {entry.get('setup_type', 'N/A')} | "
+            f"method: {entry.get('entry_method', 'N/A')} | "
+            f"mode: {entry.get('entry_mode', 'N/A')} | "
+            f"trigger: {entry.get('trigger_type', 'N/A')} | "
+            f"rr_valid: {entry.get('rr_valid', 'N/A')} | "
+            f"RR: 1:{float(entry.get('rr_ratio', 0.0)):.1f} | "
+            f"grade: {entry.get('grade', 'N/A')}"
+        )
+    print("=" * 90)
+
+def print_no_signal(reason: str, failed_layer: str = ""):
+    """Print why no signal was generated."""
+    print(f"\n  ⏸ NO SIGNAL: {reason}")
+    if failed_layer:
+        print(f"     Blocked at: {failed_layer}")
+
+# ============================================================
+# PRE-TRADE GATE CHECKS (Layer 0)
+# ============================================================
+
+def check_pre_trade_gates(
+    account_balance: float = 0,
+    current_daily_loss: float = 0,
+    current_spread: float = 0.5
+) -> Dict:
+    """Layer 0: Pre-trade gate checks - blocks all trading if any gate fails.
+
+    **This gate is NOT wired to the account and therefore always blocks.**
+
+    It previously reassured instead. The sole caller is
+    ``check_pre_trade_gates()`` at :880 -- no arguments -- so
+    ``account_balance`` took its default of ``0``, which sent the daily-loss
+    limit down the ``else`` branch to a flat ``1000``, and ``current_daily_loss``
+    took its default of ``0``. The test was therefore ``abs(0) > 1000``: never
+    true, on every cycle, reporting "Daily loss OK (0.00 / 1000.00)". The spread
+    gate below it was likewise replaced by the comment ``# SPREAD CHECK
+    DISABLED`` and an unconditional pass.
+
+    ``main_production.py`` had the same two defects; there they were fixed, by
+    removing the defaulted parameters and calling ``core.risk_limits.evaluate``
+    (``PHASE_2_ISSUES.md`` R2, R3). That is not replicated here because
+    ``main.py`` is a dormant duplicate entry point with **no opening path at
+    all** -- ``mt5_handler`` has no ``send_order``, the caller hardcodes
+    ``None``, and no volume is passed -- so wiring a real risk gate into it
+    would imply it is a trading path, which it is not.
+
+    What is removed is the false reassurance. An inert gate that reports
+    "OK" is worse than one that refuses, because the refusal is visible.
+
+    Returns:
+        A gate result that always fails, naming why.
+    """
+    gates_passed = []
+    gates_failed = [
+        "GATE NOT WIRED: main.py's pre-trade gates are not connected to the "
+        "account. No balance, no realised P&L and no spread are supplied by the "
+        "caller, so no limit here can be evaluated. Use main_production.py, "
+        "whose gates call core.risk_limits.evaluate(). See this function's "
+        "docstring and PHASE_2_ISSUES.md R2/R3.",
+    ]
+
+    session = get_session_name()
+    if session == "DEAD":
+        gates_failed.append("DEAD SESSION: no trading between 22:00 and 03:00 UTC")
+    else:
+        gates_passed.append(f"Session OK ({session})")
+    
+    return {
+        "all_gates_passed": len(gates_failed) == 0,
+        "gates_passed": gates_passed,
+        "gates_failed": gates_failed,
+        "recommendation": "TRADING ALLOWED" if len(gates_failed) == 0 else "TRADING BLOCKED"
+    }
+
+# ============================================================
+# MAIN ENTRY ANALYSIS FLOW (Layers 1-8)
+# ============================================================
+
+def analyze_entry(
+    h4_data=None, h1_data=None, m15_data=None, 
+    m5_data=None, m1_data=None, daily_data=None,
+    current_price: float = 0
+) -> Dict:
+    """
+    Main 8-layer sequential entry analysis.
+    Stops at first layer failure (hard gates).
+    """
+    analysis = {
+        "timestamp": datetime.now().isoformat(),
+        "layers_passed": [],
+        "layer_failed": None,
+        "signal_type": "NO_SIGNAL",
+        "entry_signal": None
+    }
+
+    max_intraday_trades = getattr(globals().get("config"), "MAX_INTRADAY_TRADES_PER_DAY", 4)
+    if max_intraday_trades > 0:
+        trades_today = _count_today_entry_signals()
+        if trades_today >= max_intraday_trades:
+            analysis["signal_type"] = "PRE_ENTRY"
+            analysis["layer_failed"] = "DAILY_LIMIT"
+            analysis["fail_reason"] = f"Daily limit reached ({trades_today} trades)"
+            return analysis
+    
+    session = get_session_name()
+    print_market_header(current_price, session)
+    
+    if not LAYERS_AVAILABLE or h4_data is None:
+        analysis["signal_type"] = "ERROR"
+        analysis["fail_reason"] = "Missing data or layers not available"
+        print_layer_result(0, "Pre-Gates", "PASS", "All gates passed")
+        print_layer_result(1, "Data Check", "BLOCK", "Missing market data or layer modules")
+        return analysis
+    
+    try:
+        # Normalize direction vocab across layers
+        def _bias_to_side(bias_label: str) -> str:
+            return "BUY" if str(bias_label).upper() == "BULLISH" else "SELL"
+
+        def _normalize_session_for_conf(session_name: str) -> str:
+            s = str(session_name).upper()
+            if s in {"LONDON", "LONDON_OPEN"}:
+                return "LONDON"
+            if s == "NY":
+                return "NEWYORK"
+            if s == "ASIAN":
+                return "ASIAN"
+            if s == "DEAD":
+                return "DEAD"
+            return "OTHER"
+
+        # ============ LAYER 1: BIAS ============
+        # Calculate indicators from H4 data first
+        h4_indicators = calculate_indicators(h4_data) if h4_data is not None and len(h4_data) > 0 else {}
+        if h4_data is not None and len(h4_data) >= 2 and "closes_2" not in h4_indicators:
+            h4_indicators["closes_2"] = [float(v) for v in h4_data["close"].tail(2).tolist()]
+        bias = get_h4_bias(h4_indicators, daily_data=daily_data, h4_data=h4_data) if callable(get_h4_bias) else None
+        if not bias or bias.get("bias") == "NEUTRAL":
+            analysis["layer_failed"] = "L1_BIAS"
+            analysis["fail_reason"] = "H4 Bias is NEUTRAL"
+            analysis["signal_type"] = "PRE_ENTRY"
+            # Extract EMA details for debug output
+            ema20 = bias.get('ema20', 0) if bias else 0
+            ema50 = bias.get('ema50', 0) if bias else 0
+            ema_dist = bias.get('ema_distance', 0) if bias else 0
+            ema_threshold = bias.get('ema_threshold', 5.0) if bias else 5.0
+            reason = bias.get('reasoning', 'EMAs too close') if bias else 'Unknown'
+            print_layer_result(1, "H4 Bias", "BLOCK", f"EMA20: {ema20:.2f} | EMA50: {ema50:.2f} | Distance: {abs(ema_dist):.2f} | Threshold: {ema_threshold:.2f} | {reason}")
+            print_no_signal("Waiting for H4 bias direction", "L1_BIAS")
+            return analysis
+        analysis["layers_passed"].append("L1_BIAS")
+        analysis["layer_1"] = bias
+        bias_strength = bias.get('bias_strength', 0)
+        ema20 = bias.get('ema20', 0)
+        ema50 = bias.get('ema50', 0)
+        ema_dist = bias.get('ema_distance', 0)
+        ema_threshold = bias.get('ema_threshold', 5.0)
+        print_layer_result(1, "H4 Bias", "PASS", f"{bias.get('bias')} (EMA: {ema20:.2f}/{ema50:.2f}, dist: {abs(ema_dist):.2f}, threshold: {ema_threshold:.2f}, strength: {bias_strength:.1f}/10)")
+        side = _bias_to_side(bias.get("bias", "NEUTRAL"))
+        
+        # ============ LAYER 2: STRUCTURE ============
+        struct = get_h1_structure(h1_data, bias["bias"]) if callable(get_h1_structure) and h1_data is not None else None
+        
+        # FIX #3: Conditional L2 gate based on volatility
+        h1_atr = None
+        if h1_data is not None and len(h1_data) >= 14:
+            ranges = h1_data["high"].tail(14) - h1_data["low"].tail(14)
+            h1_atr = ranges.mean()
+        
+        struct_type = struct.get("structure_type", "UNKNOWN") if struct else "BROKEN"
+        is_high_volatility = h1_atr and h1_atr > 15.0
+
+        if struct_type == "BROKEN":
+            if is_high_volatility:
+                print_layer_result(2, "H1 Structure", "WARN", f"Structure: BROKEN (high vol {h1_atr:.1f}p) - proceeding")
+                analysis["layers_passed"].append("L2_STRUCTURE")
+            else:
+                atr_display = f"{h1_atr:.1f}" if h1_atr is not None else "N/A"
+                analysis["layer_failed"] = "L2_STRUCTURE"
+                analysis["fail_reason"] = "H1 structure broken"
+                analysis["signal_type"] = "PRE_ENTRY"
+                print_layer_result(2, "H1 Structure", "BLOCK", f"Structure broken in normal volatility ({atr_display}p)")
+                print_no_signal("H1 structure broken", "L2_STRUCTURE")
+                return analysis
+        elif struct_type == "UNKNOWN":
+            print_layer_result(2, "H1 Structure", "WARN", "Structure: UNKNOWN - proceeding with caution")
+        else:
+            analysis["layers_passed"].append("L2_STRUCTURE")
+            struct_conf = struct.get("structure_confidence", 0.0)
+            print_layer_result(2, "H1 Structure", "PASS", f"{struct_type} (confidence: {float(struct_conf):.1f}/10)")
+        
+        analysis["layer_2"] = struct
+        
+        # ============ LAYER 3: PULLBACK ============
+        pullback = get_m15_pullback(m15_data, bias["bias"]) if callable(get_m15_pullback) and m15_data is not None else None
+        
+        # FIX #2: Enforce pullback quality gate (minimum 5.0) AND pullback must be detected
+        pullback_quality = pullback.get("pullback_quality", 0.0) if pullback else 0.0
+        pullback_detected = pullback.get("pullback_detected", False) if pullback else False
+        pullback_reason = pullback.get("reasoning", "No pullback details available") if pullback else "No pullback details available"
+        pullback_warning = "WARNING: volume rising into pullback" if pullback and pullback.get("volume_warning") else ""
+        MIN_PULLBACK_QUALITY = 5.0
+        if not pullback or pullback_quality < MIN_PULLBACK_QUALITY or not pullback_detected:
+            if not pullback_detected and pullback_quality >= MIN_PULLBACK_QUALITY:
+                print_layer_result(3, "M15 Pullback", "BLOCK", f"Quality ready ({pullback_quality:.1f}/10) but pullback NOT YET formed", pullback_reason)
+            else:
+                print_layer_result(3, "M15 Pullback", "BLOCK", f"Quality too low ({pullback_quality:.1f} < {MIN_PULLBACK_QUALITY}) or no pullback", pullback_reason)
+            print_no_signal("Pullback not ready", "L3_PULLBACK")
+            analysis["signal_type"] = "PRE_ENTRY"
+            return analysis
+        
+        analysis["layers_passed"].append("L3_PULLBACK")
+        analysis["layer_3"] = pullback or {"pullback_detected": False}
+        pullback_detected = pullback.get("pullback_detected", False) if pullback else False
+        pullback_depth = pullback.get("pullback_depth_fib") if pullback else None
+        pullback_depth = pullback_depth if pullback_depth is not None else 0.0
+        pb_status = "DETECTED" if pullback_detected else "NOT YET"
+        print_layer_result(3, "M15 Pullback", "PASS", f"{pb_status} (depth: {pullback_depth:.3f}, quality: {pullback_quality:.1f}/10)", pullback_warning or pullback_reason)
+        
+        # ============ LAYER 4: LIQUIDITY ============
+        pools_result = (
+            identify_liquidity_pools(m15_data, h1_data=h1_data, h4_data=h4_data, daily_data=daily_data, current_price=current_price, side=side)
+            if callable(identify_liquidity_pools) and m15_data is not None
+            else {}
+        )
+        pool_list = pools_result.get("liquidity_pools", [])
+        sweep_pool = pools_result.get("sweep_pool")
+        tp_pool = pools_result.get("tp_pool")
+
+        liquidity_assessment = (
+            assess_liquidity_gate(sweep_pool, tp_pool, current_price, side)
+            if callable(assess_liquidity_gate)
+            else {
+                "state": "BLOCK",
+                "reason": "Liquidity assessment unavailable",
+                "sweep_score": sweep_pool.get("score", 0) if sweep_pool else 0,
+                "tp_score": tp_pool.get("score", 0) if tp_pool else 0,
+                "sweep_distance": abs(sweep_pool.get("level", 0) - current_price) if sweep_pool else None,
+                "thresholds": {},
+            }
+        )
+        liquidity_state = liquidity_assessment.get("state", "BLOCK")
+        liquidity_reason = liquidity_assessment.get("reason", "")
+        sweep_score = liquidity_assessment.get("sweep_score", sweep_pool.get("score", 0) if sweep_pool else 0)
+        tp_score = liquidity_assessment.get("tp_score", tp_pool.get("score", 0) if tp_pool else 0)
+        sweep_dist = liquidity_assessment.get("sweep_distance", abs(sweep_pool.get("level", 0) - current_price) if sweep_pool else 999)
+
+        if liquidity_state == "BLOCK":
+            analysis["layer_failed"] = "L4_LIQUIDITY"
+            analysis["fail_reason"] = liquidity_reason or "Directional liquidity targets fail safety checks (score/distance)"
+            analysis["signal_type"] = "PRE_ENTRY"
+            pool_type = sweep_pool.get("pool_type", "unknown") if sweep_pool else "missing"
+            print_layer_result(4, "Liquidity", "BLOCK", f"Sweep ({pool_type}) score={sweep_score}, dist={sweep_dist:.2f}, tp_score={tp_score} - failed safety checks")
+            print_no_signal("Sweep/TP safety checks failed", "L4_LIQUIDITY")
+            return analysis
+
+        analysis["layers_passed"].append("L4_LIQUIDITY")
+        analysis["layer_4"] = {
+            "pools_found": len(pool_list),
+            "high_quality": len([p for p in pool_list if p.get('score',0)>=70]),
+            "sweep_pool": sweep_pool,
+            "tp_pool": tp_pool,
+            "state": liquidity_state,
+            "reason": liquidity_reason,
+            "thresholds": liquidity_assessment.get("thresholds", {}),
+        }
+        liquidity_status = "PASS" if liquidity_state == "PASS" else "WARN"
+        print_layer_result(4, "Liquidity", liquidity_status, liquidity_reason or f"Found {len(pool_list)} pools", f"Sweep: {sweep_pool.get('level'):.2f} | TP: {tp_pool.get('level'):.2f}")
+        
+        # ============ LAYER 5: SWEEP ============
+        sweep = (
+            get_sweep_and_structure(m15_data, h1_data, sweep_pool["level"], side)
+            if callable(get_sweep_and_structure) and m15_data is not None and h1_data is not None
+            else None
+        )
+        sweep_gate_state = sweep.get("gate_state", "BLOCK") if sweep else "BLOCK"
+        sweep_gate_reason = sweep.get("gate_reason", "No sweep or CHoCH detected") if sweep else "No sweep or CHoCH detected"
+        if sweep_gate_state == "WATCH":
+            analysis["layer_failed"] = "L5_SWEEP_WAIT"
+            analysis["fail_reason"] = sweep_gate_reason
+            analysis["signal_type"] = "PRE_ENTRY"
+            print_layer_result(5, "Sweep/CHoCH/BOS", "WAIT", sweep_gate_reason)
+            print_no_signal("Sweep zone is active but not confirmed yet", "L5_SWEEP_WAIT")
+            return analysis
+        if not sweep or (not sweep.get("sweep_confirmed") and not sweep.get("choch_confirmed")):
+            analysis["layer_failed"] = "L5_SWEEP"
+            analysis["fail_reason"] = sweep_gate_reason
+            analysis["signal_type"] = "PRE_ENTRY"
+            print_layer_result(5, "Sweep/CHoCH/BOS", "BLOCK", sweep_gate_reason or "Waiting for liquidity sweep or structure break")
+            print_no_signal("No sweep or CHoCH detected yet", "L5_SWEEP")
+            return analysis
+        
+        # FIX #1: Validate sweep direction matches entry side (if sweep_confirmed)
+        if sweep.get("sweep_confirmed"):
+            sweep_type = sweep.get("sweep_type", "")
+            if side == "BUY" and "bearish" in sweep_type.lower():
+                analysis["layer_failed"] = "L5_SWEEP_DIRECTION"
+                analysis["fail_reason"] = f"Bearish sweep on BUY signal"
+                analysis["signal_type"] = "PRE_ENTRY"
+                print_layer_result(5, "Sweep/CHoCH/BOS", "BLOCK", f"Direction mismatch: {sweep_type} on {side}")
+                print_no_signal("Sweep direction mismatch", "L5_SWEEP_DIRECTION")
+                return analysis
+            if side == "SELL" and "bullish" in sweep_type.lower():
+                analysis["layer_failed"] = "L5_SWEEP_DIRECTION"
+                analysis["fail_reason"] = f"Bullish sweep on SELL signal"
+                analysis["signal_type"] = "PRE_ENTRY"
+                print_layer_result(5, "Sweep/CHoCH/BOS", "BLOCK", f"Direction mismatch: {sweep_type} on {side}")
+                print_no_signal("Sweep direction mismatch", "L5_SWEEP_DIRECTION")
+                return analysis
+        analysis["layers_passed"].append("L5_SWEEP")
+        analysis["layer_5"] = {
+            "sweep_confirmed": sweep.get("sweep_confirmed"),
+            "setup_grade": sweep.get("setup_grade"),
+            "state": sweep_gate_state,
+            "gate_reason": sweep_gate_reason,
+        }
+        sweep_status = "CONFIRMED" if sweep.get("sweep_confirmed") else "CHOCH"
+        setup_grade = sweep.get("setup_grade", "N/A")
+        print_layer_result(5, "Sweep/CHoCH", "PASS", f"{sweep_status} (setup grade: {setup_grade})")
+        
+        # ============ LAYER 6: POI ============
+        poi = (
+            identify_poi(m15_data, h1_data=h1_data, direction=side, current_price=current_price)
+            if callable(identify_poi) and m15_data is not None
+            else {}
+        )
+        best_poi = poi.get("best_poi")
+        poi_reason, poi_details = (
+            format_poi_layer_detail(poi, current_price)
+            if callable(format_poi_layer_detail)
+            else ("POI scan", "")
+        )
+        analysis["layer_6"] = build_poi_layer_data(poi) if callable(build_poi_layer_data) else {}
+        if not best_poi or best_poi.get("score", 0) < 70:
+            analysis["layer_failed"] = "L6_POI"
+            poi_score = best_poi.get("score", 0) if best_poi else 0
+            analysis["fail_reason"] = f"POI score too low ({poi_score:.0f} < 70)"
+            analysis["signal_type"] = "PRE_ENTRY"
+            block_reason = poi_reason if best_poi else f"No POI >= 70 (best {poi_score:.0f}/100)"
+            print_layer_result(6, "POI Quality", "BLOCK", block_reason, poi_details)
+            print_no_signal("No high-quality Point of Interest identified", "L6_POI")
+            return analysis
+        analysis["layers_passed"].append("L6_POI")
+        print_layer_result(6, "POI Quality", "PASS", poi_reason, poi_details)
+        
+        # ============ LAYER 7: CONFIDENCE ============
+        poi_fib = (
+            evaluate_poi_fib_confluence(
+                h1_data,
+                best_poi.get("top") if best_poi else None,
+                best_poi.get("bottom") if best_poi else None,
+                side,
+            )
+            if callable(evaluate_poi_fib_confluence)
+            else {"has_fib_confluence": False, "matched_levels": [], "reasoning": "Unavailable"}
+        )
+        intraday_rsi = _extract_intraday_rsi(m15_data, m5_data)
+        conf = (
+            get_confidence_engine(
+                bias_strength=bias.get("bias_strength", 0.0),
+                structure_confidence=struct.get("structure_confidence", 0.0),
+                sweep_quality=sweep.get("sweep_quality", 0.0) if sweep else 0.0,
+                poi_score=float(best_poi.get("score", 0.0)) if best_poi else 0.0,
+                session=_normalize_session_for_conf(session),
+                structure_valid=bool(struct.get("structure_valid", False)),
+                has_fib_confluence=bool(poi_fib.get("has_fib_confluence", False)),
+                rsi_value=intraday_rsi,
+                regime="DEFAULT",
+            )
+            if callable(get_confidence_engine)
+            else {}
+        )
+        if conf.get("grade") == "REJECT":
+            analysis["layer_failed"] = "L7_CONFIDENCE"
+            conf_score = conf.get('final_score', 0)
+            analysis["fail_reason"] = f"Confidence score too low ({conf_score:.1f} < 70)"
+            analysis["signal_type"] = "PRE_ENTRY"
+            print_layer_result(7, "Confidence", "BLOCK", f"Score {conf_score:.1f}/100 - REJECT grade")
+            print_no_signal("Setup confidence below threshold", "L7_CONFIDENCE")
+            return analysis
+        analysis["layers_passed"].append("L7_CONFIDENCE")
+        analysis["layer_7"] = {
+            "score": conf.get("final_score"),
+            "grade": conf.get("grade"),
+            "fib_confluence": poi_fib,
+            "rsi_value": intraday_rsi,
+        }
+        conf_score = conf.get('final_score', 0)
+        conf_grade = conf.get('grade', 'N/A')
+        fib_note = "FIB" if poi_fib.get("has_fib_confluence") else "no FIB"
+        rsi_note = f"RSI: {intraday_rsi:.1f}" if intraday_rsi is not None else "RSI: N/A"
+        print_layer_result(7, "Confidence", "PASS", f"Score: {conf_score:.1f}/100 ({conf_grade} grade, {fib_note}, {rsi_note})")
+        
+        # ============ LAYER 8: ENTRY TRIGGER ============
+        confirmed_m5_close = float(m5_data.iloc[-2]["close"]) if m5_data is not None and len(m5_data) >= 2 else current_price
+        entry = (
+            get_entry_trigger(
+                m5_data=m5_data,
+                m1_data=m1_data,
+                current_price=confirmed_m5_close,
+                direction=side,
+                sweep_wick_low=sweep.get("sweep_wick_low") if sweep else None,
+                sweep_wick_high=sweep.get("sweep_wick_high") if sweep else None,
+            )
+            if callable(get_entry_trigger) and m5_data is not None and m1_data is not None
+            else {}
+        )
+        if not entry.get("entry_triggered"):
+            analysis["layer_failed"] = "L8_ENTRY"
+            analysis["fail_reason"] = "Entry triggers not all confirmed"
+            analysis["signal_type"] = "PRE_ENTRY"
+            analysis["layer_8"] = {
+                "setup_type": entry.get("setup_type", "REJECTED"),
+                "entry_style": entry.get("entry_style", "NONE"),
+                "entry_mode": entry.get("entry_mode", "MARKET"),
+                "trigger_type": entry.get("trigger_type", "none"),
+                "rr_valid": entry.get("rr_valid", False),
+                "rr": entry.get("reward_to_risk_ratio", 0),
+                "entry_triggered": False,
+            }
+            print_layer_result(
+                8,
+                "Entry Trigger",
+                "WAIT",
+                f"Setup: {entry.get('setup_type', 'REJECTED')} | candidate: {entry.get('entry_style', 'NONE')} | waiting for M5/M1 confirmation",
+            )
+            print_no_signal("Waiting for M5/M1 entry triggers to fire", "L8_ENTRY")
+            return analysis
+        analysis["layers_passed"].append("L8_ENTRY")
+        analysis["layer_8"] = {
+            "setup_type": entry.get("setup_type", "REJECTED"),
+            "trigger_type": entry.get("trigger_type"),
+            "entry_style": entry.get("entry_style", "NONE"),
+            "entry_mode": entry.get("entry_mode", "MARKET"),
+            "rr_valid": entry.get("rr_valid", False),
+            "rr": entry.get("reward_to_risk_ratio"),
+            "entry_triggered": True,
+        }
+        trigger_type = entry.get("trigger_type", "N/A")
+        rr_ratio = entry.get("reward_to_risk_ratio", 0)
+        print_layer_result(8, "Entry Trigger", "PASS", f"{entry.get('setup_type', 'REJECTED')} | {entry.get('entry_style', 'NONE')} confirmed (RR: 1:{rr_ratio:.1f})")
+        
+        # ============ ALL LAYERS PASSED - GENERATE ENTRY SIGNAL ============
+        analysis["signal_type"] = "ENTRY_SIGNAL"
+        analysis["entry_signal"] = {
+            "position_type": "BUY" if bias["bias"] == "BULLISH" else "SELL",
+            "entry_price": entry.get("entry_price", 0),
+            "stop_loss": entry.get("stop_loss", 0),
+            "take_profit": entry.get("take_profit", 0),
+            "rr_ratio": entry.get("reward_to_risk_ratio", 0),
+            "grade": conf.get("grade", "A"),
+            "setup_type": entry.get("setup_type", "REJECTED"),
+            "entry_method": entry.get("entry_style", "NONE"),
+            "entry_mode": entry.get("entry_mode", "MARKET"),
+            "trigger_type": entry.get("trigger_type", "none"),
+            "rr_valid": entry.get("rr_valid", False),
+            "poi_type": l6_poi_type,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        print_entry_signal(analysis['entry_signal'])
+        logger.info(f"[+] ENTRY SIGNAL: {analysis['entry_signal']['position_type']} "
+                   f"@ {analysis['entry_signal']['entry_price']:.2f} "
+                   f"| {analysis['entry_signal']['setup_type']} / {analysis['entry_signal']['entry_mode']} "
+                   f"RR: {analysis['entry_signal']['rr_ratio']:.1f}:1 ({analysis['entry_signal']['grade']} grade)")
+        
+    except Exception as e:
+        analysis["layer_failed"] = "ERROR"
+        analysis["fail_reason"] = str(e)
+        logger.error(f"Error in entry analysis: {e}", exc_info=True)
+    
+    return analysis
+
+# ============================================================
+# POSITION MANAGEMENT (Layer 9)
+# ============================================================
+
+def manage_positions(open_trades: List[Dict], current_prices: Dict) -> List[Dict]:
+    """Layer 9: Update all open positions with partial exit logic."""
+    if not callable(manage_open_trade):
+        return open_trades
+    
+    for trade in open_trades:
+        try:
+            current_price = current_prices.get(trade["trade_id"], trade.get("entry_price", 0))
+            
+            mgmt = manage_open_trade(
+                trade_id=trade["trade_id"],
+                current_price=current_price,
+                entry_price=trade["entry_price"],
+                original_stop_loss=trade["stop_loss"],
+                take_profit=trade["take_profit"],
+                entry_time=trade.get("entry_time", ""),
+                position_type=trade.get("position_type", "BUY"),
+                trade_state=trade.get("state")
+            )
+            
+            trade["status"] = mgmt.get("trade_status", "OPEN")
+            trade["actions"] = mgmt.get("actions", [])
+            trade["state"] = mgmt.get("trade_state")
+            trade["last_check"] = datetime.now().isoformat()
+            
+            # Log actions
+            for action in mgmt.get("actions", []):
+                logger.info(f"[{trade['trade_id']}] {action.get('action')}: {action.get('reason')}")
+        
+        except Exception as e:
+            logger.error(f"Error managing position {trade.get('trade_id')}: {e}")
+    
+    return open_trades
+
+# ============================================================
+# SHUTDOWN
+# ============================================================
+
+def close_all_positions() -> bool:
+    """Close positions THIS PROCESS opened, and only on deliberate opt-in.
+
+    Four independent guards, any one of which stops every order:
+      1. CLOSE_POSITIONS_ON_SHUTDOWN is False by default;
+      2. core.safety.LIVE_TRADING_ENABLED is False and has no override;
+      3. MT5 must be importable;
+      4. only tickets in _OWNED_TICKETS are ever touched, and main.py has no
+         path that can add one.
+    """
+    if not CLOSE_POSITIONS_ON_SHUTDOWN:
+        logger.info("[SHUTDOWN] position closing disabled "
+                    "(CLOSE_POSITIONS_ON_SHUTDOWN is False); no orders sent")
+        return True
+    if not LIVE_TRADING_ENABLED:
+        logger.info("[SHUTDOWN] live trading disabled by core.safety; no orders sent")
+        return True
+    if not MT5_AVAILABLE:
+        return True
+    if not _OWNED_TICKETS:
+        logger.info("[SHUTDOWN] this process opened no positions; no orders sent")
+        return True
+    
+    try:
+        positions = mt5.positions_get(symbol=CONFIG["symbol"])
+        if not positions:
+            logger.info("[SHUTDOWN] No positions to close")
+            return True
+        
+        logger.info(f"[SHUTDOWN] Closing {len(positions)} position(s)...")
+        
+        for pos in positions:
+            if pos.ticket not in _OWNED_TICKETS:
+                logger.info(f"[SHUTDOWN] skipping ticket {pos.ticket}: "
+                            "not opened by this process")
+                continue
+            close_type = mt5.ORDER_TYPE_SELL if pos.type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
+            close_request = {
+                "action": mt5.TRADE_ACTION_DEAL,
+                "symbol": CONFIG["symbol"],
+                "volume": pos.volume,
+                "type": close_type,
+                "position": pos.ticket
+            }
+            
+            result = mt5.order_send(close_request)
+            if result.retcode == mt5.TRADE_RETCODE_DONE:
+                logger.info(f"[+] Position {pos.ticket} closed")
+            else:
+                logger.warning(f"[-] Failed to close position {pos.ticket}: {result.comment}")
+        
+        return True
+    
+    except Exception as e:
+        logger.error(f"Error during position closure: {e}")
+        return False
+
+def signal_handler(sig, frame):
+    """Handle shutdown signal."""
     global _SHOULD_CONTINUE
+    logger.info("[SIGNAL] Shutdown signal received")
     _SHOULD_CONTINUE = False
-    log_debug("\n[SHUTDOWN] Ctrl+C detected — stopping monitoring loop...")
-    print("\n[SHUTDOWN] Ctrl+C detected — stopping monitoring loop...")
+    close_all_positions()
+    if MT5_AVAILABLE:
+        shutdown_mt5()
+    sys.exit(0)
 
+# ============================================================
+# MAIN BOT LOOP
+# ============================================================
 
-def _safe_print(text: str) -> None:
-    """Print text with encoding error handling."""
-    try:
-        print(text)
-    except UnicodeEncodeError:
-        safe_text = text.encode('ascii', errors='replace').decode('ascii')
-        print(safe_text)
+def main():
+    """Main bot orchestration loop."""
+    global _SHOULD_CONTINUE
 
-
-def _validate_config_and_session() -> tuple[bool, str]:
-    """Validate configuration and check if market is open.
+    # Tripwire: refuses to start if the live-trading lock has been tampered
+    # with. Mirrors main_production.py:1403.
+    assert_live_trading_disabled()
     
-    Returns:
-        (is_valid, reason_if_invalid)
-    """
-    # Validate config
-    try:
-        config.validate_config()
-    except ValueError as exc:
-        return False, f"Config error: {exc}"
+    logger.info("="*70)
+    logger.info("10-LAYER TRADING BOT STARTING")
+    logger.info("="*70)
     
-    # Check if market is open
-    if not is_market_open():
-        return False, "Market is closed (weekend). Gold opens Sunday 22:00 UTC."
+    # Print system status
+    logger.info(f"[CONFIG] Symbol: {CONFIG['symbol']}")
+    logger.info(f"[CONFIG] Max Concurrent: {CONFIG['max_concurrent_trades']}")
+    logger.info(f"[CONFIG] Max Daily Loss: {CONFIG['max_daily_loss_percent']}%")
+    logger.info(f"[STATUS] Layers Available: {LAYERS_AVAILABLE}")
+    logger.info(f"[STATUS] MT5 Available: {MT5_AVAILABLE}")
     
-    # Check session suitability
-    good_session, session = is_good_trading_session()
-    if not good_session:
-        return False, f"Session {session} not suitable for XAUUSD day trading."
+    # Setup signal handlers
+    signal_module.signal(signal_module.SIGINT, signal_handler)
+    signal_module.signal(signal_module.SIGTERM, signal_handler)
     
-    return True, ""
-
-
-def _check_daily_loss_limit() -> tuple[bool, str]:
-    """Check if daily loss limit is hit.
+    # Connect to MT5 if available
+    if MT5_AVAILABLE:
+        if not connect_mt5():
+            logger.error("Failed to connect to MT5")
+            return
     
-    Returns:
-        (is_hit, reason)
-    """
-    loss_hit, daily_pnl = is_daily_loss_limit_hit()
-    if loss_hit:
-        return True, f"Daily loss limit reached ({daily_pnl:.2f}%)"
-    return False, ""
-
-
-def main_loop() -> None:
-    """Main continuous monitoring loop with three-stage gates.
+    open_trades = []
+    iteration_count = 0
     
-    Runs forever until stopped by user (Ctrl+C) or market closure.
-    """
-    global _SHOULD_CONTINUE, _LAST_WRITTEN_CONF, _LAST_WRITTEN_DIRECTION, _RESULT_TXT_ACTIVE
+    logger.info("="*70)
+    logger.info("BOT READY - Waiting for market data")
+    logger.info("="*70)
     
-    # Install signal handler for graceful Ctrl+C
-    signal.signal(signal.SIGINT, _signal_handler)
-    signal.signal(signal.SIGTERM, _signal_handler)
-    
-    log_debug("="*70)
-    log_debug("Starting XAUUSD trading bot — continuous monitoring mode")
-    log_debug("="*70)
-    
-    # Pre-loop validation
-    valid, reason = _validate_config_and_session()
-    if not valid:
-        _safe_print(reason)
-        return
-    
-    loss_hit, reason = _check_daily_loss_limit()
-    if loss_hit:
-        _safe_print(reason)
-        return
-    
-    # Connect to MT5
-    if not connect_mt5():
-        _safe_print("Unable to connect to MetaTrader 5.")
-        return
-    
-    log_debug("MT5 connection established. Starting monitoring loop...")
-    
-    loop_count = 0
-    
-    try:
-        while _SHOULD_CONTINUE:
-            loop_count += 1
-            now = datetime.now(timezone.utc)
+    while _SHOULD_CONTINUE:
+        try:
+            iteration_count += 1
+            now = datetime.now()
             
-            # Periodic re-checks of market status
-            if loop_count % 10 == 0:  # Every 10 iterations (~1 min if 6s loops)
-                if not is_market_open():
-                    log_debug("Market has closed — exiting")
-                    _safe_print("Market closed. Exiting.")
-                    break
-                
-                loss_hit, _ = _check_daily_loss_limit()
-                if loss_hit:
-                    log_debug("Daily loss limit hit — exiting")
-                    _safe_print("Daily loss limit reached. Exiting.")
-                    break
+            # Layer 0: Pre-trade gates
+            gate_check = check_pre_trade_gates()
             
-            session = get_current_session()
-            session_threshold = get_session_score_threshold(4.5)
-            daily_pnl = get_daily_pnl_pct()
-            
-            try:
-                # ────────────────────────────────────────────────────────────
-                # STAGE 1: CHEAP SCAN (always runs)
-                # ────────────────────────────────────────────────────────────
-                stage1_result = stage1.run_stage1(
-                    config.SYMBOL,
-                    config.N_CANDLES,
-                    high_impact_news=False,  # TODO: track from previous run
-                )
-                
-                if stage1_result.get("error"):
-                    sleep_time = calculate_sleep_time(stage="hard_block")
-                    msg = format_error(
-                        "MT5 Error",
-                        stage1_result["error"],
-                        sleep_time
-                    )
-                    log_debug(msg)
-                    time.sleep(sleep_time)
-                    continue
-                
-                trade_signal = stage1_result["technical_signal"]
-                confidence = stage1_result["confidence"]
-                score = stage1_result["score"]
-                max_score = stage1_result["max_score"]
-                direction = stage1_result["setup_direction"]
-                indicators = stage1_result["indicators"]
-                trade_levels = stage1_result["trade_levels"]
-                risk_level = stage1_result["risk_level"]
-                
-                # GATE 1: Check confidence vs session threshold
-                if confidence < 45 or trade_signal == "NO TRADE":
-                    h4_trend = indicators.get("H4", {}).get("trend_classification", "Unknown")
-                    m1_rsi = indicators.get("M1", {}).get("rsi_14")
-                    
-                    sleep_time = calculate_sleep_time(
-                        confidence=confidence,
-                        required_confidence=45,
-                        stage=1
-                    )
-                    
-                    status = format_monitor_status_line(
-                        direction=direction if direction in {"BUY", "SELL"} else "WAIT",
-                        score=score,
-                        required_score=session_threshold,
-                        confidence=confidence,
-                        required_confidence=45,
-                        h4_trend=h4_trend,
-                        m1_rsi=m1_rsi,
-                        next_sleep_secs=sleep_time,
-                        result_txt_active=_RESULT_TXT_ACTIVE,
-                    )
-                    
-                    log_debug(status)
-                    _safe_print(status)
-                    time.sleep(sleep_time)
-                    continue
-                
-                log_debug(f"[GATE 1] PASS: confidence {confidence}% >= 45%")
-                
-                # Check if previously written signal has expired
-                if _RESULT_TXT_ACTIVE and (_LAST_WRITTEN_DIRECTION != direction or confidence < _LAST_WRITTEN_CONF - 15):
-                    if _LAST_WRITTEN_DIRECTION != direction:
-                        reason = f"Direction changed from {_LAST_WRITTEN_DIRECTION} to {direction}"
-                    else:
-                        reason = f"Confidence dropped from {_LAST_WRITTEN_CONF}% to {confidence}%"
-                    
-                    write_signal_expired(reason, _LAST_WRITTEN_DIRECTION, _LAST_WRITTEN_CONF)
-                    _RESULT_TXT_ACTIVE = False
-                
-                # ────────────────────────────────────────────────────────────
-                # STAGE 2: INTERMARKET CHECK (only if stage 1 passes)
-                # ────────────────────────────────────────────────────────────
-                stage2_result = stage2.run_stage2(direction, indicators)
-                
-                # Hard block check
-                if stage2_result["hard_block"]:
-                    hard_block = stage2_result["hard_block"]
-                    reason = stage2_result["hard_block_reason"]
-                    sleep_time = calculate_sleep_time(stage="hard_block")
-                    
-                    msg = format_hard_block(hard_block, reason, sleep_time)
-                    log_debug(msg)
-                    _safe_print(msg)
-                    time.sleep(sleep_time)
-                    continue
-                
-                # Headwind check (not a hard block, but flag for later)
-                headwind_detected = stage2_result.get("headwind_detected", False)
-                if headwind_detected:
-                    log_debug(stage2_result.get("headwind_reason", "Headwind detected"))
-                    confidence = max(30, confidence - 10)  # Penalty
-                
-                log_debug(f"[GATE 2] PASS: no hard blocks, intermarket={stage2_result['intermarket_label']}")
-                intermarket_data = stage2_result.get("data", {})
-                
-                # ────────────────────────────────────────────────────────────
-                # RESULT WRITER: Write formatted signal to result.txt
-                # ────────────────────────────────────────────────────────────
-                
-                # Check if we should write result.txt
-                should_write = (
-                    not os.path.exists("result.txt")
-                    or abs(confidence - _LAST_WRITTEN_CONF) >= 5
-                    or direction != _LAST_WRITTEN_DIRECTION
-                )
-                
-                if should_write:
-                    # Fetch key levels for the report
-                    try:
-                        daily_data = get_market_data(config.SYMBOL, mt5.TIMEFRAME_D1, 20)
-                        weekly_data = get_market_data(config.SYMBOL, mt5.TIMEFRAME_W1, 20)
-                        key_levels = build_pivot_context(daily_data, weekly_data, current_price=None)
-                    except Exception:
-                        key_levels = {}
-                    
-                    # Fetch news data for the report
-                    try:
-                        from stage3 import fetch_news_sentiment
-                        from rss_feed import get_headline_strings
-                        headlines = get_headline_strings(limit=20)
-                        news_sentiment = fetch_news_sentiment(headlines)
-                        news_data = {
-                            "sentiment_score": news_sentiment.get("sentiment_score", 0),
-                            "dominant_theme": news_sentiment.get("dominant_theme", "Unknown"),
-                            "gold_bias": news_sentiment.get("geo_gold_bias", "Neutral"),
-                            "risk_sentiment": news_sentiment.get("geo_risk_sentiment", "Neutral"),
-                            "analysis": news_sentiment.get("analysis", {}),
-                            "headlines": headlines[:5],
-                            "events": [],
-                        }
-                    except Exception as exc:
-                        log_debug(f"[RESULT] News fetch error: {exc}")
-                        news_data = None
-                    
-                    # Write the signal report
-                    write_result_txt(
-                        tech=stage1_result,
-                        intermarket=intermarket_data,
-                        news=news_data,
-                        key_levels=key_levels,
-                        session=session,
-                    )
-                    
-                    _LAST_WRITTEN_CONF = confidence
-                    _LAST_WRITTEN_DIRECTION = direction
-                    _RESULT_TXT_ACTIVE = True
-                    _RESULT_TXT_WRITE_TIME = time.time()  # Track write timestamp
-                    
-                    # Print clear console notification
-                    print("=" * 60)
-                    print("[RESULT] *** SIGNAL READY — result.txt UPDATED ***")
-                    print(f"[RESULT] Direction : {direction}")
-                    print(f"[RESULT] Confidence: {confidence}%")
-                    print(f"[RESULT] Entry     : {stage1_result.get('trade_levels', {}).get('entry_price', 'N/A')}")
-                    print("[RESULT] Open result.txt → paste into Claude chat")
-                    print("=" * 60)
-                else:
-                    print(f"[RESULT] No significant change — result.txt unchanged")
-                    print(f"[RESULT] Conf={confidence}% | Dir={direction} | Last written conf={_LAST_WRITTEN_CONF}%")
-                
-                # Check for price staleness warning
-                if _RESULT_TXT_ACTIVE and _RESULT_TXT_WRITE_TIME > 0:
-                    staleness_seconds = time.time() - _RESULT_TXT_WRITE_TIME
-                    if staleness_seconds > 180:  # older than 3 minutes
-                        print(
-                            f"[RESULT] ⚠ result.txt is "
-                            f"{int(staleness_seconds/60)}m old — "
-                            f"price may have moved. Check live price before entry."
-                        )
-                
-                # Bot continues monitoring — does NOT stop or execute here
+            if not gate_check["all_gates_passed"]:
+                logger.warning(f"[L0] Trading blocked: {gate_check['gates_failed']}")
                 time.sleep(60)
                 continue
             
-            except Exception as exc:
-                sleep_time = calculate_sleep_time(stage="hard_block")
-                msg = format_error("Unhandled Exception", str(exc), sleep_time)
-                log_debug(msg)
-                _safe_print(msg)
-                time.sleep(sleep_time)
+            # Check entry if slots available
+            if len(open_trades) < CONFIG["max_concurrent_trades"]:
+                if MT5_AVAILABLE:
+                    try:
+                        h4_data = get_market_data(CONFIG["symbol"], mt5.TIMEFRAME_H4, CONFIG["h4_candles_required"])
+                        h1_data = get_market_data(CONFIG["symbol"], mt5.TIMEFRAME_H1, CONFIG["h1_candles_required"])
+                        m15_data = get_market_data(CONFIG["symbol"], mt5.TIMEFRAME_M15, CONFIG["m15_candles_required"])
+                        m5_data = get_market_data(CONFIG["symbol"], mt5.TIMEFRAME_M5, CONFIG["m5_candles_required"])
+                        m1_data = get_market_data(CONFIG["symbol"], mt5.TIMEFRAME_M1, CONFIG["m1_candles_required"])
+                        daily_data = get_market_data(CONFIG["symbol"], mt5.TIMEFRAME_D1, 10)
+                    except Exception as e:
+                        logger.warning(f"Error fetching market data: {e}")
+                        time.sleep(10)
+                        continue
+                else:
+                    # Demo mode - no real data
+                    h4_data = h1_data = m15_data = m5_data = m1_data = daily_data = None
+                
+                # Get current price
+                try:
+                    current_price = get_current_price(CONFIG["symbol"]) if MT5_AVAILABLE else 0
+                except:
+                    current_price = h1_data.iloc[-1]['close'] if h1_data is not None and len(h1_data) > 0 else 0
+                
+                # Analyze entry with detailed output
+                analysis = analyze_entry(h4_data, h1_data, m15_data, m5_data, m1_data, daily_data, current_price)
+                print_run_summary(analysis)
+                
+                # Log signal
+                l6_data = analysis.get("layer_6", {})
+                l6_poi_type = l6_data.get("poi_type", "N/A") if l6_data else "N/A"
+                l6_poi_score = l6_data.get("score", "N/A") if l6_data else "N/A"
+                
+                _append_signal_log(_SIGNAL_LOG_FILE, {
+                    "timestamp": analysis.get("timestamp"),
+                    "signal_type": analysis.get("signal_type"),
+                    "layers_passed": ",".join(analysis.get("layers_passed", [])),
+                    "layer_failed": analysis.get("layer_failed"),
+                    "fail_reason": analysis.get("fail_reason", ""),
+                    "l6_poi_type": l6_poi_type,
+                    "l6_poi_score": l6_poi_score,
+                    "entry_grade": analysis.get("entry_signal", {}).get("grade") if analysis.get("entry_signal") else "N/A",
+                    "setup_type": analysis.get("entry_signal", {}).get("setup_type") if analysis.get("entry_signal") else analysis.get("layer_8", {}).get("setup_type", "N/A"),
+                    "entry_method": analysis.get("entry_signal", {}).get("entry_method") if analysis.get("entry_signal") else "N/A",
+                    "entry_mode": analysis.get("entry_signal", {}).get("entry_mode") if analysis.get("entry_signal") else "N/A",
+                    "trigger_type": analysis.get("entry_signal", {}).get("trigger_type") if analysis.get("entry_signal") else "N/A",
+                    "rr_valid": analysis.get("entry_signal", {}).get("rr_valid") if analysis.get("entry_signal") else "N/A",
+                        "entry_price": analysis.get("entry_signal", {}).get("entry_price") if analysis.get("entry_signal") else "N/A",
+                        "stop_loss": analysis.get("entry_signal", {}).get("stop_loss") if analysis.get("entry_signal") else "N/A",
+                        "take_profit": analysis.get("entry_signal", {}).get("take_profit") if analysis.get("entry_signal") else "N/A",
+                    "rr_ratio": analysis.get("entry_signal", {}).get("rr_ratio") if analysis.get("entry_signal") else "N/A",
+                    "session": get_session_name(),
+                    "position_type": analysis.get("entry_signal", {}).get("position_type") if analysis.get("entry_signal") else "N/A"
+                })
+                
+                if analysis["signal_type"] == "ENTRY_SIGNAL":
+                    # Create trade record
+                    trade = {
+                        "trade_id": f"XAUUSD_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                        "entry_price": analysis["entry_signal"]["entry_price"],
+                        "stop_loss": analysis["entry_signal"]["stop_loss"],
+                        "take_profit": analysis["entry_signal"]["take_profit"],
+                        "position_type": analysis["entry_signal"]["position_type"],
+                        "entry_time": datetime.now().isoformat(),
+                        "status": "OPEN",
+                        "state": None
+                    }
+                    open_trades.append(trade)
+                    logger.info(f"[ENTRY] Added trade: {trade['trade_id']}")
+            
+            # Manage positions (Layer 9)
+            if open_trades:
+                current_prices = {"spread": 0.5}  # Mock prices for demo
+                open_trades = manage_positions(open_trades, current_prices)
+                
+                # Remove closed trades
+                closed_trades = [t for t in open_trades if t.get("status") == "CLOSED"]
+                open_trades = [t for t in open_trades if t.get("status") == "OPEN"]
+                
+                if closed_trades:
+                    logger.info(f"[POSITIONS] {len(closed_trades)} trade(s) closed")
+            
+            logger.debug(f"[ITERATION {iteration_count}] Open trades: {len(open_trades)} | Session: {get_session_name()}")
+            
+            # Wait before next iteration
+            time.sleep(30)
+        
+        except KeyboardInterrupt:
+            logger.info("[MAIN] Keyboard interrupt received")
+            _SHOULD_CONTINUE = False
+        except Exception as e:
+            logger.error(f"Error in main loop: {e}", exc_info=True)
+            time.sleep(10)
     
-    except KeyboardInterrupt:
-        log_debug("KeyboardInterrupt — exiting")
-    finally:
+    # Cleanup
+    logger.info("[SHUTDOWN] Closing positions...")
+    close_all_positions()
+    if MT5_AVAILABLE:
         shutdown_mt5()
-        log_debug("Monitoring loop ended. MT5 connection closed.")
-        _safe_print("\n[SHUTDOWN] Bot stopped.")
+    
+    logger.info("="*70)
+    logger.info("BOT STOPPED")
+    logger.info("="*70)
 
-
-def main() -> None:
-    """Entry point."""
-    main_loop()
-
+# ============================================================
+# ENTRY POINT
+# ============================================================
 
 if __name__ == "__main__":
+    print("\n" + "="*70)
+    print("10-LAYER HYBRID TRADING BOT")
+    print("="*70)
+    print("\n[SYSTEM STATUS]")
+    print(f"  Layers Available: {LAYERS_AVAILABLE}")
+    print(f"  MT5 Available: {MT5_AVAILABLE}")
+    print(f"  Configuration: XAUUSD, Max {CONFIG['max_concurrent_trades']} concurrent trades")
+    print("\n[LAYERS]")
+    print("  [+] Layer 0: Pre-Trade Gates")
+    print("  [+] Layer 1: H4 Bias Engine")
+    print("  [+] Layer 2: H1 Structure")
+    print("  [+] Layer 3: M15 Pullback")
+    print("  [+] Layer 4: Liquidity Engine")
+    print("  [+] Layer 5: Sweep Detector")
+    print("  [+] Layer 6: POI Quality")
+    print("  [+] Layer 7: Confidence Score")
+    print("  [+] Layer 8: Entry Triggers")
+    print("  [+] Layer 9: Trade Manager")
+    print("  [+] Layer 10: Feedback Loop")
+    print("\n" + "="*70)
+    
+    if not LAYERS_AVAILABLE:
+        print("[WARNING] Layer modules not fully available")
+        print("Run in demo mode for testing\n")
+    
     main()

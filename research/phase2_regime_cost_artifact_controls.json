@@ -1,0 +1,30 @@
+{
+  "controls_applied": {
+    "C1_overlap_dependence": {
+      "result": "FAIL",
+      "detail": "raw tail observations 30,392 -> 4,034 non-overlapping (7.53x). Under the corrected estimator the spread falls from -0.888 to -0.158, t -1.07, CI crossing zero."
+    },
+    "C2_estimator_validity": {
+      "result": "FAIL",
+      "detail": "the unweighted block-mean estimator is biased when per-block observation counts are endogenous to the outcome, which they are here. Raw means give spread +0.039 where the block estimator gave -0.888."
+    },
+    "C3_long_history_H1_analogue": {
+      "result": "FAIL",
+      "detail": "23,422 independent observations over 16 years: spread +0.029, t +0.89, sign POSITIVE. No period or regime reaches abs(t) = 1.6."
+    },
+    "C4_sign_stability": {
+      "result": "FAIL",
+      "detail": "disp_8_lag1 flips sign between TRAIN (-0.029) and DEV (+0.178) and across regimes."
+    },
+    "C5_cost_realism": {
+      "result": "NOT REACHED",
+      "detail": "the diagnostic hypothetical GROSS mean is already negative (-0.087 ATR, -$0.246) before any cost is applied, so cost sensitivity cannot rescue it."
+    },
+    "C6_spread_convention": {
+      "result": "CORRECTED",
+      "detail": "round-turn spread cost is 1 x S ($0.33), not 2 x S. Earlier reports in this programme said 2 x S, which double-counted. Both conventions are reported throughout Phase 2."
+    }
+  },
+  "phase1_status": "HEADLINE RETRACTED -- no robust conditional structure",
+  "scope_of_retraction": "The flawed estimator was used throughout the Phase 1 scan, so every t-statistic in phase1_structure_results.json is unreliable. The Phase 1 REJECTIONS are unaffected in substance -- the correction removes a false positive rather than creating new ones, and the corrected estimator finds nothing here either -- but a full re-run would be required to make that claim rigorously, and it has not been done."
+}

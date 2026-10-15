@@ -1,0 +1,32 @@
+{
+  "ambiguous_exits": 0,
+  "by_direction": {
+    "BUY": 1,
+    "SELL": 2
+  },
+  "by_outcome": {
+    "STOPPED": 1,
+    "TARGET_HIT": 2
+  },
+  "by_outcome_and_direction": {
+    "BUY": {
+      "TARGET_HIT": 1
+    },
+    "SELL": {
+      "STOPPED": 1,
+      "TARGET_HIT": 1
+    }
+  },
+  "by_outcome_and_regime": {
+    "MICRO_SCALP": {
+      "STOPPED": 1,
+      "TARGET_HIT": 2
+    }
+  },
+  "by_outcome_and_session": {
+    "London": {
+      "STOPPED": 1,
+      "TARGET_HIT": 2
+    }
+  }
+}

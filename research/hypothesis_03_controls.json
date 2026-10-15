@@ -1,0 +1,462 @@
+{
+ "weighting_headline": "non-overlapping (observation-weighted, disjoint windows)",
+ "declared_primary": 6,
+ "accumulated": 9,
+ "cells": {
+  "TRAIN|EXPANSION@1h": {
+   "overlap": {
+    "raw_observations": 697,
+    "non_overlapping_observations": 697,
+    "overlap_ratio": 1.0,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 697,
+    "disjoint": true,
+    "min_gap": 7,
+    "required_gap": 4,
+    "n_overlaps": 0
+   },
+   "flags": [],
+   "needs_review": false
+  },
+  "TRAIN|EXPANSION@2h": {
+   "overlap": {
+    "raw_observations": 697,
+    "non_overlapping_observations": 696,
+    "overlap_ratio": 1.001,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 696,
+    "disjoint": true,
+    "min_gap": 10,
+    "required_gap": 8,
+    "n_overlaps": 0
+   },
+   "flags": [],
+   "needs_review": false
+  },
+  "TRAIN|EXPANSION@4h": {
+   "overlap": {
+    "raw_observations": 697,
+    "non_overlapping_observations": 687,
+    "overlap_ratio": 1.015,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 687,
+    "disjoint": true,
+    "min_gap": 17,
+    "required_gap": 16,
+    "n_overlaps": 0
+   },
+   "flags": [],
+   "needs_review": false
+  },
+  "TRAIN|CONTRACTION@1h": {
+   "overlap": {
+    "raw_observations": 697,
+    "non_overlapping_observations": 697,
+    "overlap_ratio": 1.0,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 697,
+    "disjoint": true,
+    "min_gap": 7,
+    "required_gap": 4,
+    "n_overlaps": 0
+   },
+   "flags": [],
+   "needs_review": false
+  },
+  "TRAIN|CONTRACTION@2h": {
+   "overlap": {
+    "raw_observations": 697,
+    "non_overlapping_observations": 695,
+    "overlap_ratio": 1.003,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 695,
+    "disjoint": true,
+    "min_gap": 8,
+    "required_gap": 8,
+    "n_overlaps": 0
+   },
+   "flags": [],
+   "needs_review": false
+  },
+  "TRAIN|CONTRACTION@4h": {
+   "overlap": {
+    "raw_observations": 697,
+    "non_overlapping_observations": 689,
+    "overlap_ratio": 1.012,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 689,
+    "disjoint": true,
+    "min_gap": 18,
+    "required_gap": 16,
+    "n_overlaps": 0
+   },
+   "flags": [],
+   "needs_review": false
+  },
+  "DEV|EXPANSION@1h": {
+   "overlap": {
+    "raw_observations": 395,
+    "non_overlapping_observations": 395,
+    "overlap_ratio": 1.0,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 395,
+    "disjoint": true,
+    "min_gap": 6,
+    "required_gap": 4,
+    "n_overlaps": 0
+   },
+   "flags": [],
+   "needs_review": false
+  },
+  "DEV|EXPANSION@2h": {
+   "overlap": {
+    "raw_observations": 395,
+    "non_overlapping_observations": 394,
+    "overlap_ratio": 1.003,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 394,
+    "disjoint": true,
+    "min_gap": 12,
+    "required_gap": 8,
+    "n_overlaps": 0
+   },
+   "flags": [],
+   "needs_review": false
+  },
+  "DEV|EXPANSION@4h": {
+   "overlap": {
+    "raw_observations": 395,
+    "non_overlapping_observations": 388,
+    "overlap_ratio": 1.018,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 388,
+    "disjoint": true,
+    "min_gap": 16,
+    "required_gap": 16,
+    "n_overlaps": 0
+   },
+   "flags": [],
+   "needs_review": false
+  },
+  "DEV|CONTRACTION@1h": {
+   "overlap": {
+    "raw_observations": 394,
+    "non_overlapping_observations": 394,
+    "overlap_ratio": 1.0,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 394,
+    "disjoint": true,
+    "min_gap": 9,
+    "required_gap": 4,
+    "n_overlaps": 0
+   },
+   "flags": [],
+   "needs_review": false
+  },
+  "DEV|CONTRACTION@2h": {
+   "overlap": {
+    "raw_observations": 394,
+    "non_overlapping_observations": 394,
+    "overlap_ratio": 1.0,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 394,
+    "disjoint": true,
+    "min_gap": 9,
+    "required_gap": 8,
+    "n_overlaps": 0
+   },
+   "flags": [],
+   "needs_review": false
+  },
+  "DEV|CONTRACTION@4h": {
+   "overlap": {
+    "raw_observations": 394,
+    "non_overlapping_observations": 387,
+    "overlap_ratio": 1.018,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 387,
+    "disjoint": true,
+    "min_gap": 16,
+    "required_gap": 16,
+    "n_overlaps": 0
+   },
+   "flags": [],
+   "needs_review": false
+  },
+  "POOLED|EXPANSION@1h": {
+   "overlap": {
+    "raw_observations": 1092,
+    "non_overlapping_observations": 1092,
+    "overlap_ratio": 1.0,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 1092,
+    "disjoint": true,
+    "min_gap": 6,
+    "required_gap": 4,
+    "n_overlaps": 0
+   },
+   "flags": [],
+   "needs_review": false
+  },
+  "POOLED|EXPANSION@2h": {
+   "overlap": {
+    "raw_observations": 1092,
+    "non_overlapping_observations": 1090,
+    "overlap_ratio": 1.002,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 1090,
+    "disjoint": true,
+    "min_gap": 10,
+    "required_gap": 8,
+    "n_overlaps": 0
+   },
+   "flags": [],
+   "needs_review": false
+  },
+  "POOLED|EXPANSION@4h": {
+   "overlap": {
+    "raw_observations": 1092,
+    "non_overlapping_observations": 1075,
+    "overlap_ratio": 1.016,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 1075,
+    "disjoint": true,
+    "min_gap": 16,
+    "required_gap": 16,
+    "n_overlaps": 0
+   },
+   "flags": [],
+   "needs_review": false
+  },
+  "POOLED|CONTRACTION@1h": {
+   "overlap": {
+    "raw_observations": 1091,
+    "non_overlapping_observations": 1091,
+    "overlap_ratio": 1.0,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 1091,
+    "disjoint": true,
+    "min_gap": 7,
+    "required_gap": 4,
+    "n_overlaps": 0
+   },
+   "flags": [],
+   "needs_review": false
+  },
+  "POOLED|CONTRACTION@2h": {
+   "overlap": {
+    "raw_observations": 1091,
+    "non_overlapping_observations": 1089,
+    "overlap_ratio": 1.002,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 1089,
+    "disjoint": true,
+    "min_gap": 8,
+    "required_gap": 8,
+    "n_overlaps": 0
+   },
+   "flags": [],
+   "needs_review": false
+  },
+  "POOLED|CONTRACTION@4h": {
+   "overlap": {
+    "raw_observations": 1091,
+    "non_overlapping_observations": 1076,
+    "overlap_ratio": 1.014,
+    "raw_weighting": "overlapping (observation-weighted, windows share bars)"
+   },
+   "audit": {
+    "n": 1076,
+    "disjoint": true,
+    "min_gap": 16,
+    "required_gap": 16,
+    "n_overlaps": 0
+   },
+   "flags": [],
+   "needs_review": false
+  }
+ },
+ "causal_reconstruction": {
+  "probes": 60,
+  "seed": 20261004,
+  "frozen_tolerances": {
+   "short_long_vol_relative": 1e-13,
+   "vol_ratio_relative": 1e-13,
+   "disp_relative": 1e-12,
+   "atr_relative": 1e-12,
+   "classifications": "0 disagreements"
+  },
+  "observed": {
+   "short_vol": 0.0,
+   "long_vol": 0.0,
+   "ratio": 0.0,
+   "disp": 4.837349015682976e-16,
+   "atr": 3.576252447106897e-16,
+   "classification_disagreements": {
+    "state": 0,
+    "event": 0
+   },
+   "threshold_margins": []
+  },
+  "PASS": true,
+  "method": "rebuilt from m15.iloc[:i] (bars 0..i-1) and compared with the panel at i"
+ },
+ "forward_window_audits": {
+  "TRAIN|EXPANSION@1h": {
+   "n": 697,
+   "disjoint": true,
+   "min_gap": 7,
+   "required_gap": 4,
+   "n_overlaps": 0
+  },
+  "TRAIN|EXPANSION@2h": {
+   "n": 696,
+   "disjoint": true,
+   "min_gap": 10,
+   "required_gap": 8,
+   "n_overlaps": 0
+  },
+  "TRAIN|EXPANSION@4h": {
+   "n": 687,
+   "disjoint": true,
+   "min_gap": 17,
+   "required_gap": 16,
+   "n_overlaps": 0
+  },
+  "TRAIN|CONTRACTION@1h": {
+   "n": 697,
+   "disjoint": true,
+   "min_gap": 7,
+   "required_gap": 4,
+   "n_overlaps": 0
+  },
+  "TRAIN|CONTRACTION@2h": {
+   "n": 695,
+   "disjoint": true,
+   "min_gap": 8,
+   "required_gap": 8,
+   "n_overlaps": 0
+  },
+  "TRAIN|CONTRACTION@4h": {
+   "n": 689,
+   "disjoint": true,
+   "min_gap": 18,
+   "required_gap": 16,
+   "n_overlaps": 0
+  },
+  "DEV|EXPANSION@1h": {
+   "n": 395,
+   "disjoint": true,
+   "min_gap": 6,
+   "required_gap": 4,
+   "n_overlaps": 0
+  },
+  "DEV|EXPANSION@2h": {
+   "n": 394,
+   "disjoint": true,
+   "min_gap": 12,
+   "required_gap": 8,
+   "n_overlaps": 0
+  },
+  "DEV|EXPANSION@4h": {
+   "n": 388,
+   "disjoint": true,
+   "min_gap": 16,
+   "required_gap": 16,
+   "n_overlaps": 0
+  },
+  "DEV|CONTRACTION@1h": {
+   "n": 394,
+   "disjoint": true,
+   "min_gap": 9,
+   "required_gap": 4,
+   "n_overlaps": 0
+  },
+  "DEV|CONTRACTION@2h": {
+   "n": 394,
+   "disjoint": true,
+   "min_gap": 9,
+   "required_gap": 8,
+   "n_overlaps": 0
+  },
+  "DEV|CONTRACTION@4h": {
+   "n": 387,
+   "disjoint": true,
+   "min_gap": 16,
+   "required_gap": 16,
+   "n_overlaps": 0
+  }
+ },
+ "sign_disagreement_cells": [],
+ "no_feature_mining": {
+  "window_pairs_tested": [
+   [
+    4,
+    96
+   ]
+  ],
+  "percentile_pairs_tested": [
+   [
+    20,
+    80
+   ]
+  ],
+  "horizons_tested": [
+   4,
+   8,
+   16
+  ],
+  "transition_types": [
+   "EXPANSION",
+   "CONTRACTION"
+  ],
+  "disp_windows_tested": [
+   12
+  ],
+  "statement": "One state variable, one window pair, one threshold pair, one transition machine, three horizons, two transition types."
+ },
+ "dev_tuning": {
+  "thresholds_refit_on_dev": false,
+  "strata_refit_on_dev": false,
+  "h1_cuts_refit_on_dev": false
+ },
+ "final_oos": {
+  "opened": false,
+  "panel_truncated_at": "2025-09-02 14:15:00+00:00",
+  "token": "OOS-AUTHORISATION-NOT-ISSUED"
+ }
+}

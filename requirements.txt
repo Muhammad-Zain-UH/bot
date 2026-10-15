@@ -1,18 +1,48 @@
-# MetaTrader 5 Integration
-MetaTrader5==5.0.45
+# ============================================================================
+# PRODUCTION TRADING BOT - DEPENDENCIES
+# ============================================================================
 
-# Data Processing & Analysis
+# MetaTrader 5 Integration (CRITICAL - main broker connection)
+MetaTrader5>=5.0.5000
+
+# Data Processing & Analysis (CRITICAL - OHLC data handling)
 pandas>=1.5.0
 pandas-ta>=0.3.14
+numpy>=1.23.0
 
-# API Requests
+# HTTP Requests (for news feeds & external APIs)
 requests>=2.28.0
 
-# Claude API (Anthropic) — replaced OpenAI
+# Claude API (Anthropic) — for signal logging & analysis
 anthropic>=0.28.0
 
-# News Feeds
+# News Feeds (RSS feed parsing for news gate layer)
 feedparser>=6.0.10
 
-# Optional: for data visualization/backtesting
-numpy>=1.23.0
+# V2 research data pipeline (gold/data): Parquet frames, Dukascopy S3 export,
+# and the IANA time-zone database that zoneinfo needs on Windows
+pyarrow>=14.0
+boto3>=1.34
+tzdata>=2024.1
+
+# ============================================================================
+# NOTES:
+# - All dependencies are pure Python and cross-platform
+# - MetaTrader5 requires MT5 terminal installed on system
+# - Production components (persistence, execution, recovery) use stdlib only
+# - Install via: pip install -r requirements.txt
+# ============================================================================
+
+# ============================================================================
+# TESTING
+# ============================================================================
+# The test suite uses the STANDARD LIBRARY `unittest` only - no pytest, no
+# additional packages. Run it with:
+#
+#     python -m unittest discover -s tests -t .
+#
+# `core/` deliberately imports nothing beyond the stdlib plus pandas/numpy
+# above. Note that `pydantic` is present in some virtualenvs but is NOT declared
+# here, so it is not used - relying on it would create a dependency that does
+# not survive a clean install. Enforced by tests/core/test_core_constraints.py.
+# ============================================================================

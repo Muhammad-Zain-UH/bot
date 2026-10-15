@@ -1,0 +1,49 @@
+{
+  "status": "V2 split -- ROADMAP_V2 \u00a74",
+  "dataset": "Dukascopy XAUUSD M1 bid/ask, data/dukascopy_v1/bars",
+  "FINAL_OOS_LOCKED": true,
+  "oos_authorisation_token": "OOS-AUTHORISATION-NOT-ISSUED",
+  "oos_unlock_requirements": [
+    "explicit written authorisation from the owner",
+    "record the date, the git SHA and the candidate specification SHA at the moment it is opened",
+    "one look only; a revised candidate on a used OOS is a new candidate on a spent arm"
+  ],
+  "trading_day": "ends 17:00 America/New_York (DST-correct)",
+  "membership_rule": "from_utc <= time and time + bar length <= to_utc",
+  "purge": {
+    "trading_days_after_each_boundary": 1,
+    "windows": [
+      {
+        "trading_day": "2017-01-02",
+        "from_utc": "2016-12-30T22:00:00+00:00",
+        "to_utc": "2017-01-02T22:00:00+00:00"
+      },
+      {
+        "trading_day": "2025-09-02",
+        "from_utc": "2025-09-01T21:00:00+00:00",
+        "to_utc": "2025-09-02T21:00:00+00:00"
+      }
+    ]
+  },
+  "arms": {
+    "TRAIN": {
+      "first_trading_day": "2003-05-05",
+      "last_trading_day": "2016-12-30",
+      "from_utc": "2003-05-02T21:00:00+00:00",
+      "to_utc": "2016-12-30T22:00:00+00:00"
+    },
+    "DEV": {
+      "first_trading_day": "2017-01-02",
+      "last_trading_day": "2025-09-01",
+      "from_utc": "2017-01-02T22:00:00+00:00",
+      "to_utc": "2025-09-01T21:00:00+00:00"
+    },
+    "FINAL_OOS": {
+      "first_trading_day": "2025-09-02",
+      "last_trading_day": "2026-10-01",
+      "from_utc": "2025-09-02T21:00:00+00:00",
+      "to_utc": "2026-10-01T21:00:00+00:00"
+    }
+  },
+  "enforcement": "gold/data/store.load_v2 raises research.dataset_access.OOSLockedError on any FINAL_OOS read without the manifest token"
+}
